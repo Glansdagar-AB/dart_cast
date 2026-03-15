@@ -3,6 +3,7 @@ library;
 
 // Core
 export 'src/core/cast_device.dart';
+export 'src/core/cast_exceptions.dart';
 export 'src/core/cast_media.dart';
 
 // Utils

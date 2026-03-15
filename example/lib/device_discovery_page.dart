@@ -203,7 +203,9 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
       } else {
         // For Chromecast and AirPlay, CastService.connect() uses the
         // sessionFactory to create the appropriate session.
+        debugPrint('EXAMPLE: calling _castService.connect(${device.name})...');
         session = await _castService.connect(device);
+        debugPrint('EXAMPLE: connect succeeded');
       }
 
       // Dismiss connecting dialog
@@ -220,9 +222,24 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
           ),
         );
       }
-    } on NeedsPairingException {
+    } on NeedsPairingException catch (e) {
+      debugPrint('EXAMPLE: caught NeedsPairingException: $e');
       // Dismiss connecting dialog
       if (mounted) Navigator.of(context).pop();
+
+      // Trigger PIN display on TV
+      debugPrint('EXAMPLE: triggering PIN display on TV...');
+      try {
+        final pairSetup = AirPlayPairSetup(
+          host: device.address.address,
+          port: device.port,
+        );
+        await pairSetup.startPinDisplay();
+        pairSetup.close();
+        debugPrint('EXAMPLE: PIN display triggered');
+      } catch (pinErr) {
+        debugPrint('EXAMPLE: failed to trigger PIN display: $pinErr');
+      }
 
       // Show PIN dialog
       final pin = await _showPinDialog();
@@ -262,6 +279,7 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
         }
       }
     } catch (e) {
+      debugPrint('EXAMPLE: catch-all error (${e.runtimeType}): $e');
       // Dismiss connecting dialog
       if (mounted) Navigator.of(context).pop();
 

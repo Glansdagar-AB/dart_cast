@@ -36,16 +36,18 @@ final castService = CastService(
   discoveryProviders: [
     DlnaDiscoveryProvider(),
     ChromecastDiscoveryProvider(),
-    AirplayDiscoveryProvider(),
+    AirPlayDiscoveryProvider(),
   ],
   sessionFactory: (device) {
     switch (device.protocol) {
-      case CastProtocol.dlna:
-        return DlnaSession(device);
       case CastProtocol.chromecast:
-        return ChromecastSession(device);
+        return ChromecastSession(device: device);
       case CastProtocol.airplay:
-        return AirplaySession(device);
+        return AirPlaySession(device);
+      case CastProtocol.dlna:
+        // DLNA requires a device description with control URLs.
+        // See the example app for full DLNA setup.
+        throw UnimplementedError('Use DlnaSession directly');
     }
   },
 );
@@ -86,8 +88,8 @@ The main entry point. Manages discovery, connections, and session lifecycle.
 
 ```dart
 final service = CastService(
-  discoveryProviders: [...],
-  sessionFactory: (device) => ...,
+  discoveryProviders: [...],  // protocol-specific providers
+  sessionFactory: (device) => ...,  // creates sessions by protocol
 );
 ```
 

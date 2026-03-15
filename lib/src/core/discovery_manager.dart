@@ -2,17 +2,21 @@ import 'dart:async';
 
 import 'cast_device.dart';
 import 'discovery_provider.dart';
+import '../utils/network_utils.dart';
+import '../utils/logger.dart';
 
 /// Manages device discovery across multiple protocol providers.
 ///
 /// Merges device lists from all active providers, deduplicates by device ID,
-/// and emits a combined list as devices appear or disappear.
+/// filters out the local device, and emits a combined list as devices appear
+/// or disappear.
 class DiscoveryManager {
   final List<DeviceDiscoveryProvider> _providers;
   final List<StreamSubscription<List<CastDevice>>> _subscriptions = [];
   final Set<DeviceDiscoveryProvider> _activeProviders = {};
   StreamController<List<CastDevice>>? _outputController;
   Timer? _timeoutTimer;
+  String? _localAddress;
 
   /// Per-provider device lists, keyed by provider index.
   final Map<int, List<CastDevice>> _providerDevices = {};
@@ -37,6 +41,9 @@ class DiscoveryManager {
 
     _outputController = StreamController<List<CastDevice>>.broadcast();
     _providerDevices.clear();
+
+    // Detect local IP to filter out self-discovery
+    _detectLocalAddress().catchError((_) {});
 
     final matchingProviders = protocols == null
         ? _providers
@@ -77,21 +84,49 @@ class DiscoveryManager {
     return _outputController!.stream;
   }
 
+  Future<void> _detectLocalAddress() async {
+    _localAddress = await NetworkUtils.getLocalIpAddress();
+  }
+
   void _emitCombined() {
     final seen = <String>{};
     final combined = <CastDevice>[];
 
     for (final devices in _providerDevices.values) {
       for (final device in devices) {
-        if (seen.add(device.id)) {
-          combined.add(device);
-        }
+        if (!seen.add(device.id)) continue;
+        if (_shouldFilter(device)) continue;
+        combined.add(device);
       }
     }
 
     if (_outputController?.isClosed == false) {
       _outputController!.add(combined);
     }
+  }
+
+  /// Filter out devices that are not useful cast targets.
+  bool _shouldFilter(CastDevice device) {
+    // Filter out self (same IP as this device)
+    if (_localAddress != null &&
+        device.address.address == _localAddress) {
+      CastLogger.debug('Filtering self-device: ${device.name} (${device.address.address})');
+      return true;
+    }
+
+    // Filter out macOS/laptop AirPlay receivers — they're computers, not cast targets
+    final model = device.metadata['model']?.toLowerCase() ?? '';
+    if (device.protocol == CastProtocol.airplay) {
+      const computerModels = ['macbook', 'imac', 'macpro', 'macmini', 'mac'];
+      for (final prefix in computerModels) {
+        if (model.contains(prefix)) {
+          CastLogger.debug('Filtering computer AirPlay receiver: ${device.name} ($model)');
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   void _checkCompletion(int totalProviders) {

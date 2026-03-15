@@ -88,7 +88,7 @@ void main() {
           txtRecords: {'deviceid': 'AA:BB:CC:DD:EE:FF'},
         );
 
-        expect(info.friendlyName, 'Apple TV._airplay._tcp.local');
+        expect(info.friendlyName, 'Apple TV');
       });
     });
 
@@ -154,7 +154,7 @@ void main() {
 
         final device = info.toAirplayDevice();
         expect(device.id, 'AA:BB:CC:DD:EE:FF');
-        expect(device.name, 'Apple TV._airplay._tcp.local');
+        expect(device.name, 'Apple TV');
         expect(device.protocol, CastProtocol.airplay);
         expect(device.address, InternetAddress('192.168.1.200'));
         expect(device.port, 7000);

@@ -33,7 +33,12 @@ class MdnsServiceInfo {
   ///
   /// Uses the Chromecast `fn` TXT field if present, otherwise falls back
   /// to the mDNS service [name].
-  String get friendlyName => txtRecords['fn'] ?? name;
+  String get friendlyName {
+    if (txtRecords.containsKey('fn')) return txtRecords['fn']!;
+    // Strip mDNS service suffix from name (e.g., "My TV._airplay._tcp.local" → "My TV")
+    final dotIndex = name.indexOf('._');
+    return dotIndex > 0 ? name.substring(0, dotIndex) : name;
+  }
 
   /// Unique device identifier.
   ///

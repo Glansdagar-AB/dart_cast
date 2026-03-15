@@ -126,7 +126,11 @@ class AirPlaySession extends CastSession {
   ///
   /// [clientId] is an optional identifier for this client. If not provided,
   /// a random UUID is generated.
-  Future<HapCredentials> pairSetup(String pin, {String? clientId}) async {
+  Future<HapCredentials> pairSetup(
+    String pin, {
+    String? clientId,
+    bool triggerPinDisplay = true,
+  }) async {
     final id = clientId ?? _generateUuid();
 
     final pairSetup = AirPlayPairSetup(
@@ -135,10 +139,14 @@ class AirPlaySession extends CastSession {
     );
 
     try {
-      // Trigger PIN display
-      await pairSetup.startPinDisplay();
+      // Trigger PIN display on TV (skip if already triggered externally)
+      if (triggerPinDisplay) {
+        CastLogger.info('AirPlay: triggering PIN display on TV');
+        await pairSetup.startPinDisplay();
+      }
 
-      // Run pair-setup
+      // Run pair-setup SRP flow with the user-entered PIN
+      CastLogger.info('AirPlay: starting SRP pair-setup with PIN');
       credentials = await pairSetup.pairSetup(pin: pin, clientId: id);
 
       CastLogger.info('AirPlay: pair-setup complete, credentials stored');

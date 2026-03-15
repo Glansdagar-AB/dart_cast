@@ -138,17 +138,15 @@ void main() {
         switch (action) {
           case 'SetAVTransportURI':
             request.response.write(_soapResponse(
-                'SetAVTransportURIResponse',
-                DlnaServiceType.avTransport,
-                ''));
+                'SetAVTransportURIResponse', DlnaServiceType.avTransport, ''));
             break;
           case 'Play':
-            request.response.write(_soapResponse(
-                'PlayResponse', DlnaServiceType.avTransport, ''));
+            request.response.write(
+                _soapResponse('PlayResponse', DlnaServiceType.avTransport, ''));
             break;
           case 'Stop':
-            request.response.write(_soapResponse(
-                'StopResponse', DlnaServiceType.avTransport, ''));
+            request.response.write(
+                _soapResponse('StopResponse', DlnaServiceType.avTransport, ''));
             break;
           case 'GetPositionInfo':
             request.response.write(_soapResponse(
@@ -210,8 +208,8 @@ void main() {
         title: 'HLS Video',
       ));
 
-      final setUri = capturedActions
-          .firstWhere((a) => a.action == 'SetAVTransportURI');
+      final setUri =
+          capturedActions.firstWhere((a) => a.action == 'SetAVTransportURI');
 
       // Should use ts-stream route, not stream route
       expect(setUri.body, contains('/ts-stream/'));
@@ -251,8 +249,8 @@ void main() {
         title: 'MP4 Video',
       ));
 
-      final setUri = capturedActions
-          .firstWhere((a) => a.action == 'SetAVTransportURI');
+      final setUri =
+          capturedActions.firstWhere((a) => a.action == 'SetAVTransportURI');
 
       // Should use stream route for MP4
       expect(setUri.body, contains('/stream/'));
@@ -263,8 +261,7 @@ void main() {
       session.dispose();
     });
 
-    test('uses stream route with mp2t protocolInfo for mpegTs media',
-        () async {
+    test('uses stream route with mp2t protocolInfo for mpegTs media', () async {
       final device = CastDevice(
         id: 'uuid:ts-test',
         name: 'TS TV',
@@ -293,8 +290,8 @@ void main() {
         title: 'TS Video',
       ));
 
-      final setUri = capturedActions
-          .firstWhere((a) => a.action == 'SetAVTransportURI');
+      final setUri =
+          capturedActions.firstWhere((a) => a.action == 'SetAVTransportURI');
 
       // Should use stream route (not ts-stream) for pre-existing TS
       expect(setUri.body, contains('/stream/'));

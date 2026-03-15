@@ -576,8 +576,10 @@ void main() {
         address: InternetAddress('192.168.1.100'),
         port: 49152,
         metadata: {
-          'avTransportControlUrl': 'http://192.168.1.100:49152/AVTransport/control',
-          'renderingControlUrl': 'http://192.168.1.100:49152/RenderingControl/control',
+          'avTransportControlUrl':
+              'http://192.168.1.100:49152/AVTransport/control',
+          'renderingControlUrl':
+              'http://192.168.1.100:49152/RenderingControl/control',
           'manufacturer': 'Samsung',
           'modelName': 'UE55',
         },
@@ -585,8 +587,10 @@ void main() {
 
       final session = DlnaSession.fromDevice(device);
       expect(session.device.name, 'My TV');
-      expect(session.description.avTransportControlUrl, 'http://192.168.1.100:49152/AVTransport/control');
-      expect(session.description.renderingControlUrl, 'http://192.168.1.100:49152/RenderingControl/control');
+      expect(session.description.avTransportControlUrl,
+          'http://192.168.1.100:49152/AVTransport/control');
+      expect(session.description.renderingControlUrl,
+          'http://192.168.1.100:49152/RenderingControl/control');
       expect(session.description.manufacturer, 'Samsung');
     });
 
@@ -598,7 +602,8 @@ void main() {
         address: InternetAddress('192.168.1.100'),
         port: 49152,
         metadata: {
-          'renderingControlUrl': 'http://192.168.1.100:49152/RenderingControl/control',
+          'renderingControlUrl':
+              'http://192.168.1.100:49152/RenderingControl/control',
         },
       );
 
@@ -741,7 +746,8 @@ void main() {
       await mockServer.stop();
     });
 
-    test('returns false when Sink does not contain the queried MIME type', () async {
+    test('returns false when Sink does not contain the queried MIME type',
+        () async {
       final mockServer = MockDlnaServer();
       await mockServer.start();
       mockServer.supportedProtocols = [

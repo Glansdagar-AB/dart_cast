@@ -75,7 +75,8 @@ class AirPlaySession extends CastSession {
 
       if (media.subtitles.isNotEmpty && media.type == CastMediaType.hls) {
         // Inject subtitles into HLS playlist via wrapper m3u8
-        playUrl = _buildSubtitleWrapper(proxyUrl, media.subtitles, media.httpHeaders);
+        playUrl =
+            _buildSubtitleWrapper(proxyUrl, media.subtitles, media.httpHeaders);
       } else {
         playUrl = proxyUrl;
       }

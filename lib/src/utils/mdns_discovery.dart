@@ -130,28 +130,33 @@ class MdnsDiscovery {
       const nestedTimeout = Duration(seconds: 3);
 
       // Query for PTR records (service instances).
-      await for (final PtrResourceRecord ptr in client.lookup<PtrResourceRecord>(
+      await for (final PtrResourceRecord ptr
+          in client.lookup<PtrResourceRecord>(
         ResourceRecordQuery.serverPointer(serviceType),
       )) {
         try {
           // For each PTR result, look up SRV record (host + port).
-          await for (final SrvResourceRecord srv
-              in client.lookup<SrvResourceRecord>(
-            ResourceRecordQuery.service(ptr.domainName),
-          ).timeout(nestedTimeout, onTimeout: (sink) => sink.close())) {
+          await for (final SrvResourceRecord srv in client
+              .lookup<SrvResourceRecord>(
+                ResourceRecordQuery.service(ptr.domainName),
+              )
+              .timeout(nestedTimeout, onTimeout: (sink) => sink.close())) {
             try {
               // Look up A record (IPv4 address).
-              await for (final IPAddressResourceRecord ip
-                  in client.lookup<IPAddressResourceRecord>(
-                ResourceRecordQuery.addressIPv4(srv.target),
-              ).timeout(nestedTimeout, onTimeout: (sink) => sink.close())) {
+              await for (final IPAddressResourceRecord ip in client
+                  .lookup<IPAddressResourceRecord>(
+                    ResourceRecordQuery.addressIPv4(srv.target),
+                  )
+                  .timeout(nestedTimeout, onTimeout: (sink) => sink.close())) {
                 // Look up TXT records (metadata key=value pairs).
                 final txtRecords = <String, String>{};
                 try {
-                  await for (final TxtResourceRecord txt
-                      in client.lookup<TxtResourceRecord>(
-                    ResourceRecordQuery.text(ptr.domainName),
-                  ).timeout(nestedTimeout, onTimeout: (sink) => sink.close())) {
+                  await for (final TxtResourceRecord txt in client
+                      .lookup<TxtResourceRecord>(
+                        ResourceRecordQuery.text(ptr.domainName),
+                      )
+                      .timeout(nestedTimeout,
+                          onTimeout: (sink) => sink.close())) {
                     // The multicast_dns package joins TXT strings with writeln(),
                     // producing newline-separated key=value pairs.
                     for (final line in txt.text.split('\n')) {

@@ -23,12 +23,9 @@ void main() {
       );
 
       expect(urls, hasLength(3));
-      expect(urls[0],
-          'https://cdn.example.com/streams/720p/segment000.ts');
-      expect(urls[1],
-          'https://cdn.example.com/streams/720p/segment001.ts');
-      expect(urls[2],
-          'https://cdn.example.com/streams/720p/segment002.ts');
+      expect(urls[0], 'https://cdn.example.com/streams/720p/segment000.ts');
+      expect(urls[1], 'https://cdn.example.com/streams/720p/segment001.ts');
+      expect(urls[2], 'https://cdn.example.com/streams/720p/segment002.ts');
     });
 
     test('resolves absolute segment URLs', () {
@@ -180,8 +177,7 @@ void main() {
       proxy = MediaProxy();
 
       // Create upstream server to simulate HLS content
-      upstreamServer =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      upstreamServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       upstreamBaseUrl = 'http://127.0.0.1:${upstreamServer.port}';
 
       upstreamServer.listen((request) async {
@@ -211,14 +207,12 @@ void main() {
           await request.response.close();
         } else if (path == '/seg0.ts') {
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('video', 'mp2t');
+          request.response.headers.contentType = ContentType('video', 'mp2t');
           request.response.add([0x47, 0x00, 0x01, 0x02]); // fake TS data
           await request.response.close();
         } else if (path == '/seg1.ts') {
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('video', 'mp2t');
+          request.response.headers.contentType = ContentType('video', 'mp2t');
           request.response.add([0x47, 0x03, 0x04, 0x05]); // fake TS data
           await request.response.close();
         } else if (path == '/simple.m3u8') {
@@ -329,8 +323,7 @@ void main() {
     test('forwards custom headers to upstream', () async {
       // Replace upstream with a header-checking server
       await upstreamServer.close(force: true);
-      upstreamServer =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      upstreamServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       upstreamBaseUrl = 'http://127.0.0.1:${upstreamServer.port}';
 
       upstreamServer.listen((request) async {

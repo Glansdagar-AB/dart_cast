@@ -14,8 +14,7 @@ void main() {
       proxy = MediaProxy();
 
       // Create an upstream server to simulate remote content
-      upstreamServer =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      upstreamServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       upstreamBaseUrl = 'http://127.0.0.1:${upstreamServer.port}';
       upstreamServer.listen((request) async {
         final path = request.uri.path;

@@ -200,7 +200,8 @@ class ChromecastSession extends CastSession {
         _mediaStatusSubscription?.cancel();
         _mediaStatusSubscription = null;
         stateMachine.transitionTo(SessionState.idle);
-        throw TimeoutException('Chromecast loadMedia timed out after 15 seconds');
+        throw TimeoutException(
+            'Chromecast loadMedia timed out after 15 seconds');
       },
     );
   }

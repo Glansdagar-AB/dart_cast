@@ -108,9 +108,9 @@ class DiscoveryManager {
   /// Filter out devices that are not useful cast targets.
   bool _shouldFilter(CastDevice device) {
     // Filter out self (same IP as this device)
-    if (_localAddress != null &&
-        device.address.address == _localAddress) {
-      CastLogger.debug('Filtering self-device: ${device.name} (${device.address.address})');
+    if (_localAddress != null && device.address.address == _localAddress) {
+      CastLogger.debug(
+          'Filtering self-device: ${device.name} (${device.address.address})');
       return true;
     }
 
@@ -120,7 +120,8 @@ class DiscoveryManager {
       const computerModels = ['macbook', 'imac', 'macpro', 'macmini', 'mac'];
       for (final prefix in computerModels) {
         if (model.contains(prefix)) {
-          CastLogger.debug('Filtering computer AirPlay receiver: ${device.name} ($model)');
+          CastLogger.debug(
+              'Filtering computer AirPlay receiver: ${device.name} ($model)');
           return true;
         }
       }

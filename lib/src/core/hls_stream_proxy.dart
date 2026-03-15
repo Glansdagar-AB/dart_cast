@@ -44,8 +44,7 @@ class HlsStreamHandler {
           return;
         }
         mediaPlaylistUrl = variants.first.url;
-        mediaPlaylistContent =
-            await _fetchString(mediaPlaylistUrl, headers);
+        mediaPlaylistContent = await _fetchString(mediaPlaylistUrl, headers);
       } else {
         mediaPlaylistUrl = m3u8Url;
         mediaPlaylistContent = playlistContent;

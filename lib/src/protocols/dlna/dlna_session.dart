@@ -49,7 +49,8 @@ class DlnaSession extends CastSession {
   /// Throws [ArgumentError] if the device metadata is missing required
   /// DLNA control URLs (e.g., if the device was not discovered by
   /// [DlnaDiscoveryProvider]).
-  factory DlnaSession.fromDevice(CastDevice device, {DlnaHttpClient? httpClient}) {
+  factory DlnaSession.fromDevice(CastDevice device,
+      {DlnaHttpClient? httpClient}) {
     final avTransportUrl = device.metadata['avTransportControlUrl'];
     final renderingControlUrl = device.metadata['renderingControlUrl'];
 
@@ -96,7 +97,8 @@ class DlnaSession extends CastSession {
 
   @override
   Future<void> loadMedia(CastMedia media) async {
-    CastLogger.info('DlnaSession.loadMedia called, current state: ${stateMachine.state}');
+    CastLogger.info(
+        'DlnaSession.loadMedia called, current state: ${stateMachine.state}');
     stateMachine.transitionTo(SessionState.loading);
     _currentMedia = media;
 

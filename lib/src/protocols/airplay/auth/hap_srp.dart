@@ -55,14 +55,23 @@ class HapSrp {
   /// Initializes the SRP client state.
   ///
   /// Returns the client's SRP public key 'A'.
-  Future<Uint8List> step1() async {
-    // Generate random private key 'a' (at least 256 bits)
-    final random = Random.secure();
-    final aBytes = Uint8List(32);
-    for (var i = 0; i < 32; i++) {
-      aBytes[i] = random.nextInt(256);
+  ///
+  /// If [privateKeyOverride] is provided, it is used as the client private key
+  /// instead of generating a random one. This is only for testing.
+  Future<Uint8List> step1({
+    Uint8List? privateKeyOverride,
+  }) async {
+    if (privateKeyOverride != null) {
+      _privateKey = _bytesToBigInt(privateKeyOverride);
+    } else {
+      // Generate random private key 'a' (at least 256 bits)
+      final random = Random.secure();
+      final aBytes = Uint8List(32);
+      for (var i = 0; i < 32; i++) {
+        aBytes[i] = random.nextInt(256);
+      }
+      _privateKey = _bytesToBigInt(aBytes);
     }
-    _privateKey = _bytesToBigInt(aBytes);
 
     // A = g^a mod N
     _publicKey = _SrpParams.g.modPow(_privateKey!, _SrpParams.N);
@@ -126,23 +135,31 @@ class HapSrp {
     _sessionKey = diff.modPow(exp, N);
 
     // K = H(S) — the shared secret
-    _sharedSecret = await _hash(_bigIntToBytes(_sessionKey!, 384));
+    // srptools uses the minimal (unpadded) byte representation of S.
+    _sharedSecret = await _hash(_bigIntToBytesUnpadded(_sessionKey!));
 
     // M1 = H(H(N) XOR H(g) | H(identity) | salt | A | B | K)
-    final hN = await _hash(_bigIntToBytes(N, 384));
-    final hg = await _hash(_bigIntToBytes(g, 384));
-    final hNxorHg = Uint8List(hN.length);
-    for (var i = 0; i < hN.length; i++) {
-      hNxorHg[i] = hN[i] ^ hg[i];
-    }
-    final hIdentity = await _hash(utf8.encode('Pair-Setup'));
+    // srptools hashes N and g using their minimal byte representations:
+    //   - N is 384 bytes naturally (3072-bit prime)
+    //   - g=5 is just 1 byte (0x05), NOT padded to 384 bytes
+    // A and B are also passed as unpadded integers in srptools.
+    final hN = await _hash(_bigIntToBytesUnpadded(N));
+    final hg = await _hash(_bigIntToBytesUnpadded(g));
+    // XOR the two hash values as integers, then convert to unpadded bytes
+    // (matches srptools' h(N) ^ h(g) which is integer XOR)
+    final hNint = _bytesToBigInt(hN);
+    final hgInt = _bytesToBigInt(hg);
+    final hNxorHg = _bigIntToBytesUnpadded(hNint ^ hgInt);
+    final hIdentity = _bigIntToBytesUnpadded(
+      _bytesToBigInt(await _hash(utf8.encode('Pair-Setup'))),
+    );
 
     final proof = await _hash([
       ...hNxorHg,
       ...hIdentity,
       ...salt,
-      ..._bigIntToBytes(A, 384),
-      ..._bigIntToBytes(B, 384),
+      ..._bigIntToBytesUnpadded(A),
+      ..._bigIntToBytesUnpadded(B),
       ..._sharedSecret!,
     ]);
 
@@ -523,6 +540,28 @@ class HapSrp {
     final bytes = Uint8List(length);
     var v = value;
     for (var i = length - 1; i >= 0; i--) {
+      bytes[i] = (v & BigInt.from(0xFF)).toInt();
+      v >>= 8;
+    }
+    return bytes;
+  }
+
+  /// Converts BigInt to bytes (big-endian unsigned, minimal length — no padding).
+  ///
+  /// This matches srptools' `int_to_bytes()` which uses the minimal byte
+  /// representation (no leading zero padding).
+  static Uint8List _bigIntToBytesUnpadded(BigInt value) {
+    if (value == BigInt.zero) return Uint8List.fromList([0]);
+    // Calculate the number of bytes needed
+    var temp = value;
+    var byteCount = 0;
+    while (temp > BigInt.zero) {
+      temp >>= 8;
+      byteCount++;
+    }
+    final bytes = Uint8List(byteCount);
+    var v = value;
+    for (var i = byteCount - 1; i >= 0; i--) {
       bytes[i] = (v & BigInt.from(0xFF)).toInt();
       v >>= 8;
     }

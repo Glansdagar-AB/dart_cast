@@ -14,7 +14,7 @@ A pure Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
 - **Cross-platform** -- Android, iOS, macOS, Windows, Linux
 - **Built-in HTTP proxy** -- transparent custom header injection for cast devices
 - **HLS rewriting** -- m3u8 playlist URLs rewritten through proxy automatically
-- **Subtitle support** -- WebVTT and SRT across all protocols
+- **Subtitle support** -- WebVTT and SRT for Chromecast and DLNA (AirPlay subtitles not yet supported)
 - **Local file serving** -- cast downloaded content via the proxy server
 - **Pluggable discovery** -- swap in native mDNS (e.g., bonsoir) on Apple platforms
 - **Thoroughly tested** -- 366+ tests with mock servers for each protocol

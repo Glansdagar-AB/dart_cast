@@ -75,12 +75,9 @@ class CastService {
     }
 
     final session = _createSession(device);
-    CastLogger.info('CastService: calling session.connect()...');
     await session.connect();
-    CastLogger.info('CastService: session.connect() done, state: ${session.stateMachine.state}');
     _activeSession = session;
     _lastDevice = device;
-    CastLogger.info('CastService: _activeSession set, returning session');
     return session;
   }
 

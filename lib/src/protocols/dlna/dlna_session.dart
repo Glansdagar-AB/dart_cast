@@ -88,12 +88,10 @@ class DlnaSession extends CastSession {
   /// Connects to the DLNA device by verifying it is reachable.
   @override
   Future<void> connect() async {
-    CastLogger.info('DlnaSession.connect() called, current state: ${stateMachine.state}');
     stateMachine.transitionTo(SessionState.connecting);
     // For DLNA, "connect" simply means we verified the device is reachable.
     // There is no persistent connection — each action is an HTTP POST.
     stateMachine.transitionTo(SessionState.connected);
-    CastLogger.info('DlnaSession.connect() done, state: ${stateMachine.state}');
   }
 
   @override

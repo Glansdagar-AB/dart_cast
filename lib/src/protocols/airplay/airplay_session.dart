@@ -27,6 +27,7 @@ class AirPlaySession extends CastSession {
   ///
   /// Creates an [AirPlayClient], calls `getServerInfo()` to verify the device
   /// is reachable, and transitions to [SessionState.connected].
+  @override
   Future<void> connect() async {
     stateMachine.transitionTo(SessionState.connecting);
 

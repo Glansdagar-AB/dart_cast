@@ -74,6 +74,7 @@ class CastService {
     }
 
     final session = _createSession(device);
+    await session.connect();
     _activeSession = session;
     _lastDevice = device;
     return session;
@@ -102,13 +103,16 @@ class CastService {
 
   /// Releases all resources: stops discovery, disconnects active session,
   /// and disposes all discovery providers.
+  ///
+  /// The disconnect is fire-and-forget by design since dispose() is
+  /// synchronous. For a graceful shutdown, call [disconnect] on the
+  /// active session before disposing.
   void dispose() {
     _discoveryManager.dispose();
 
     if (_activeSession != null) {
-      try {
-        _activeSession!.disconnect();
-      } catch (_) {}
+      // Fire-and-forget disconnect — synchronous dispose cannot await
+      _activeSession!.disconnect().catchError((_) {});
       _activeSession = null;
     }
   }

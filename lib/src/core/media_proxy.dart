@@ -35,17 +35,20 @@ class MediaProxy {
   String? get baseUrl => _baseUrl;
 
   /// Starts the proxy server bound to the local WiFi IP.
-  Future<void> start() async {
+  ///
+  /// An optional [port] can be provided; otherwise binds to port 0 to let the
+  /// OS assign an available port, eliminating TOCTOU races.
+  Future<void> start({int? port}) async {
     if (_server != null) return;
 
     _httpClient = HttpClient();
 
     final ip = await NetworkUtils.getLocalIpAddress();
     final bindAddress = ip ?? '0.0.0.0';
-    final port = await NetworkUtils.findAvailablePort();
 
-    _server = await HttpServer.bind(bindAddress, port);
-    _baseUrl = 'http://${ip ?? bindAddress}:$port';
+    _server = await HttpServer.bind(bindAddress, port ?? 0);
+    final actualPort = _server!.port;
+    _baseUrl = 'http://${ip ?? bindAddress}:$actualPort';
 
     _server!.listen(_handleRequest);
   }
@@ -85,9 +88,17 @@ class MediaProxy {
     return '$_baseUrl/file/$token';
   }
 
-  /// Removes all previously registered routes for quality switching.
-  void cleanupPreviousMedia() {
-    _routes.clear();
+  /// Removes all previously registered routes, optionally keeping [excludeToken].
+  void cleanupPreviousMedia({String? excludeToken}) {
+    if (excludeToken != null) {
+      final kept = _routes[excludeToken];
+      _routes.clear();
+      if (kept != null) {
+        _routes[excludeToken] = kept;
+      }
+    } else {
+      _routes.clear();
+    }
   }
 
   String _generateToken() {
@@ -246,8 +257,21 @@ class MediaProxy {
     if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
       final rangeSpec = rangeHeader.substring('bytes='.length);
       final parts = rangeSpec.split('-');
-      final start = int.parse(parts[0]);
-      final end = parts[1].isNotEmpty ? int.parse(parts[1]) : fileLength - 1;
+
+      int start;
+      int end;
+
+      if (parts[0].isEmpty) {
+        // Suffix range: bytes=-500 means last 500 bytes
+        final suffixLength = int.parse(parts[1]);
+        start = (fileLength - suffixLength).clamp(0, fileLength - 1);
+        end = fileLength - 1;
+      } else {
+        start = int.parse(parts[0]);
+        end = (parts[1].isNotEmpty ? int.parse(parts[1]) : fileLength - 1)
+            .clamp(0, fileLength - 1);
+      }
+
       final length = end - start + 1;
 
       request.response.statusCode = HttpStatus.partialContent;

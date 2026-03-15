@@ -56,8 +56,10 @@ class SessionStateMachine {
     return _validTransitions[_state]?.contains(target) ?? false;
   }
 
-  /// Transitions to [target] state. Throws [StateError] if invalid.
+  /// Transitions to [target] state. No-op if already in [target].
+  /// Throws [StateError] if invalid.
   void transitionTo(SessionState target) {
+    if (_state == target) return; // no-op for same state
     if (!canTransitionTo(target)) {
       throw StateError(
         'Invalid transition from $_state to $target',
@@ -140,6 +142,18 @@ abstract class CastSession {
   /// Updates the current volume level.
   void updateVolume(double volume) {
     _volumeController.add(volume);
+  }
+
+  // -- Lifecycle --
+
+  /// Connects to the cast device.
+  ///
+  /// Default implementation transitions directly to connected.
+  /// Protocol-specific subclasses (Chromecast, AirPlay) override this
+  /// to perform their connection handshake.
+  Future<void> connect() async {
+    stateMachine.transitionTo(SessionState.connecting);
+    stateMachine.transitionTo(SessionState.connected);
   }
 
   // -- Abstract methods --

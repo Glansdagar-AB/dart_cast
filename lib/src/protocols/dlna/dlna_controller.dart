@@ -1,5 +1,8 @@
 import 'package:http/http.dart' as http;
 
+import '../../core/cast_device.dart';
+import '../../core/cast_exceptions.dart';
+
 /// Service type URNs for DLNA SOAP actions.
 class DlnaServiceType {
   static const avTransport = 'urn:schemas-upnp-org:service:AVTransport:1';
@@ -240,6 +243,13 @@ class DlnaHttpClient {
       },
       body: body,
     );
+
+    if (response.statusCode >= 400) {
+      throw ProtocolException(
+        'DLNA SOAP error: HTTP ${response.statusCode}',
+        CastProtocol.dlna,
+      );
+    }
 
     return response.body;
   }

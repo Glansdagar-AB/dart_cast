@@ -29,6 +29,7 @@ class DlnaSession extends CastSession {
         super(device);
 
   /// Connects to the DLNA device by verifying it is reachable.
+  @override
   Future<void> connect() async {
     stateMachine.transitionTo(SessionState.connecting);
     // For DLNA, "connect" simply means we verified the device is reachable.

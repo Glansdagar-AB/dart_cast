@@ -44,6 +44,7 @@ class ChromecastSession extends CastSession {
   String? _transportId;
   String? _sessionId; // Used for STOP app via receiver namespace.
   int? _mediaSessionId;
+  StreamSubscription<dynamic>? _mediaStatusSubscription;
 
   /// The current receiver session ID, if connected.
   String? get sessionId => _sessionId;
@@ -81,6 +82,7 @@ class ChromecastSession extends CastSession {
   /// Sequence: TLS connect -> CONNECT to receiver-0 -> start heartbeat ->
   /// LAUNCH CC1AD845 -> wait for RECEIVER_STATUS -> extract transportId ->
   /// CONNECT to transportId.
+  @override
   Future<void> connect() async {
     stateMachine.transitionTo(SessionState.connecting);
 
@@ -113,7 +115,13 @@ class ChromecastSession extends CastSession {
     );
 
     // 6. Wait for RECEIVER_STATUS with transportId
-    await completer.future;
+    await completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        stateMachine.transitionTo(SessionState.disconnected);
+        throw TimeoutException('Chromecast connect timed out after 15 seconds');
+      },
+    );
 
     // 7. CONNECT to app transportId
     _channel.sendMessage(
@@ -138,13 +146,16 @@ class ChromecastSession extends CastSession {
 
     stateMachine.transitionTo(SessionState.loading);
 
-    // Start proxy and register media
+    // Start proxy and register new media BEFORE cleanup to avoid race condition
+    // where the cast device requests the old URL during the gap.
     await _proxy.start();
-    _proxy.cleanupPreviousMedia();
     final proxyUrl = _proxy.registerMedia(
       media.url,
       headers: media.httpHeaders,
     );
+    // Extract token from the proxy URL to exclude it from cleanup
+    final newToken = Uri.parse(proxyUrl).pathSegments.last;
+    _proxy.cleanupPreviousMedia(excludeToken: newToken);
 
     // Determine content type
     final contentType = _contentTypeForMedia(media.type);
@@ -192,27 +203,32 @@ class ChromecastSession extends CastSession {
 
   @override
   Future<void> play() async {
+    _requireMediaSession();
     _sendMediaCommand(_mediaChannel.buildPlay(_mediaSessionId!));
   }
 
   @override
   Future<void> pause() async {
+    _requireMediaSession();
     _sendMediaCommand(_mediaChannel.buildPause(_mediaSessionId!));
   }
 
   @override
   Future<void> stop() async {
+    _requireMediaSession();
     _sendMediaCommand(_mediaChannel.buildStop(_mediaSessionId!));
   }
 
   @override
   Future<void> seek(Duration position) async {
+    _requireMediaSession();
     final seconds = position.inMilliseconds / 1000.0;
     _sendMediaCommand(_mediaChannel.buildSeek(_mediaSessionId!, seconds));
   }
 
   @override
   Future<void> setVolume(double volume) async {
+    _requireMediaSession();
     // Device-level volume uses receiver namespace to receiver-0
     _channel.sendMessage(
       namespace: CastReceiverChannel.receiverNamespace,
@@ -224,6 +240,7 @@ class ChromecastSession extends CastSession {
 
   @override
   Future<void> setSubtitle(CastSubtitle? subtitle) async {
+    _requireMediaSession();
     if (subtitle == null) {
       _sendMediaCommand(
           _mediaChannel.buildEditTracksInfo(_mediaSessionId!, []));
@@ -241,6 +258,8 @@ class ChromecastSession extends CastSession {
   @override
   Future<void> disconnect() async {
     _stopHeartbeat();
+    _mediaStatusSubscription?.cancel();
+    _mediaStatusSubscription = null;
 
     // CLOSE to app transportId
     if (_transportId != null) {
@@ -274,6 +293,12 @@ class ChromecastSession extends CastSession {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  void _requireMediaSession() {
+    if (_mediaSessionId == null) {
+      throw StateError('No active media session. Call loadMedia() first.');
+    }
+  }
 
   void _sendMediaCommand(String payload) {
     _channel.sendMessage(
@@ -365,9 +390,11 @@ class ChromecastSession extends CastSession {
   }
 
   void _waitForMediaStatus(Completer<void> completer) {
+    // Cancel any previous media status subscription to prevent leaks
+    _mediaStatusSubscription?.cancel();
+
     // Listen for the next MEDIA_STATUS that sets _mediaSessionId
-    late StreamSubscription<dynamic> sub;
-    sub = _channel.messageStream.listen((msg) {
+    _mediaStatusSubscription = _channel.messageStream.listen((msg) {
       final namespace = _getNamespace(msg);
       final payload = _getPayload(msg);
       if (namespace == CastMediaChannel.mediaNamespace &&
@@ -377,7 +404,8 @@ class ChromecastSession extends CastSession {
         if (!completer.isCompleted) {
           completer.complete();
         }
-        sub.cancel();
+        _mediaStatusSubscription?.cancel();
+        _mediaStatusSubscription = null;
       }
     });
   }
@@ -443,7 +471,7 @@ abstract class _ProxyAdapter {
   Future<void> start();
   Future<void> stop();
   String registerMedia(String url, {Map<String, String> headers});
-  void cleanupPreviousMedia();
+  void cleanupPreviousMedia({String? excludeToken});
 }
 
 // ---------------------------------------------------------------------------
@@ -493,7 +521,8 @@ class _RealProxyAdapter implements _ProxyAdapter {
       _proxy.registerMedia(url, headers: headers);
 
   @override
-  void cleanupPreviousMedia() => _proxy.cleanupPreviousMedia();
+  void cleanupPreviousMedia({String? excludeToken}) =>
+      _proxy.cleanupPreviousMedia(excludeToken: excludeToken);
 }
 
 // ---------------------------------------------------------------------------
@@ -548,5 +577,6 @@ class _MockProxyAdapter implements _ProxyAdapter {
       (_mock as dynamic).registerMedia(url, headers: headers) as String;
 
   @override
-  void cleanupPreviousMedia() => (_mock as dynamic).cleanupPreviousMedia();
+  void cleanupPreviousMedia({String? excludeToken}) =>
+      (_mock as dynamic).cleanupPreviousMedia();
 }

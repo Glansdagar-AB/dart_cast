@@ -30,7 +30,8 @@ jobs:
         with:
           channel: stable
       - run: cd example && flutter pub get && flutter build macos --release
-      - run: |
+      - name: Zip macOS app
+        run: |
           cd example/build/macos/Build/Products/Release
           zip -r dart_cast_example_macos.zip dart_cast_example.app
       - uses: actions/upload-artifact@v4
@@ -46,10 +47,12 @@ jobs:
         with:
           channel: stable
       - run: cd example && flutter pub get && flutter build windows --release
+      - name: Zip Windows build
+        run: Compress-Archive -Path "example\build\windows\x64\runner\Release\*" -DestinationPath "dart_cast_example_windows.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: example-windows
-          path: example/build/windows/x64/runner/Release/
+          path: dart_cast_example_windows.zip
 
   create-release:
     needs: [build-example-android, build-example-macos, build-example-windows]
@@ -66,4 +69,4 @@ jobs:
           files: |
             artifacts/example-android/app-release.apk
             artifacts/example-macos/dart_cast_example_macos.zip
-            artifacts/example-windows/**/*
+            artifacts/example-windows/dart_cast_example_windows.zip

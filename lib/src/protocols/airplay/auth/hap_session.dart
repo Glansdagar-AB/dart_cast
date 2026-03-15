@@ -8,6 +8,7 @@ import 'package:cryptography/cryptography.dart';
 
 import '../../../utils/logger.dart';
 import '../plist_codec.dart';
+import 'binary_plist.dart';
 
 /// Derives the HAP session encryption keys from an X25519 shared secret.
 ///
@@ -406,7 +407,7 @@ class HapSession {
     CastLogger.info('HAP session: RTSP SETUP');
     final sessionUuid = _generateUuid().toUpperCase();
 
-    final setupBody = _buildXmlPlist({
+    final setupBodyBytes = BinaryPlistEncoder.encode({
       'deviceID': 'AA:BB:CC:DD:EE:FF',
       'sessionUUID': sessionUuid,
       'timingPort': 0,
@@ -426,7 +427,7 @@ class HapSession {
       'SETUP',
       '*',
       headers: {'Content-Type': 'application/x-apple-binary-plist'},
-      body: utf8.encode(setupBody),
+      body: setupBodyBytes,
     );
     CastLogger.info(
         'HAP session: RTSP SETUP response: ${setupResp.statusCode}');
@@ -435,33 +436,9 @@ class HapSession {
     CastLogger.info('HAP session: RTSP RECORD');
     final recordResp = await sendRtspRequest('RECORD', '*');
     CastLogger.info(
-        'HAP session: RTSP RECORD response: ${recordResp.statusCode}');
+        'HAP session: RTSP RECORD response: ${recordResp.statusCode} body: ${recordResp.bodyText}');
 
     _rtspSessionSetUp = true;
-  }
-
-  /// Builds an XML plist string from a map of key-value pairs.
-  static String _buildXmlPlist(Map<String, dynamic> dict) {
-    final buffer = StringBuffer();
-    buffer.write('<?xml version="1.0" encoding="UTF-8"?>\n');
-    buffer.write('<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n');
-    buffer.write('<plist version="1.0">\n<dict>\n');
-    for (final entry in dict.entries) {
-      buffer.write('  <key>${entry.key}</key>\n');
-      final value = entry.value;
-      if (value is String) {
-        buffer.write('  <string>$value</string>\n');
-      } else if (value is int) {
-        buffer.write('  <integer>$value</integer>\n');
-      } else if (value is double) {
-        buffer.write('  <real>$value</real>\n');
-      } else if (value is bool) {
-        buffer.write('  <${value ? 'true' : 'false'}/>\n');
-      }
-    }
-    buffer.write('</dict>\n</plist>\n');
-    return buffer.toString();
   }
 
   /// Reads encrypted frames from the socket until a complete HTTP response
@@ -671,9 +648,9 @@ class HapSession {
     // Step 1: Set up the RTSP session if not already done
     await setupRtspSession();
 
-    // Step 2: POST /play with AirPlay 2 plist body
+    // Step 2: POST /play with AirPlay 2 binary plist body
     final playUuid = _generateUuid();
-    final playBody = _buildXmlPlist({
+    final playBodyBytes = BinaryPlistEncoder.encode({
       'Content-Location': url,
       'Start-Position-Seconds': startPosition,
       'uuid': playUuid,
@@ -691,7 +668,7 @@ class HapSession {
           'Content-Type': 'application/x-apple-binary-plist',
           'X-Apple-Session-ID': _sessionId,
         },
-        body: utf8.encode(playBody));
+        body: playBodyBytes);
     CastLogger.info(
         'HAP session: /play response: ${response.statusCode} body: ${response.bodyText}');
 

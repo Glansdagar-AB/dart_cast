@@ -31,12 +31,17 @@ class BinaryPlistEncoder {
   /// Keys are identity-based for non-primitive types.
   final Map<Object, int> _objectRefs = {};
 
+  /// Tracks the reference index for `null` separately, since
+  /// `Map<Object, int>` cannot store null keys.
+  int? _nullObjectIndex;
+
   /// Assigns a reference index to [obj], recursively flattening dicts/lists.
   ///
   /// Returns the reference index for [obj].
   int _flatten(Object? obj) {
     // Booleans, null — use sentinel objects for dedup
     if (obj == null) {
+      if (_nullObjectIndex != null) return _nullObjectIndex!;
       return _addObject(null);
     }
     if (obj is bool) {
@@ -78,7 +83,9 @@ class BinaryPlistEncoder {
   int _addObject(Object? obj) {
     final index = _objects.length;
     _objects.add(obj);
-    if (obj != null) {
+    if (obj == null) {
+      _nullObjectIndex = index;
+    } else {
       _objectRefs[obj] = index;
     }
     return index;
@@ -241,7 +248,7 @@ class BinaryPlistEncoder {
       builder.add(_encodeUnsignedInt(keyRef, objectRefSize));
     }
     for (final value in dict.values) {
-      final valueRef = _objectRefs[value]!;
+      final valueRef = value == null ? _nullObjectIndex! : _objectRefs[value]!;
       builder.add(_encodeUnsignedInt(valueRef, objectRefSize));
     }
   }
@@ -253,7 +260,7 @@ class BinaryPlistEncoder {
     _writeSizeHeader(0xA0, list.length, builder);
 
     for (final item in list) {
-      final itemRef = _objectRefs[item]!;
+      final itemRef = item == null ? _nullObjectIndex! : _objectRefs[item]!;
       builder.add(_encodeUnsignedInt(itemRef, objectRefSize));
     }
   }

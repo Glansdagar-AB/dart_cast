@@ -186,6 +186,22 @@ void main() {
       expect(result.contains(0x62), isTrue);
     });
 
+    test('handles null values in dict', () {
+      final result = BinaryPlistEncoder.encode({'key': null});
+      // Verify magic header
+      expect(result[0], 0x62); // 'b'
+      expect(result[1], 0x70); // 'p'
+      expect(ascii.decode(result.sublist(0, 8)), equals('bplist00'));
+      // Verify it contains the key string
+      final asString = String.fromCharCodes(result);
+      expect(asString, contains('key'));
+      // Verify null marker (0x00) is present in the object table
+      // dict marker + key 'key' + null (0x00) = 3 objects
+      final trailer = ByteData.sublistView(result, result.length - 32);
+      final numObjectsLo = trailer.getUint32(12, Endian.big);
+      expect(numObjectsLo, equals(3));
+    });
+
     test('offset table has correct number of entries', () {
       final dict = {'a': 'b', 'c': 1};
       final result = BinaryPlistEncoder.encode(dict);

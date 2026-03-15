@@ -410,8 +410,7 @@ class HapSession {
     final setupBodyBytes = BinaryPlistEncoder.encode({
       'deviceID': 'AA:BB:CC:DD:EE:FF',
       'sessionUUID': sessionUuid,
-      'timingPort': 0,
-      'timingProtocol': 'NTP',
+      'timingProtocol': 'None',
       'isMultiSelectAirPlay': true,
       'groupContainsGroupLeader': false,
       'macAddress': 'AA:BB:CC:DD:EE:FF',
@@ -630,12 +629,6 @@ class HapSession {
 
   // -- AirPlay media command convenience methods --
 
-  /// Common headers for AirPlay requests.
-  Map<String, String> get _defaultHeaders => {
-        'User-Agent': 'MediaControl/1.0',
-        'X-Apple-Session-ID': _sessionId,
-      };
-
   /// Starts playback of a video URL on the AirPlay device.
   ///
   /// AirPlay 2 requires an RTSP session (SETUP + RECORD) before accepting
@@ -660,13 +653,9 @@ class HapSession {
       'rate': 1.0,
     });
 
-    _cseq++;
-    final response = await sendRequest('POST', '/play',
+    final response = await sendRtspRequest('POST', '/play',
         headers: {
-          'CSeq': '$_cseq',
-          'User-Agent': 'AirPlay/550.10',
           'Content-Type': 'application/x-apple-binary-plist',
-          'X-Apple-Session-ID': _sessionId,
         },
         body: playBodyBytes);
     CastLogger.info(
@@ -677,36 +666,25 @@ class HapSession {
     }
 
     // Step 3: POST /rate?value=1.0 to start actual playback
-    _cseq++;
-    final rateResponse = await sendRequest('POST', '/rate',
-        queryParameters: {'value': '1.000000'},
-        headers: {
-          'CSeq': '$_cseq',
-          'User-Agent': 'AirPlay/550.10',
-          'X-Apple-Session-ID': _sessionId,
-        });
+    final rateResponse = await sendRtspRequest('POST', '/rate?value=1.000000');
     CastLogger.info(
         'HAP session: /rate response: ${rateResponse.statusCode}');
   }
 
   /// Seeks to an absolute position in seconds.
   Future<void> scrub(double positionSeconds) async {
-    final response = await sendRequest(
+    final response = await sendRtspRequest(
       'POST',
-      '/scrub',
-      headers: _defaultHeaders,
-      queryParameters: {'position': '$positionSeconds'},
+      '/scrub?position=$positionSeconds',
     );
     _checkResponse(response, 'scrub');
   }
 
   /// Sets the playback rate (0 = pause, 1 = play).
   Future<void> rate(num value) async {
-    final response = await sendRequest(
+    final response = await sendRtspRequest(
       'POST',
-      '/rate',
-      headers: _defaultHeaders,
-      queryParameters: {'value': '${value.toDouble()}'},
+      '/rate?value=${value.toDouble()}',
     );
     _checkResponse(response, 'rate');
   }
@@ -716,10 +694,9 @@ class HapSession {
   /// Also resets the RTSP session state so that a new SETUP + RECORD
   /// sequence will be performed on the next [play] call.
   Future<void> stop() async {
-    final response = await sendRequest(
+    final response = await sendRtspRequest(
       'POST',
       '/stop',
-      headers: _defaultHeaders,
     );
     _checkResponse(response, 'stop');
     _sessionId = _generateUuid();
@@ -729,10 +706,9 @@ class HapSession {
 
   /// Gets detailed playback state as a [PlaybackInfo].
   Future<PlaybackInfo> getPlaybackInfo() async {
-    final response = await sendRequest(
+    final response = await sendRtspRequest(
       'GET',
       '/playback-info',
-      headers: _defaultHeaders,
     );
     _checkResponse(response, 'playback-info');
     return PlistCodec.parsePlaybackInfo(response.bodyText);
@@ -740,10 +716,9 @@ class HapSession {
 
   /// Gets device information as a [ServerInfo].
   Future<ServerInfo> getServerInfo() async {
-    final response = await sendRequest(
+    final response = await sendRtspRequest(
       'GET',
       '/server-info',
-      headers: _defaultHeaders,
     );
     _checkResponse(response, 'server-info');
     return PlistCodec.parseServerInfo(response.bodyText);

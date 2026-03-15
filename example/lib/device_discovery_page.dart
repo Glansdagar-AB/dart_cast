@@ -203,6 +203,12 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
       appBar: AppBar(
         title: const Text('dart_cast Demo'),
         actions: [
+          // Log viewer button
+          IconButton(
+            icon: const Icon(Icons.article_outlined),
+            tooltip: 'View logs',
+            onPressed: () => Navigator.of(context).pushNamed('/logs'),
+          ),
           // Cast button in the AppBar — the standard UX pattern.
           IconButton(
             icon: Icon(

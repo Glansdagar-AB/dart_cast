@@ -29,6 +29,9 @@ class DiscoveryManager {
     Set<CastProtocol>? protocols,
     Duration timeout = const Duration(seconds: 10),
   }) {
+    assert(_providers.isNotEmpty,
+        'No discovery providers registered. Pass providers to DiscoveryManager or CastService.');
+
     // Stop any previous discovery
     stopDiscovery();
 

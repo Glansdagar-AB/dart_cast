@@ -269,6 +269,13 @@ class MockMediaProxy {
     return 'http://192.168.1.10:8080/stream/proxy-token';
   }
 
+  String registerSubtitle(String urlOrPath,
+      {Map<String, String> headers = const {}}) {
+    registeredUrl = urlOrPath;
+    registeredHeaders = headers;
+    return 'http://192.168.1.10:8080/stream/proxy-token';
+  }
+
   void cleanupPreviousMedia({String? excludeToken}) {}
 }
 

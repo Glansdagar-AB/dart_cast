@@ -177,17 +177,26 @@ class ChromecastSession extends CastSession {
     // Determine content type
     final contentType = _contentTypeForMedia(media.type);
 
-    // Build subtitle tracks
-    final subtitles = media.subtitles
-        .asMap()
-        .entries
-        .map((e) => CastMediaTrack(
-              trackId: e.key + 1,
-              url: e.value.url,
-              name: e.value.label,
-              language: e.value.language,
-            ))
-        .toList();
+    // Build subtitle tracks — proxy each subtitle URL so the Chromecast can
+    // fetch them with CORS headers (Access-Control-Allow-Origin) and any
+    // custom headers the caller attached to the media.
+    CastLogger.info(
+        'Chromecast: loading ${media.subtitles.length} subtitle track(s)');
+    final subtitles = <CastMediaTrack>[];
+    for (var i = 0; i < media.subtitles.length; i++) {
+      final sub = media.subtitles[i];
+      // Proxy subtitle URL so Chromecast can fetch it with CORS headers.
+      // Uses registerSubtitle to handle both file:// and http:// URLs,
+      // with automatic SRT-to-VTT conversion.
+      final proxySubUrl =
+          _proxy.registerSubtitle(sub.url, headers: media.httpHeaders);
+      subtitles.add(CastMediaTrack(
+        trackId: i + 1,
+        url: proxySubUrl,
+        name: sub.label,
+        language: sub.language,
+      ));
+    }
 
     // Send LOAD
     final loadPayload = _mediaChannel.buildLoad(
@@ -552,6 +561,7 @@ abstract class _ProxyAdapter {
   Future<void> start();
   Future<void> stop();
   String registerMedia(String url, {Map<String, String> headers});
+  String registerSubtitle(String urlOrPath, {Map<String, String> headers});
   void cleanupPreviousMedia({String? excludeToken});
 }
 
@@ -600,6 +610,11 @@ class _RealProxyAdapter implements _ProxyAdapter {
   @override
   String registerMedia(String url, {Map<String, String> headers = const {}}) =>
       _proxy.registerMedia(url, headers: headers);
+
+  @override
+  String registerSubtitle(String urlOrPath,
+          {Map<String, String> headers = const {}}) =>
+      _proxy.registerSubtitle(urlOrPath, headers: headers);
 
   @override
   void cleanupPreviousMedia({String? excludeToken}) =>
@@ -656,6 +671,12 @@ class _MockProxyAdapter implements _ProxyAdapter {
   @override
   String registerMedia(String url, {Map<String, String> headers = const {}}) =>
       (_mock as dynamic).registerMedia(url, headers: headers) as String;
+
+  @override
+  String registerSubtitle(String urlOrPath,
+          {Map<String, String> headers = const {}}) =>
+      (_mock as dynamic).registerSubtitle(urlOrPath, headers: headers)
+          as String;
 
   @override
   void cleanupPreviousMedia({String? excludeToken}) =>

@@ -135,15 +135,15 @@ class DlnaSession extends CastSession {
 
     CastLogger.info('DlnaSession: proxy URL = $proxyUrl');
 
-    // Proxy subtitle URLs too if available
+    // Proxy subtitle URLs too if available (handles file:// and http://)
     String? subtitleProxyUrl;
     if (media.subtitles.isNotEmpty) {
-      subtitleProxyUrl = _proxy.registerMedia(
+      subtitleProxyUrl = _proxy.registerSubtitle(
         media.subtitles.first.url,
         headers: media.httpHeaders,
       );
     } else if (_currentSubtitle != null) {
-      subtitleProxyUrl = _proxy.registerMedia(
+      subtitleProxyUrl = _proxy.registerSubtitle(
         _currentSubtitle!.url,
         headers: media.httpHeaders,
       );
@@ -222,7 +222,7 @@ class DlnaSession extends CastSession {
 
     String? subtitleProxyUrl;
     if (subtitle != null) {
-      subtitleProxyUrl = _proxy.registerMedia(
+      subtitleProxyUrl = _proxy.registerSubtitle(
         subtitle.url,
         headers: media.httpHeaders,
       );

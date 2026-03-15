@@ -387,7 +387,9 @@ void main() {
       );
       final tracks = loadMsg.payload['media']['tracks'] as List;
       expect(tracks, hasLength(1));
-      expect(tracks[0]['trackContentId'], 'http://example.com/en.vtt');
+      // Subtitle URLs are proxied through MediaProxy for CORS support
+      expect(tracks[0]['trackContentId'],
+          'http://192.168.1.10:8080/stream/proxy-token');
       expect(tracks[0]['language'], 'en');
     });
   });

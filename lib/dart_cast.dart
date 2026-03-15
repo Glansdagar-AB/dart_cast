@@ -12,6 +12,7 @@ export 'src/core/discovery_provider.dart';
 export 'src/core/hls_parser.dart';
 export 'src/core/hls_stream_proxy.dart';
 export 'src/core/media_proxy.dart';
+export 'src/core/subtitle_converter.dart';
 
 // Protocols — AirPlay
 export 'src/protocols/airplay/airplay_client.dart';

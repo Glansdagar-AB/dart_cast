@@ -118,6 +118,13 @@ class MockMediaProxy {
     return '$baseUrl/stream/token123';
   }
 
+  String registerSubtitle(String urlOrPath,
+      {Map<String, String> headers = const {}}) {
+    registeredUrl = urlOrPath;
+    registeredHeaders = headers;
+    return '$baseUrl/stream/token123';
+  }
+
   void cleanupPreviousMedia({String? excludeToken}) {}
 }
 

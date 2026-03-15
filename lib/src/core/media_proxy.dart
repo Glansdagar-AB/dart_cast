@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'hls_parser.dart';
 import 'hls_stream_proxy.dart';
+import 'subtitle_converter.dart';
 import '../utils/network_utils.dart';
 
 /// Route type for proxy routing.
@@ -103,6 +104,20 @@ class MediaProxy {
     return '$_baseUrl/file/$token';
   }
 
+  /// Registers a subtitle URL — handles both remote URLs and local file:// paths.
+  ///
+  /// If [urlOrPath] starts with `file://`, the subtitle is served as a local
+  /// file. Otherwise it is proxied as a remote URL.
+  /// Returns a proxy URL that can be given to a cast device.
+  String registerSubtitle(String urlOrPath,
+      {Map<String, String> headers = const {}}) {
+    if (urlOrPath.startsWith('file://')) {
+      final filePath = urlOrPath.replaceFirst('file://', '');
+      return registerFile(filePath);
+    }
+    return registerMedia(urlOrPath, headers: headers);
+  }
+
   /// Registers an HLS stream to be served as continuous MPEG-TS.
   ///
   /// When a client (e.g. a DLNA TV) GETs the returned URL, the proxy fetches
@@ -132,7 +147,8 @@ class MediaProxy {
     Map<String, String> headers = const {},
   }) {
     // First, register the VTT file itself through the proxy
-    final proxiedVttUrl = registerMedia(vttUrl, headers: headers);
+    // Uses registerSubtitle to handle both file:// and http:// URLs
+    final proxiedVttUrl = registerSubtitle(vttUrl, headers: headers);
 
     // Create a simple HLS playlist wrapping the VTT
     final playlistContent = '#EXTM3U\n'
@@ -348,6 +364,30 @@ class MediaProxy {
       request.response.headers.set('Content-Length', contentLength);
     }
 
+    // Auto-convert SRT subtitle responses to VTT
+    if (_isSubtitleResponse(targetUrl, upstreamContentType) &&
+        upstreamResponse.statusCode == HttpStatus.ok) {
+      final body = await upstreamResponse
+          .fold<List<int>>(<int>[], (prev, chunk) => prev..addAll(chunk));
+      final content = utf8.decode(body);
+
+      if (SubtitleConverter.isSrt(content)) {
+        final vttContent = SubtitleConverter.srtToVtt(content);
+        final encoded = utf8.encode(vttContent);
+        request.response.headers.contentType = ContentType('text', 'vtt');
+        request.response.headers
+            .set('Content-Length', encoded.length.toString());
+        request.response.add(encoded);
+        await request.response.close();
+        return;
+      }
+
+      // Not SRT — send as-is
+      request.response.add(body);
+      await request.response.close();
+      return;
+    }
+
     // Check if this is an HLS playlist that needs rewriting
     if (_isHlsResponse(targetUrl, upstreamContentType) &&
         upstreamResponse.statusCode == HttpStatus.ok) {
@@ -404,6 +444,23 @@ class MediaProxy {
       return;
     }
 
+    // Auto-convert SRT subtitle files to VTT
+    if (_isSubtitleFile(route.url)) {
+      final content = await file.readAsString();
+      if (SubtitleConverter.isSrt(content)) {
+        final vttContent = SubtitleConverter.srtToVtt(content);
+        final encoded = utf8.encode(vttContent);
+        _addCorsHeaders(request.response);
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.contentType = ContentType('text', 'vtt');
+        request.response.headers
+            .set('Content-Length', encoded.length.toString());
+        request.response.add(encoded);
+        await request.response.close();
+        return;
+      }
+    }
+
     final fileLength = await file.length();
     final contentType = _contentTypeForPath(route.url);
 
@@ -455,6 +512,22 @@ class MediaProxy {
     await file.openRead().pipe(request.response);
   }
 
+  bool _isSubtitleFile(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.srt') || lower.endsWith('.vtt');
+  }
+
+  bool _isSubtitleResponse(String url, ContentType? contentType) {
+    final lower = url.toLowerCase();
+    if (lower.contains('.srt') || lower.contains('.vtt')) return true;
+    if (contentType != null) {
+      final mimeType =
+          '${contentType.primaryType}/${contentType.subType}'.toLowerCase();
+      if (mimeType.contains('subrip') || mimeType == 'text/vtt') return true;
+    }
+    return false;
+  }
+
   bool _isHlsResponse(String url, ContentType? contentType) {
     // Check URL extension
     if (url.contains('.m3u8') || url.contains('.m3u')) return true;
@@ -486,6 +559,9 @@ class MediaProxy {
     }
     if (lower.endsWith('.vtt')) {
       return ContentType('text', 'vtt');
+    }
+    if (lower.endsWith('.srt')) {
+      return ContentType('application', 'x-subrip');
     }
     if (lower.endsWith('.aac')) {
       return ContentType('audio', 'aac');

@@ -116,16 +116,8 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
     _isDiscovering.value = false;
   }
 
-  /// Connects to the selected device and navigates to the remote control page.
-  ///
-  /// For DLNA devices, we first fetch the device description XML, then
-  /// create the session manually. For other protocols, we use the
-  /// CastService.connect() convenience method.
-  Future<void> _connectToDevice(CastDevice device) async {
-    // Close the bottom sheet
-    if (mounted) Navigator.of(context).pop();
-
-    // Show a connecting dialog
+  /// Shows a connecting dialog with a spinner and device name.
+  void _showConnectingDialog(String deviceName) {
     if (mounted) {
       showDialog(
         context: context,
@@ -136,13 +128,70 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
               const CircularProgressIndicator(),
               const SizedBox(width: 24),
               Expanded(
-                child: Text('Connecting to ${device.name}...'),
+                child: Text('Connecting to $deviceName...'),
               ),
             ],
           ),
         ),
       );
     }
+  }
+
+  /// Shows a dialog prompting the user to enter the 4-digit AirPlay PIN.
+  Future<String?> _showPinDialog() {
+    final pinController = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('AirPlay Pairing'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter the 4-digit PIN shown on your TV'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: pinController,
+              autofocus: true,
+              maxLength: 4,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, letterSpacing: 8),
+              decoration: const InputDecoration(
+                counterText: '',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(pinController.text),
+            child: const Text('Pair'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Connects to the selected device and navigates to the remote control page.
+  ///
+  /// For DLNA devices, we first fetch the device description XML, then
+  /// create the session manually. For other protocols, we use the
+  /// CastService.connect() convenience method.
+  ///
+  /// If the device requires AirPlay pairing, prompts the user for a PIN.
+  Future<void> _connectToDevice(CastDevice device) async {
+    // Close the bottom sheet
+    if (mounted) Navigator.of(context).pop();
+
+    // Show a connecting dialog
+    _showConnectingDialog(device.name);
 
     try {
       CastSession session;
@@ -170,6 +219,47 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
             ),
           ),
         );
+      }
+    } on NeedsPairingException {
+      // Dismiss connecting dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Show PIN dialog
+      final pin = await _showPinDialog();
+      if (pin != null && pin.length == 4) {
+        // Re-show connecting dialog
+        _showConnectingDialog(device.name);
+        try {
+          // Create a fresh AirPlaySession for pairing
+          final session = AirPlaySession(device);
+          await session.pairSetup(pin);
+          // Retry connect with the newly stored credentials
+          await session.connect();
+
+          // Dismiss connecting dialog
+          if (mounted) Navigator.of(context).pop();
+
+          if (mounted) {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => RemoteControlPage(
+                  session: session,
+                  device: device,
+                  castService: _castService,
+                ),
+              ),
+            );
+          }
+        } catch (e) {
+          // Dismiss connecting dialog
+          if (mounted) Navigator.of(context).pop();
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Pairing failed: $e')),
+            );
+          }
+        }
       }
     } catch (e) {
       // Dismiss connecting dialog

@@ -16,6 +16,7 @@ class AirPlaySession extends CastSession {
   AirPlayClient? _client;
   final MediaProxy _proxy = MediaProxy();
   Timer? _pollTimer;
+  bool _isPolling = false;
 
   /// Creates an [AirPlaySession] for the given AirPlay [device].
   AirPlaySession(super.device);
@@ -182,13 +183,16 @@ class AirPlaySession extends CastSession {
 
   /// Polls the device for playback info and updates session state.
   Future<void> _pollPlaybackInfo() async {
-    if (_client == null) return;
+    if (_client == null || _isPolling) return;
+    _isPolling = true;
 
     try {
       final info = await _client!.getPlaybackInfo();
       _updateFromPlaybackInfo(info);
     } catch (_) {
       // Connection lost or device unresponsive — could transition to disconnected
+    } finally {
+      _isPolling = false;
     }
   }
 

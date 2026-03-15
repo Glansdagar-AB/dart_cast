@@ -178,7 +178,7 @@ class ChromecastSession extends CastSession {
       contentType: contentType,
       title: media.title,
       imageUrl: media.imageUrl,
-      startPosition: media.startPosition?.inMilliseconds.toDouble() != null
+      startPosition: media.startPosition != null
           ? media.startPosition!.inMilliseconds / 1000.0
           : null,
       subtitles: subtitles.isNotEmpty ? subtitles : null,
@@ -194,7 +194,15 @@ class ChromecastSession extends CastSession {
       payload: loadPayload,
     );
 
-    await completer.future;
+    await completer.future.timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        _mediaStatusSubscription?.cancel();
+        _mediaStatusSubscription = null;
+        stateMachine.transitionTo(SessionState.idle);
+        throw TimeoutException('Chromecast loadMedia timed out after 15 seconds');
+      },
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -287,7 +295,17 @@ class ChromecastSession extends CastSession {
     _sessionId = null;
     _mediaSessionId = null;
 
+    await _proxy.stop();
+
     stateMachine.transitionTo(SessionState.disconnected);
+  }
+
+  @override
+  void dispose() {
+    _stopHeartbeat();
+    _mediaStatusSubscription?.cancel();
+    _proxy.stop();
+    super.dispose();
   }
 
   // ---------------------------------------------------------------------------
@@ -578,5 +596,5 @@ class _MockProxyAdapter implements _ProxyAdapter {
 
   @override
   void cleanupPreviousMedia({String? excludeToken}) =>
-      (_mock as dynamic).cleanupPreviousMedia();
+      (_mock as dynamic).cleanupPreviousMedia(excludeToken: excludeToken);
 }

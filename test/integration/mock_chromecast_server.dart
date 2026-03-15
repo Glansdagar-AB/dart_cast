@@ -269,7 +269,7 @@ class MockMediaProxy {
     return 'http://192.168.1.10:8080/stream/proxy-token';
   }
 
-  void cleanupPreviousMedia() {}
+  void cleanupPreviousMedia({String? excludeToken}) {}
 }
 
 /// A message sent by the session to the mock server.

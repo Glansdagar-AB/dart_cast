@@ -15,6 +15,7 @@ class DlnaSession extends CastSession {
 
   final DlnaHttpClient _httpClient;
   Timer? _pollTimer;
+  bool _isPolling = false;
   CastMedia? _currentMedia;
   CastSubtitle? _currentSubtitle;
 
@@ -178,6 +179,8 @@ class DlnaSession extends CastSession {
   }
 
   Future<void> _poll() async {
+    if (_isPolling) return;
+    _isPolling = true;
     try {
       // Get position info
       final positionResponse = await _sendAvTransport(
@@ -199,6 +202,8 @@ class DlnaSession extends CastSession {
       _handleTransportState(transportState);
     } catch (_) {
       // Polling failure — device may be temporarily unreachable
+    } finally {
+      _isPolling = false;
     }
   }
 

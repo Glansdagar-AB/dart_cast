@@ -118,7 +118,7 @@ class MockMediaProxy {
     return '$baseUrl/stream/token123';
   }
 
-  void cleanupPreviousMedia() {}
+  void cleanupPreviousMedia({String? excludeToken}) {}
 }
 
 void main() {

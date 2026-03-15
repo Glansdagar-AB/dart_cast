@@ -38,10 +38,11 @@ class NetworkUtils {
   /// Parses a 'HH:MM:SS' string into a [Duration].
   static Duration parseDuration(String formatted) {
     final parts = formatted.split(':');
+    if (parts.length != 3) return Duration.zero;
     return Duration(
-      hours: int.parse(parts[0]),
-      minutes: int.parse(parts[1]),
-      seconds: int.parse(parts[2]),
+      hours: int.tryParse(parts[0]) ?? 0,
+      minutes: int.tryParse(parts[1]) ?? 0,
+      seconds: int.tryParse(parts[2]) ?? 0,
     );
   }
 }

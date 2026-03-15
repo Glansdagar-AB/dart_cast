@@ -190,7 +190,7 @@ class DlnaSoapParser {
   /// Parses a GetVolume response, returning the volume as an integer (0-100).
   static int parseVolume(String xml) {
     final value = _extractElement(xml, 'CurrentVolume') ?? '0';
-    return int.parse(value);
+    return int.tryParse(value) ?? 0;
   }
 
   static String? _extractElement(String xml, String element) {

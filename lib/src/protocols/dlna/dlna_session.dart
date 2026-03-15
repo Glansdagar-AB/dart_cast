@@ -23,12 +23,57 @@ class DlnaSession extends CastSession {
   /// Creates a [DlnaSession] for the given [device] and [description].
   ///
   /// An optional [httpClient] can be provided for testing.
+  ///
+  /// Prefer using [DlnaSession.fromDevice] which automatically extracts
+  /// the device description from the metadata set by [DlnaDiscoveryProvider].
   DlnaSession({
     required CastDevice device,
     required this.description,
     DlnaHttpClient? httpClient,
   })  : _httpClient = httpClient ?? DlnaHttpClient(),
         super(device);
+
+  /// Creates a [DlnaSession] from a [CastDevice] discovered by
+  /// [DlnaDiscoveryProvider].
+  ///
+  /// Automatically extracts the device description (control URLs, etc.)
+  /// from the device's metadata. This is the recommended constructor
+  /// when using devices from discovery.
+  ///
+  /// Throws [ArgumentError] if the device metadata is missing required
+  /// DLNA control URLs (e.g., if the device was not discovered by
+  /// [DlnaDiscoveryProvider]).
+  factory DlnaSession.fromDevice(CastDevice device, {DlnaHttpClient? httpClient}) {
+    final avTransportUrl = device.metadata['avTransportControlUrl'];
+    final renderingControlUrl = device.metadata['renderingControlUrl'];
+
+    if (avTransportUrl == null || avTransportUrl.isEmpty) {
+      throw ArgumentError(
+        'CastDevice "${device.name}" is missing the DLNA AVTransport control URL '
+        'in its metadata. This usually means the device was not discovered by '
+        'DlnaDiscoveryProvider, or the device description XML did not contain '
+        'an AVTransport service. '
+        'Expected metadata key: "avTransportControlUrl". '
+        'Available metadata keys: ${device.metadata.keys.toList()}',
+      );
+    }
+
+    final description = DlnaDeviceDescription(
+      friendlyName: device.name,
+      udn: device.id,
+      manufacturer: device.metadata['manufacturer'],
+      modelName: device.metadata['modelName'],
+      avTransportControlUrl: avTransportUrl,
+      renderingControlUrl: renderingControlUrl,
+      locationUrl: 'http://${device.address.address}:${device.port}',
+    );
+
+    return DlnaSession(
+      device: device,
+      description: description,
+      httpClient: httpClient,
+    );
+  }
 
   /// Connects to the DLNA device by verifying it is reachable.
   @override
@@ -161,7 +206,11 @@ class DlnaSession extends CastSession {
   Future<String> _sendAvTransport(String action, String body) async {
     final controlUrl = description.avTransportControlUrl;
     if (controlUrl == null) {
-      throw StateError('No AVTransport control URL available');
+      throw StateError(
+        'No AVTransport control URL available for "${device.name}". '
+        'Use DlnaSession.fromDevice() to auto-extract URLs from discovery metadata, '
+        'or ensure DlnaDeviceDescription has avTransportControlUrl set.',
+      );
     }
 
     return _httpClient.sendAction(

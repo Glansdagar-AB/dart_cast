@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:math';
 
+import '../../core/cast_exceptions.dart';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
 import '../../utils/logger.dart';
 import 'airplay_client.dart';
+import 'auth/airplay_auth.dart';
+import 'auth/hap_credentials.dart';
 import 'plist_codec.dart';
 
 /// AirPlay 1 cast session with playback control and position polling.
@@ -13,6 +17,7 @@ import 'plist_codec.dart';
 /// - Connects to a device via [AirPlayClient]
 /// - Proxies media through [MediaProxy] so the AirPlay device can reach it
 /// - Polls `/playback-info` periodically to update position/duration/state
+/// - Supports HAP authentication for devices that require it (Apple TV tvOS 10.2+)
 class AirPlaySession extends CastSession {
   AirPlayClient? _client;
   final MediaProxy _proxy = MediaProxy();
@@ -20,8 +25,12 @@ class AirPlaySession extends CastSession {
   bool _isPolling = false;
   CastMedia? _currentMedia;
 
+  /// Stored HAP credentials for pair-verify. Set these before calling
+  /// [connect] if the device requires authentication.
+  HapCredentials? credentials;
+
   /// Creates an [AirPlaySession] for the given AirPlay [device].
-  AirPlaySession(super.device);
+  AirPlaySession(super.device, {this.credentials});
 
   /// The underlying AirPlay HTTP client (available after [connect]).
   AirPlayClient? get client => _client;
@@ -29,7 +38,9 @@ class AirPlaySession extends CastSession {
   /// Connects to the AirPlay device.
   ///
   /// Creates an [AirPlayClient], calls `getServerInfo()` to verify the device
-  /// is reachable, and transitions to [SessionState.connected].
+  /// is reachable. If the device returns HTTP 403, attempts pair-verify with
+  /// stored [credentials]. If no credentials are available, throws
+  /// [NeedsPairingException].
   @override
   Future<void> connect() async {
     CastLogger.info(
@@ -45,6 +56,17 @@ class AirPlaySession extends CastSession {
       await _client!.getServerInfo();
       CastLogger.info('AirPlay: connected to ${device.name}');
       stateMachine.transitionTo(SessionState.connected);
+    } on AirPlayClientException catch (e) {
+      if (e.message.contains('403')) {
+        CastLogger.info('AirPlay: device requires authentication');
+        await _handleAuthRequired();
+      } else {
+        CastLogger.error('AirPlay: connection failed to ${device.name}: $e');
+        _client?.close();
+        _client = null;
+        stateMachine.transitionTo(SessionState.disconnected);
+        rethrow;
+      }
     } catch (e) {
       CastLogger.error('AirPlay: connection failed to ${device.name}: $e');
       _client?.close();
@@ -52,6 +74,64 @@ class AirPlaySession extends CastSession {
       stateMachine.transitionTo(SessionState.disconnected);
       rethrow;
     }
+  }
+
+  /// Handles the case where the device requires HAP authentication.
+  Future<void> _handleAuthRequired() async {
+    if (credentials == null) {
+      _client?.close();
+      _client = null;
+      stateMachine.transitionTo(SessionState.disconnected);
+      throw NeedsPairingException(
+          'AirPlay device "${device.name}" requires pairing. '
+          'Call pairSetup(pin) first.');
+    }
+
+    // Attempt pair-verify with stored credentials
+    try {
+      CastLogger.info('AirPlay: attempting pair-verify with stored credentials');
+      final pairVerify = AirPlayPairVerify(
+        host: device.address.address,
+        port: device.port,
+      );
+      await pairVerify.execute(credentials!);
+
+      CastLogger.info('AirPlay: pair-verify successful');
+      stateMachine.transitionTo(SessionState.connected);
+    } catch (e) {
+      CastLogger.error('AirPlay: pair-verify failed: $e');
+      _client?.close();
+      _client = null;
+      stateMachine.transitionTo(SessionState.disconnected);
+      throw NeedsPairingException(
+          'AirPlay pair-verify failed. Device may need re-pairing. '
+          'Call pairSetup(pin) to re-pair.');
+    }
+  }
+
+  /// Performs HAP pair-setup with the device using the given [pin].
+  ///
+  /// This triggers the device to display a 4-digit PIN, which the user
+  /// must enter. On success, stores [credentials] for future sessions.
+  ///
+  /// [clientId] is an optional identifier for this client. If not provided,
+  /// a random UUID is generated.
+  Future<HapCredentials> pairSetup(String pin, {String? clientId}) async {
+    final id = clientId ?? _generateUuid();
+
+    final pairSetup = AirPlayPairSetup(
+      host: device.address.address,
+      port: device.port,
+    );
+
+    // Trigger PIN display
+    await pairSetup.startPinDisplay();
+
+    // Run pair-setup
+    credentials = await pairSetup.pairSetup(pin: pin, clientId: id);
+
+    CastLogger.info('AirPlay: pair-setup complete, credentials stored');
+    return credentials!;
   }
 
   /// Loads media onto the AirPlay device.
@@ -303,5 +383,17 @@ class AirPlaySession extends CastSession {
       throw StateError(
           'AirPlaySession is not connected. Call connect() first.');
     }
+  }
+
+  /// Generates a UUID v4-like string.
+  static String _generateUuid() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+        '${hex.substring(20, 32)}';
   }
 }

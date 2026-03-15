@@ -29,14 +29,20 @@ class SessionStateMachine {
       SessionState.paused,
       SessionState.buffering,
       SessionState.idle,
+      SessionState.loading, // source switching while playing
       SessionState.disconnected,
     },
     SessionState.paused: {
       SessionState.playing,
       SessionState.idle,
+      SessionState.loading, // source switching while paused
       SessionState.disconnected,
     },
-    SessionState.buffering: {SessionState.playing, SessionState.disconnected},
+    SessionState.buffering: {
+      SessionState.playing,
+      SessionState.loading, // source switching while buffering
+      SessionState.disconnected,
+    },
     SessionState.idle: {SessionState.loading, SessionState.disconnected},
   };
 

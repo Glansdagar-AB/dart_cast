@@ -47,6 +47,15 @@ class ChromecastSession extends CastSession {
   int? _mediaSessionId;
   StreamSubscription<dynamic>? _mediaStatusSubscription;
 
+  /// Periodic timer that polls GET_STATUS on the media channel to keep
+  /// the playback position up-to-date. Chromecast only pushes MEDIA_STATUS
+  /// on state changes (play, pause, load) — it does NOT send periodic
+  /// position updates on its own.
+  Timer? _positionPollTimer;
+
+  /// Guard to prevent overlapping GET_STATUS requests.
+  bool _isPolling = false;
+
   /// The current receiver session ID, if connected.
   String? get sessionId => _sessionId;
   Timer? _heartbeatTimer;
@@ -230,6 +239,7 @@ class ChromecastSession extends CastSession {
   @override
   Future<void> stop() async {
     _requireMediaSession();
+    _stopPositionPolling();
     _sendMediaCommand(_mediaChannel.buildStop(_mediaSessionId!));
   }
 
@@ -250,6 +260,8 @@ class ChromecastSession extends CastSession {
       destinationId: _receiverId,
       payload: _receiverChannel.buildSetVolumeWithId(level: volume),
     );
+    // Immediately update local volume state
+    updateVolume(volume);
   }
 
   @override
@@ -352,6 +364,31 @@ class ChromecastSession extends CastSession {
     _heartbeatTimer = null;
   }
 
+  /// Starts a 1-second periodic timer that sends GET_STATUS on the media
+  /// channel. The response triggers [_handleMediaStatus] which updates
+  /// position, duration, and state.
+  void _startPositionPolling() {
+    _stopPositionPolling();
+    _positionPollTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (_isPolling || _mediaSessionId == null || _transportId == null) {
+          return;
+        }
+        _isPolling = true;
+        _sendMediaCommand(_mediaChannel.buildGetStatus());
+        _isPolling = false;
+      },
+    );
+  }
+
+  /// Stops the position polling timer.
+  void _stopPositionPolling() {
+    _positionPollTimer?.cancel();
+    _positionPollTimer = null;
+    _isPolling = false;
+  }
+
   void _handleMessage(dynamic msg, Completer<void> connectCompleter) {
     final namespace = _getNamespace(msg);
     final payload = _getPayload(msg);
@@ -394,6 +431,9 @@ class ChromecastSession extends CastSession {
       ));
     }
 
+    // Update volume from device
+    updateVolume(status.volumeLevel);
+
     // Update state machine based on playerState
     _updateState(status.playerState, status.idleReason);
   }
@@ -411,6 +451,18 @@ class ChromecastSession extends CastSession {
     if (targetState != null && stateMachine.canTransitionTo(targetState)) {
       stateMachine.transitionTo(targetState);
     }
+
+    // Start/stop position polling based on playback state.
+    // Poll during PLAYING and BUFFERING to keep the seek slider current.
+    // Stop polling on IDLE to avoid sending commands after media ends.
+    if (playerState == 'PLAYING' || playerState == 'BUFFERING') {
+      if (_positionPollTimer == null || !_positionPollTimer!.isActive) {
+        _startPositionPolling();
+      }
+    } else if (playerState == 'IDLE') {
+      _stopPositionPolling();
+    }
+    // PAUSED: keep polling so seek-while-paused still updates position.
   }
 
   void _waitForMediaStatus(Completer<void> completer) {

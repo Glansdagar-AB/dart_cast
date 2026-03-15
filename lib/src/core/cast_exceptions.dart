@@ -42,6 +42,14 @@ class DiscoveryException extends CastException {
   DiscoveryException(super.message, [super.cause]);
 }
 
+/// Thrown when an AirPlay device requires HAP pairing (PIN entry).
+///
+/// The caller should prompt the user for a PIN, then call
+/// `AirPlaySession.pairSetup(pin)` to complete pairing.
+class NeedsPairingException extends CastException {
+  NeedsPairingException([super.message = 'Device requires HAP pairing (PIN)']);
+}
+
 /// Thrown when a protocol-specific error occurs.
 class ProtocolException extends CastException {
   /// The protocol that encountered the error.

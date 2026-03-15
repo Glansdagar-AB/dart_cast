@@ -346,6 +346,23 @@ class DlnaSession extends CastSession {
           DlnaSoapParser.parseTransportInfo(transportResponse);
 
       _handleTransportState(transportState);
+
+      // Poll volume from RenderingControl
+      final controlUrl = description.renderingControlUrl;
+      if (controlUrl != null) {
+        try {
+          final volumeResponse = await _httpClient.sendAction(
+            controlUrl,
+            DlnaServiceType.renderingControl,
+            'GetVolume',
+            DlnaSoapBuilder.buildGetVolume(),
+          );
+          final intVolume = DlnaSoapParser.parseVolume(volumeResponse);
+          updateVolume(intVolume / 100.0);
+        } catch (_) {
+          // Volume polling failure is non-fatal
+        }
+      }
     } catch (_) {
       // Polling failure — device may be temporarily unreachable
     } finally {

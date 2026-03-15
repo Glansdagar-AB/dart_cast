@@ -9,6 +9,10 @@ export 'src/core/cast_session.dart';
 export 'src/core/hls_parser.dart';
 export 'src/core/media_proxy.dart';
 
+// Protocols — AirPlay
+export 'src/protocols/airplay/plist_codec.dart';
+
 // Utils
 export 'src/utils/logger.dart';
+export 'src/utils/mdns_discovery.dart';
 export 'src/utils/network_utils.dart';

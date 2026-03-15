@@ -103,16 +103,15 @@ class CastService {
 
   /// Releases all resources: stops discovery, disconnects active session,
   /// and disposes all discovery providers.
-  ///
-  /// The disconnect is fire-and-forget by design since dispose() is
-  /// synchronous. For a graceful shutdown, call [disconnect] on the
-  /// active session before disposing.
-  void dispose() {
+  Future<void> dispose() async {
     _discoveryManager.dispose();
 
     if (_activeSession != null) {
-      // Fire-and-forget disconnect — synchronous dispose cannot await
-      _activeSession!.disconnect().catchError((_) {});
+      try {
+        await _activeSession!.disconnect();
+      } catch (_) {
+        // Best effort disconnect
+      }
       _activeSession = null;
     }
   }

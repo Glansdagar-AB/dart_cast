@@ -9,8 +9,7 @@ class CastMediaDemo {
 
   /// Sample HLS live stream (Big Buck Bunny).
   static const hlsStream = CastMedia(
-    url:
-        'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
     type: CastMediaType.hls,
     title: 'Big Buck Bunny (HLS)',
     imageUrl:

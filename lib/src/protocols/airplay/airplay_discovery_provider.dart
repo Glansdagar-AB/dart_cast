@@ -37,14 +37,10 @@ class AirPlayDiscoveryProvider implements DeviceDiscoveryProvider {
     final stream = _mdnsLookup(MdnsDiscovery.airplayServiceType);
     _subscription = stream.listen(
       (info) {
-        // Filter: only include devices that support video
-        final features = info.txtRecords['features'] ?? '';
-        if (!MdnsServiceInfo.supportsVideo(features)) {
-          CastLogger.debug(
-              'AirPlay: skipping "${info.friendlyName}" (no video support, features=$features)');
-          return;
-        }
-
+        // Note: We do NOT filter by features bitmask here.
+        // AirPlay 2 devices (smart TVs) use different feature bits than
+        // AirPlay 1, so bit 0 is not a reliable indicator of video support.
+        // Computer filtering is handled by DiscoveryManager._shouldFilter().
         final device = info.toAirplayDevice();
         if (!_devices.containsKey(device.id)) {
           CastLogger.info(

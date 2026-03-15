@@ -54,18 +54,19 @@ void main() {
       provider.dispose();
     });
 
-    test('filters out devices without video support', () async {
+    test('includes devices regardless of features bitmask (AirPlay 2 compat)',
+        () async {
       final provider = AirPlayDiscoveryProvider(
         mdnsLookup: (serviceType) {
           return Stream.fromIterable([
             const MdnsServiceInfo(
-              name: 'Audio Only',
+              name: 'AirPlay2 TV',
               host: '192.168.1.70',
               port: 7000,
               txtRecords: {
-                'deviceid': 'ap-audio',
-                'model': 'AirPortExpress',
-                'features': '0x4A7FFFF0', // bit 0 not set = no video
+                'deviceid': 'ap-tv',
+                'model': 'TCL_TV',
+                'features': '0x7F8AD0,0xBCF46', // AirPlay 2 — bit 0 not set
               },
             ),
           ]);
@@ -76,15 +77,13 @@ void main() {
           .startDiscovery(timeout: const Duration(milliseconds: 500))
           .toList();
 
-      // Should have emitted no device lists (audio-only was filtered)
-      for (final list in results) {
-        expect(list.where((d) => d.id == 'ap-audio'), isEmpty);
-      }
+      // AirPlay 2 devices should NOT be filtered — features bitmask is unreliable
+      expect(results.last.where((d) => d.id == 'ap-tv'), isNotEmpty);
 
       provider.dispose();
     });
 
-    test('filters out devices with empty features', () async {
+    test('includes devices with empty features', () async {
       final provider = AirPlayDiscoveryProvider(
         mdnsLookup: (serviceType) {
           return Stream.fromIterable([
@@ -105,9 +104,8 @@ void main() {
           .startDiscovery(timeout: const Duration(milliseconds: 500))
           .toList();
 
-      for (final list in results) {
-        expect(list.where((d) => d.id == 'ap-nofeat'), isEmpty);
-      }
+      // Devices without features should still be included
+      expect(results.last.where((d) => d.id == 'ap-nofeat'), isNotEmpty);
 
       provider.dispose();
     });

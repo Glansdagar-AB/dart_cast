@@ -23,8 +23,9 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
   /// The main entry point for dart_cast. Create one per app lifecycle.
   late final CastService _castService;
 
-  List<CastDevice> _devices = [];
-  bool _isDiscovering = false;
+  /// ValueNotifiers so the bottom sheet can reactively update.
+  final _devices = ValueNotifier<List<CastDevice>>([]);
+  final _isDiscovering = ValueNotifier<bool>(false);
   StreamSubscription<List<CastDevice>>? _discoverySub;
 
   @override
@@ -79,10 +80,8 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
 
   /// Starts device discovery and shows results in a bottom sheet.
   void _startDiscovery() {
-    setState(() {
-      _isDiscovering = true;
-      _devices = [];
-    });
+    _isDiscovering.value = true;
+    _devices.value = [];
 
     _showDeviceSheet();
 
@@ -94,13 +93,13 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
         .startDiscovery(timeout: const Duration(seconds: 15))
         .listen(
       (devices) {
-        setState(() => _devices = devices);
+        _devices.value = devices;
       },
       onDone: () {
-        setState(() => _isDiscovering = false);
+        _isDiscovering.value = false;
       },
       onError: (Object error) {
-        setState(() => _isDiscovering = false);
+        _isDiscovering.value = false;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Discovery error: $error')),
@@ -114,7 +113,7 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
   void _stopDiscovery() {
     _discoverySub?.cancel();
     _castService.stopDiscovery();
-    setState(() => _isDiscovering = false);
+    _isDiscovering.value = false;
   }
 
   /// Connects to the selected device and navigates to the remote control page.
@@ -138,10 +137,8 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
           friendlyName: device.name,
           udn: device.id,
           locationUrl: locationUrl,
-          avTransportControlUrl:
-              device.metadata['avTransportControlUrl'],
-          renderingControlUrl:
-              device.metadata['renderingControlUrl'],
+          avTransportControlUrl: device.metadata['avTransportControlUrl'],
+          renderingControlUrl: device.metadata['renderingControlUrl'],
         );
         session = DlnaSession(device: device, description: description);
       } else {
@@ -176,24 +173,28 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) {
-        // Use StatefulBuilder so the bottom sheet updates as devices arrive.
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            // Keep the sheet in sync with the page state by rebuilding
-            // when the parent setState is called.
-            // We achieve this by reading _devices and _isDiscovering directly.
-            return _DeviceListSheet(
-              devices: _devices,
-              isDiscovering: _isDiscovering,
-              onDeviceTap: _connectToDevice,
-              onStop: _stopDiscovery,
+        // Use ValueListenableBuilder so the sheet updates reactively
+        // when devices are found or discovery state changes.
+        return ValueListenableBuilder<List<CastDevice>>(
+          valueListenable: _devices,
+          builder: (context, devices, _) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: _isDiscovering,
+              builder: (context, isDiscovering, _) {
+                return _DeviceListSheet(
+                  devices: devices,
+                  isDiscovering: isDiscovering,
+                  onDeviceTap: _connectToDevice,
+                  onStop: _stopDiscovery,
+                );
+              },
             );
           },
         );
       },
     ).then((_) {
       // If the sheet is dismissed, stop discovery.
-      if (_isDiscovering) _stopDiscovery();
+      if (_isDiscovering.value) _stopDiscovery();
     });
   }
 
@@ -210,12 +211,13 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
             onPressed: () => Navigator.of(context).pushNamed('/logs'),
           ),
           // Cast button in the AppBar — the standard UX pattern.
-          IconButton(
-            icon: Icon(
-              _isDiscovering ? Icons.cast_connected : Icons.cast,
+          ValueListenableBuilder<bool>(
+            valueListenable: _isDiscovering,
+            builder: (context, discovering, _) => IconButton(
+              icon: Icon(discovering ? Icons.cast_connected : Icons.cast),
+              tooltip: 'Discover devices',
+              onPressed: _startDiscovery,
             ),
-            tooltip: 'Discover devices',
-            onPressed: _startDiscovery,
           ),
         ],
       ),

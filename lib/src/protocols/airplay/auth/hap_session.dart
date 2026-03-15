@@ -282,6 +282,7 @@ class HapSession {
     List<int>? body,
     Map<String, String>? queryParameters,
   }) async {
+    CastLogger.debug('HAP session: sendRequest $method $path');
     // Build the URI path with query parameters
     String fullPath = path;
     if (queryParameters != null && queryParameters.isNotEmpty) {
@@ -318,12 +319,16 @@ class HapSession {
         : Uint8List.fromList(headerBytes);
 
     // Encrypt and send
+    CastLogger.debug('HAP session: encrypting ${requestBytes.length} bytes');
     final encrypted = await encrypt(requestBytes);
+    CastLogger.debug('HAP session: sending ${encrypted.length} encrypted bytes');
     _socket.add(encrypted);
     await _socket.flush();
+    CastLogger.debug('HAP session: waiting for encrypted response...');
 
     // Read response
     final responseBytes = await _readEncryptedResponse();
+    CastLogger.debug('HAP session: received ${responseBytes.length} decrypted response bytes');
     return _parseHttpResponse(responseBytes);
   }
 
@@ -523,6 +528,7 @@ class HapSession {
 
   /// Starts playback of a video URL on the AirPlay device.
   Future<void> play(String url, {double startPosition = 0.0}) async {
+    CastLogger.info('HAP session: sending /play to device');
     final body = 'Content-Location: $url\nStart-Position: $startPosition\n';
     final response = await sendRequest('POST', '/play',
         headers: {
@@ -530,6 +536,7 @@ class HapSession {
           'Content-Type': 'text/parameters',
         },
         body: utf8.encode(body));
+    CastLogger.info('HAP session: /play response: ${response.statusCode}');
     _checkResponse(response, 'play');
   }
 

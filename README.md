@@ -266,6 +266,34 @@ Protocol Layer (isolated per protocol)
   SOAP/XML     TLS+Protobuf     HTTP
 ```
 
+## Acknowledgments and References
+
+This package was built with the help of the following open-source projects, protocol specifications, and community resources:
+
+### Protocol References
+
+- **[pyatv](https://github.com/postlund/pyatv)** by Erik Hilsdale -- The most complete open-source Apple TV / AirPlay protocol implementation. Our AirPlay HAP authentication (SRP-6a, pair-setup, pair-verify) is based on pyatv's protocol analysis.
+- **[node-castv2](https://github.com/thibauts/node-castv2)** by Thibaut Séguy -- Reference implementation of the Chromecast CASTV2 protocol. Our protobuf message framing and channel architecture follows this implementation.
+- **[dart_chromecast](https://github.com/terrabythia/dart_chromecast)** -- Dart Chromecast implementation that informed our CASTV2 TLS connection and message handling.
+- **[dlna_dart](https://github.com/nicedayzhu/dlna-dart)** -- Lightweight DLNA client in Dart. Our SSDP discovery and SOAP action patterns were influenced by this package.
+- **[pair_ap](https://github.com/ejurgensen/pair_ap)** by ejurgensen -- C library for AirPlay pairing used by shairport-sync and owntone-server. Referenced for FairPlay-SAP authentication flow details.
+
+### Protocol Specifications
+
+- [RFC 8216](https://www.rfc-editor.org/rfc/rfc8216) -- HTTP Live Streaming (HLS) specification
+- [RFC 5054](https://www.rfc-editor.org/rfc/rfc5054) -- SRP-6a protocol and group parameters
+- [UPnP AV Transport Service](https://upnp.org/specs/av/UPnP-av-AVTransport-v1-Service.pdf) -- DLNA/UPnP media control
+- [Unofficial AirPlay Protocol Specification](https://nto.github.io/AirPlay.html) -- Community-maintained AirPlay reverse engineering docs
+- [Google Cast Media Messages](https://developers.google.com/cast/docs/media/messages) -- Official Chromecast media protocol documentation
+- [OpenAirPlay Spec](https://openairplay.github.io/airplay-spec/) -- AirPlay 2 protocol documentation including HAP pairing
+
+### Dart Packages
+
+- **[cryptography](https://pub.dev/packages/cryptography)** -- Ed25519, X25519, ChaCha20-Poly1305, HKDF-SHA512 for AirPlay authentication
+- **[multicast_dns](https://pub.dev/packages/multicast_dns)** -- mDNS service discovery for Chromecast and AirPlay
+- **[protobuf](https://pub.dev/packages/protobuf)** -- Protocol Buffers for Chromecast CASTV2 message serialization
+- **[http](https://pub.dev/packages/http)** -- HTTP client for DLNA SOAP, AirPlay control, and media proxy
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR guidelines.

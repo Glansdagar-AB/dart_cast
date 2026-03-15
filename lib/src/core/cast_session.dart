@@ -156,6 +156,14 @@ abstract class CastSession {
     stateMachine.transitionTo(SessionState.connected);
   }
 
+  /// Ensures the session is connected before performing operations.
+  /// If disconnected, calls [connect] automatically.
+  Future<void> ensureConnected() async {
+    if (stateMachine.state == SessionState.disconnected) {
+      await connect();
+    }
+  }
+
   // -- Abstract methods --
 
   /// Loads media onto the cast device.

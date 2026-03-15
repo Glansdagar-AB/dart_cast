@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../core/cast_device.dart';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
+import '../../utils/logger.dart';
 import 'dlna_controller.dart';
 import 'dlna_device.dart';
 
@@ -32,14 +33,17 @@ class DlnaSession extends CastSession {
   /// Connects to the DLNA device by verifying it is reachable.
   @override
   Future<void> connect() async {
+    CastLogger.info('DlnaSession.connect() called, current state: ${stateMachine.state}');
     stateMachine.transitionTo(SessionState.connecting);
     // For DLNA, "connect" simply means we verified the device is reachable.
     // There is no persistent connection — each action is an HTTP POST.
     stateMachine.transitionTo(SessionState.connected);
+    CastLogger.info('DlnaSession.connect() done, state: ${stateMachine.state}');
   }
 
   @override
   Future<void> loadMedia(CastMedia media) async {
+    CastLogger.info('DlnaSession.loadMedia called, current state: ${stateMachine.state}');
     stateMachine.transitionTo(SessionState.loading);
     _currentMedia = media;
 

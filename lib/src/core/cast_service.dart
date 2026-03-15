@@ -4,6 +4,7 @@ import 'cast_device.dart';
 import 'cast_session.dart';
 import 'discovery_manager.dart';
 import 'discovery_provider.dart';
+import '../utils/logger.dart';
 
 /// Factory function for creating protocol-specific sessions.
 typedef SessionFactory = CastSession Function(CastDevice device);
@@ -74,9 +75,12 @@ class CastService {
     }
 
     final session = _createSession(device);
+    CastLogger.info('CastService: calling session.connect()...');
     await session.connect();
+    CastLogger.info('CastService: session.connect() done, state: ${session.stateMachine.state}');
     _activeSession = session;
     _lastDevice = device;
+    CastLogger.info('CastService: _activeSession set, returning session');
     return session;
   }
 

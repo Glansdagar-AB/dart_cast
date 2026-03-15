@@ -87,10 +87,12 @@ class AirPlaySession extends CastSession {
           'Call pairSetup(pin) first.');
     }
 
-    // Attempt pair-verify with stored credentials
+    // Attempt pair-verify using the SAME http client as AirPlayClient
+    // so the authenticated connection is shared for subsequent /play commands.
     final pairVerify = AirPlayPairVerify(
       host: device.address.address,
       port: device.port,
+      httpClient: _client!.httpClient,
     );
     try {
       CastLogger.info(
@@ -116,7 +118,7 @@ class AirPlaySession extends CastSession {
       stateMachine.transitionTo(SessionState.disconnected);
       rethrow;
     } finally {
-      pairVerify.close();
+      // Do NOT close pairVerify — it shares the AirPlayClient's http.Client
     }
   }
 

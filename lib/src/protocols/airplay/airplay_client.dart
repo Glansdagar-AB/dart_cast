@@ -20,6 +20,10 @@ class AirPlayClient {
 
   String _sessionId;
 
+  /// The underlying HTTP client. Exposed so pair-verify can share
+  /// the same connection for authenticated requests.
+  http.Client get httpClient => _httpClient;
+
   /// Creates an [AirPlayClient] targeting the given [host] and [port].
   ///
   /// An optional [httpClient] can be provided for testing.

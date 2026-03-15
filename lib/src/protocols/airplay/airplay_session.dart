@@ -93,7 +93,8 @@ class AirPlaySession extends CastSession {
       port: device.port,
     );
     try {
-      CastLogger.info('AirPlay: attempting pair-verify with stored credentials');
+      CastLogger.info(
+          'AirPlay: attempting pair-verify with stored credentials');
       await pairVerify.execute(credentials!);
 
       CastLogger.info('AirPlay: pair-verify successful');
@@ -142,7 +143,7 @@ class AirPlaySession extends CastSession {
       // Trigger PIN display on TV (skip if already triggered externally)
       if (triggerPinDisplay) {
         CastLogger.info('AirPlay: triggering PIN display on TV');
-        await pairSetup.startPinDisplay();
+        pairSetup.startPinDisplay(); // Fire-and-forget — TV may not respond
       }
 
       // Run pair-setup SRP flow with the user-entered PIN

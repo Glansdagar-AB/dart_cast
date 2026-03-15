@@ -103,14 +103,12 @@ void main() {
     });
 
     test('handles http:// URLs by registering as remote media', () {
-      final url =
-          proxy.registerSubtitle('http://example.com/subtitle.vtt');
+      final url = proxy.registerSubtitle('http://example.com/subtitle.vtt');
       expect(url, contains('/stream/'));
     });
 
     test('handles https:// URLs by registering as remote media', () {
-      final url =
-          proxy.registerSubtitle('https://example.com/subtitle.srt');
+      final url = proxy.registerSubtitle('https://example.com/subtitle.srt');
       expect(url, contains('/stream/'));
     });
   });
@@ -224,8 +222,7 @@ void main() {
       });
 
       try {
-        final proxyUrl =
-            proxy.registerMedia('$upstreamBaseUrl/subtitle.srt');
+        final proxyUrl = proxy.registerMedia('$upstreamBaseUrl/subtitle.srt');
 
         final client = HttpClient();
         try {
@@ -265,8 +262,7 @@ void main() {
       );
 
       try {
-        final proxyUrl =
-            proxy.registerSubtitle('file://${srtFile.path}');
+        final proxyUrl = proxy.registerSubtitle('file://${srtFile.path}');
 
         final client = HttpClient();
         try {

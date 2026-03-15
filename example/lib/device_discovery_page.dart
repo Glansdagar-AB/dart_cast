@@ -229,17 +229,10 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
 
       // Trigger PIN display on TV
       debugPrint('EXAMPLE: triggering PIN display on TV...');
-      try {
-        final pairSetup = AirPlayPairSetup(
-          host: device.address.address,
-          port: device.port,
-        );
-        await pairSetup.startPinDisplay();
-        pairSetup.close();
-        debugPrint('EXAMPLE: PIN display triggered');
-      } catch (pinErr) {
-        debugPrint('EXAMPLE: failed to trigger PIN display: $pinErr');
-      }
+      // Fire-and-forget — don't wait for response, show dialog immediately
+      AirPlayPairSetup(host: device.address.address, port: device.port)
+          .startPinDisplay();
+      debugPrint('EXAMPLE: PIN display request sent');
 
       // Show PIN dialog
       final pin = await _showPinDialog();

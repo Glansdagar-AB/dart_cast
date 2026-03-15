@@ -31,7 +31,9 @@ void main() {
           port: server.port,
         );
 
-        await pairSetup.startPinDisplay();
+        pairSetup.startPinDisplay();
+        // Give the fire-and-forget request time to arrive
+        await Future<void>.delayed(const Duration(milliseconds: 100));
 
         expect(receivedPath, equals('/pair-pin-start'));
         expect(receivedMethod, equals('POST'));
@@ -58,8 +60,7 @@ void main() {
           ]);
           request.response
             ..statusCode = 200
-            ..headers.contentType =
-                ContentType('application', 'octet-stream')
+            ..headers.contentType = ContentType('application', 'octet-stream')
             ..add(errorTlv)
             ..close();
         } else {
@@ -266,8 +267,7 @@ void main() {
 
           if (requestCount == 1) {
             // M1: Client sends ephemeral X25519 public key
-            clientX25519PublicKey =
-                Uint8List.fromList(tlv[Tlv8.tagPublicKey]!);
+            clientX25519PublicKey = Uint8List.fromList(tlv[Tlv8.tagPublicKey]!);
 
             // Device computes shared secret
             final sharedSecret = await x25519.sharedSecretKey(

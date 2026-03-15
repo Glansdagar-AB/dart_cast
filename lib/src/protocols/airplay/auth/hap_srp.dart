@@ -266,7 +266,8 @@ class HapSrp {
 
     // Verify the device signature
     final ed25519 = Ed25519();
-    final devicePubKey = SimplePublicKey(devicePublicKey, type: KeyPairType.ed25519);
+    final devicePubKey =
+        SimplePublicKey(devicePublicKey, type: KeyPairType.ed25519);
     final sig = Signature(deviceSignature, publicKey: devicePubKey);
     final valid = await ed25519.verify(deviceInfo, signature: sig);
     if (!valid) {
@@ -459,7 +460,8 @@ class HapSrp {
       nonce: nonce,
     );
     // Return ciphertext + MAC (16 bytes) concatenated
-    return Uint8List.fromList([...secretBox.cipherText, ...secretBox.mac.bytes]);
+    return Uint8List.fromList(
+        [...secretBox.cipherText, ...secretBox.mac.bytes]);
   }
 
   Future<Uint8List> _chachaDecrypt({

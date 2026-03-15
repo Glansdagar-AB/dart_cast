@@ -93,5 +93,6 @@ class HapCredentials {
   }
 
   @override
-  String toString() => 'HapCredentials(clientId: $clientId, deviceId: $deviceId)';
+  String toString() =>
+      'HapCredentials(clientId: $clientId, deviceId: $deviceId)';
 }

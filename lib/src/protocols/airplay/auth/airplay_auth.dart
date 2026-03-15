@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -25,15 +26,24 @@ class AirPlayPairSetup {
   }) : _httpClient = httpClient ?? http.Client();
 
   /// Triggers the device to display a PIN on screen.
-  Future<void> startPinDisplay() async {
-    CastLogger.info('AirPlay auth: requesting PIN display');
-    final response = await _httpClient.post(
+  ///
+  /// This is fire-and-forget — the HTTP request triggers the PIN display
+  /// but the device may not respond (connection stays open). We don't wait
+  /// for the response to avoid blocking the PIN dialog.
+  void startPinDisplay() {
+    CastLogger.info('AirPlay auth: requesting PIN display (fire-and-forget)');
+    _httpClient
+        .post(
       _uri('/pair-pin-start'),
       headers: _defaultHeaders,
       body: '',
-    );
-    CastLogger.info(
-        'AirPlay auth: pair-pin-start response: ${response.statusCode}');
+    )
+        .then((response) {
+      CastLogger.info(
+          'AirPlay auth: pair-pin-start response: ${response.statusCode}');
+    }).catchError((Object e) {
+      CastLogger.debug('AirPlay auth: pair-pin-start error (expected): $e');
+    });
   }
 
   /// Runs the full pair-setup flow with the given [pin].
@@ -146,6 +156,7 @@ class AirPlayPairSetup {
   Map<String, String> get _defaultHeaders => {
         'User-Agent': 'AirPlay/320.20',
         'Connection': 'keep-alive',
+        'X-Apple-HKP': '3',
       };
 
   /// Closes the underlying HTTP client.
@@ -211,8 +222,7 @@ class AirPlayPairVerify {
 
     final deviceX25519PublicKey = Uint8List.fromList(m2[Tlv8.tagPublicKey]!);
     final encryptedData = Uint8List.fromList(m2[Tlv8.tagEncryptedData]!);
-    CastLogger.info(
-        'AirPlay auth: pair-verify M2 received '
+    CastLogger.info('AirPlay auth: pair-verify M2 received '
         '(pubkey ${deviceX25519PublicKey.length}B, '
         'encrypted ${encryptedData.length}B)');
 
@@ -397,6 +407,7 @@ class AirPlayPairVerify {
   Map<String, String> get _defaultHeaders => {
         'User-Agent': 'AirPlay/320.20',
         'Connection': 'keep-alive',
+        'X-Apple-HKP': '3',
       };
 }
 
@@ -408,4 +419,3 @@ class AirPlayAuthException implements Exception {
   @override
   String toString() => 'AirPlayAuthException: $message';
 }
-

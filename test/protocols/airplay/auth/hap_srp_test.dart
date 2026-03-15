@@ -66,8 +66,7 @@ void main() {
           key[i] = i;
         }
         final nonce = HapSrp.padNonce('PS-Msg05');
-        final plaintext =
-            Uint8List.fromList(utf8.encode('Hello, HAP world!'));
+        final plaintext = Uint8List.fromList(utf8.encode('Hello, HAP world!'));
 
         // Encrypt
         final algorithm = Chacha20.poly1305Aead();

@@ -175,8 +175,7 @@ void main() {
         ));
 
         // Wait for at least one position update
-        await session.positionStream.first
-            .timeout(const Duration(seconds: 5));
+        await session.positionStream.first.timeout(const Duration(seconds: 5));
 
         expect(positions, isNotEmpty);
         // Position should be ~123.456789 seconds based on mock server
@@ -198,8 +197,7 @@ void main() {
         ));
 
         // Wait for at least one duration update
-        await session.durationStream.first
-            .timeout(const Duration(seconds: 5));
+        await session.durationStream.first.timeout(const Duration(seconds: 5));
 
         expect(durations, isNotEmpty);
         // Duration should be 5400 seconds based on mock server
@@ -218,8 +216,7 @@ void main() {
         ));
 
         // Wait for a poll to occur
-        await session.positionStream.first
-            .timeout(const Duration(seconds: 5));
+        await session.positionStream.first.timeout(const Duration(seconds: 5));
         final countBeforeStop = positions.length;
 
         await session.stop();

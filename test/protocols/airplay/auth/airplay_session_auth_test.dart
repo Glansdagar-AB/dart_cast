@@ -119,7 +119,8 @@ void main() {
       // Use a port that nothing is listening on
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final port = server.port;
-      await server.close(); // Close immediately so the port is free but nobody listens
+      await server
+          .close(); // Close immediately so the port is free but nobody listens
 
       final device = CastDevice(
         id: 'test',

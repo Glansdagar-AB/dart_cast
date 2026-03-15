@@ -163,13 +163,10 @@ void main() {
           deviceId: 'test-device',
         );
 
-        expect(
-          () async => await pairVerify.execute(credentials),
+        await expectLater(
+          pairVerify.execute(credentials),
           throwsA(isA<AirPlayAuthException>()),
         );
-
-        // Wait for the request
-        await Future<void>.delayed(const Duration(milliseconds: 200));
 
         if (receivedBody != null) {
           final decoded = Tlv8.decode(receivedBody!);

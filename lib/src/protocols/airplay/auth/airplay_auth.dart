@@ -148,6 +148,9 @@ class AirPlayPairSetup {
         'Connection': 'keep-alive',
       };
 
+  /// Closes the underlying HTTP client.
+  void close() => _httpClient.close();
+
   static String _errorCodeToString(int code) {
     switch (code) {
       case 1:
@@ -387,6 +390,9 @@ class AirPlayPairVerify {
         port: port,
         path: path,
       );
+
+  /// Closes the underlying HTTP client.
+  void close() => _httpClient.close();
 
   Map<String, String> get _defaultHeaders => {
         'User-Agent': 'AirPlay/320.20',

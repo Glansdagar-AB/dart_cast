@@ -49,7 +49,7 @@ class HapCredentials {
     );
   }
 
-  /// Serializes to a colon-separated hex string for compact storage.
+  /// Serializes to a pipe-separated hex string for compact storage.
   String serialize() {
     return [
       _bytesToHex(clientPrivateKey),
@@ -57,15 +57,15 @@ class HapCredentials {
       clientId,
       _bytesToHex(devicePublicKey),
       deviceId,
-    ].join(':');
+    ].join('|');
   }
 
-  /// Deserializes from a colon-separated hex string.
+  /// Deserializes from a pipe-separated hex string.
   factory HapCredentials.deserialize(String data) {
-    final parts = data.split(':');
+    final parts = data.split('|');
     if (parts.length != 5) {
       throw FormatException(
-        'Invalid HapCredentials format: expected 5 colon-separated parts, '
+        'Invalid HapCredentials format: expected 5 pipe-separated parts, '
         'got ${parts.length}',
       );
     }

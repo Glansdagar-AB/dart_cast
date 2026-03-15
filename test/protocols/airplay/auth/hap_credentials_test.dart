@@ -52,15 +52,15 @@ void main() {
         expect(restored.deviceId, equals('test-device-id'));
       });
 
-      test('serialized format uses colons', () {
+      test('serialized format uses pipes', () {
         final serialized = credentials.serialize();
-        final parts = serialized.split(':');
+        final parts = serialized.split('|');
         expect(parts.length, equals(5));
       });
 
       test('deserialize throws on invalid format', () {
         expect(
-          () => HapCredentials.deserialize('only:two:parts'),
+          () => HapCredentials.deserialize('only|two|parts'),
           throwsFormatException,
         );
       });

@@ -65,7 +65,7 @@ class HapSrp {
     _privateKey = _bytesToBigInt(aBytes);
 
     // A = g^a mod N
-    _publicKey = _privateKey!.modPow(_SrpParams.g, _SrpParams.N);
+    _publicKey = _SrpParams.g.modPow(_privateKey!, _SrpParams.N);
 
     // Ensure A mod N != 0
     if (_publicKey! % _SrpParams.N == BigInt.zero) {

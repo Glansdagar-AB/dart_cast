@@ -88,24 +88,34 @@ class AirPlaySession extends CastSession {
     }
 
     // Attempt pair-verify with stored credentials
+    final pairVerify = AirPlayPairVerify(
+      host: device.address.address,
+      port: device.port,
+    );
     try {
       CastLogger.info('AirPlay: attempting pair-verify with stored credentials');
-      final pairVerify = AirPlayPairVerify(
-        host: device.address.address,
-        port: device.port,
-      );
       await pairVerify.execute(credentials!);
 
       CastLogger.info('AirPlay: pair-verify successful');
       stateMachine.transitionTo(SessionState.connected);
-    } catch (e) {
-      CastLogger.error('AirPlay: pair-verify failed: $e');
+    } on AirPlayAuthException catch (e) {
+      // Auth failure — credentials may be stale, need re-pairing
+      CastLogger.error('AirPlay: pair-verify auth failed: $e');
       _client?.close();
       _client = null;
       stateMachine.transitionTo(SessionState.disconnected);
       throw NeedsPairingException(
           'AirPlay pair-verify failed. Device may need re-pairing. '
           'Call pairSetup(pin) to re-pair.');
+    } catch (e) {
+      // Network error — don't discard credentials
+      CastLogger.error('AirPlay: pair-verify network error: $e');
+      _client?.close();
+      _client = null;
+      stateMachine.transitionTo(SessionState.disconnected);
+      rethrow;
+    } finally {
+      pairVerify.close();
     }
   }
 
@@ -124,14 +134,18 @@ class AirPlaySession extends CastSession {
       port: device.port,
     );
 
-    // Trigger PIN display
-    await pairSetup.startPinDisplay();
+    try {
+      // Trigger PIN display
+      await pairSetup.startPinDisplay();
 
-    // Run pair-setup
-    credentials = await pairSetup.pairSetup(pin: pin, clientId: id);
+      // Run pair-setup
+      credentials = await pairSetup.pairSetup(pin: pin, clientId: id);
 
-    CastLogger.info('AirPlay: pair-setup complete, credentials stored');
-    return credentials!;
+      CastLogger.info('AirPlay: pair-setup complete, credentials stored');
+      return credentials!;
+    } finally {
+      pairSetup.close();
+    }
   }
 
   /// Loads media onto the AirPlay device.

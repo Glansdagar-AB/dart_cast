@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/cast_device.dart';
 import '../../core/cast_exceptions.dart';
+import '../../utils/network_utils.dart';
 
 /// Service type URNs for DLNA SOAP actions.
 class DlnaServiceType {
@@ -79,7 +80,7 @@ class DlnaSoapBuilder {
 
   /// Builds a Seek SOAP envelope with the position formatted as HH:MM:SS.
   static String buildSeek(Duration position) {
-    final formatted = _formatDuration(position);
+    final formatted = NetworkUtils.formatDuration(position);
     return _wrapSoap(
       DlnaServiceType.avTransport,
       'Seek',
@@ -142,13 +143,6 @@ class DlnaSoapBuilder {
         '</u:$action>'
         '</s:Body>'
         '</s:Envelope>';
-  }
-
-  static String _formatDuration(Duration d) {
-    final hours = d.inHours.toString().padLeft(2, '0');
-    final minutes = (d.inMinutes % 60).toString().padLeft(2, '0');
-    final seconds = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return '$hours:$minutes:$seconds';
   }
 
   static String _escapeXml(String input) {

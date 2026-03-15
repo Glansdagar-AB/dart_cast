@@ -336,7 +336,7 @@ class ChromecastSession extends CastSession {
     _stopHeartbeat();
     _stopPositionPolling();
     _mediaStatusSubscription?.cancel();
-    _proxy.stop();
+    unawaited(_proxy.stop());
     super.dispose();
   }
 

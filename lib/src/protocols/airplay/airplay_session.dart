@@ -188,7 +188,9 @@ class AirPlaySession extends CastSession {
       // Start polling for playback state
       _startPolling();
     } catch (e) {
-      stateMachine.transitionTo(SessionState.disconnected);
+      if (stateMachine.canTransitionTo(SessionState.idle)) {
+        stateMachine.transitionTo(SessionState.idle);
+      }
       rethrow;
     }
   }

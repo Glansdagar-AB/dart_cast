@@ -150,7 +150,9 @@ void main() {
         ));
 
         // Wait for polling to transition to playing state
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        await session.stateStream
+            .firstWhere((s) => s == SessionState.playing)
+            .timeout(const Duration(seconds: 5));
         expect(session.state, equals(SessionState.playing));
 
         await session.stop();
@@ -172,8 +174,9 @@ void main() {
           type: CastMediaType.hls,
         ));
 
-        // Wait for at least one poll cycle
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        // Wait for at least one position update
+        await session.positionStream.first
+            .timeout(const Duration(seconds: 5));
 
         expect(positions, isNotEmpty);
         // Position should be ~123.456789 seconds based on mock server
@@ -194,8 +197,9 @@ void main() {
           type: CastMediaType.hls,
         ));
 
-        // Wait for at least one poll cycle
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        // Wait for at least one duration update
+        await session.durationStream.first
+            .timeout(const Duration(seconds: 5));
 
         expect(durations, isNotEmpty);
         // Duration should be 5400 seconds based on mock server
@@ -214,7 +218,8 @@ void main() {
         ));
 
         // Wait for a poll to occur
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        await session.positionStream.first
+            .timeout(const Duration(seconds: 5));
         final countBeforeStop = positions.length;
 
         await session.stop();
@@ -234,7 +239,9 @@ void main() {
         ));
 
         // Wait for poll — mock server returns rate=1.0
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        await session.stateStream
+            .firstWhere((s) => s == SessionState.playing)
+            .timeout(const Duration(seconds: 5));
 
         expect(session.state, equals(SessionState.playing));
       });
@@ -246,14 +253,18 @@ void main() {
           type: CastMediaType.hls,
         ));
 
-        // Wait for initial poll
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        // Wait for initial poll to reach playing
+        await session.stateStream
+            .firstWhere((s) => s == SessionState.playing)
+            .timeout(const Duration(seconds: 5));
 
         // Change mock to return rate=0
         mockServer.playbackRate = 0.0;
 
-        // Wait for next poll
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        // Wait for next poll to transition to paused
+        await session.stateStream
+            .firstWhere((s) => s == SessionState.paused)
+            .timeout(const Duration(seconds: 5));
 
         expect(session.state, equals(SessionState.paused));
       });

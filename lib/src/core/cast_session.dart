@@ -41,6 +41,7 @@ class SessionStateMachine {
     SessionState.buffering: {
       SessionState.playing,
       SessionState.loading, // source switching while buffering
+      SessionState.paused, // user can pause during buffering
       SessionState.disconnected,
     },
     SessionState.idle: {SessionState.loading, SessionState.disconnected},

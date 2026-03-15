@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import '../../core/cast_exceptions.dart';
@@ -79,6 +80,11 @@ class AirPlaySession extends CastSession {
   }
 
   /// Handles the case where the device requires HAP authentication.
+  ///
+  /// Opens a SINGLE raw TCP socket and performs pair-verify over it. On
+  /// success, that SAME socket is promoted to an encrypted HAP session.
+  /// This is critical because AirPlay devices bind authentication state to
+  /// the TCP connection — a new socket would be unauthenticated.
   Future<void> _handleAuthRequired() async {
     if (credentials == null) {
       _client?.close();
@@ -89,25 +95,39 @@ class AirPlaySession extends CastSession {
           'Call pairSetup(pin) first.');
     }
 
-    // Attempt pair-verify using the SAME http client as AirPlayClient
-    // so the authenticated connection is shared for subsequent /play commands.
-    final pairVerify = AirPlayPairVerify(
-      host: device.address.address,
-      port: device.port,
-      httpClient: _client!.httpClient,
-    );
+    Socket? rawSocket;
     try {
+      CastLogger.info(
+          'AirPlay: opening raw socket for pair-verify + HAP session');
+      rawSocket = await Socket.connect(
+        device.address.address,
+        device.port,
+      );
+
+      // Pair-verify over the raw socket
+      final pairVerify = AirPlayPairVerify.withSocket(
+        rawSocket,
+        host: device.address.address,
+        port: device.port,
+      );
+
       CastLogger.info(
           'AirPlay: attempting pair-verify with stored credentials');
       final sharedSecret = await pairVerify.execute(credentials!);
 
+      // Release the socket listener so HapSession can take over
+      await pairVerify.releaseSocket();
+
       CastLogger.info('AirPlay: pair-verify successful, creating HAP session');
 
-      // Create encrypted HAP session for all subsequent media commands
-      _hapSession = await HapSession.connect(
+      // Derive encryption keys and create HAP session on the SAME socket
+      final keys = await deriveHapSessionKeys(sharedSecret);
+      _hapSession = HapSession(
+        socket: rawSocket,
+        outputKey: keys.outputKey,
+        inputKey: keys.inputKey,
         host: device.address.address,
         port: device.port,
-        sharedSecret: sharedSecret,
         sessionId: _client!.sessionId,
       );
 
@@ -116,6 +136,7 @@ class AirPlaySession extends CastSession {
     } on AirPlayAuthException catch (e) {
       // Auth failure — credentials may be stale, need re-pairing
       CastLogger.error('AirPlay: pair-verify auth failed: $e');
+      rawSocket?.destroy();
       _client?.close();
       _client = null;
       stateMachine.transitionTo(SessionState.disconnected);
@@ -125,12 +146,11 @@ class AirPlaySession extends CastSession {
     } catch (e) {
       // Network error — don't discard credentials
       CastLogger.error('AirPlay: pair-verify network error: $e');
+      rawSocket?.destroy();
       _client?.close();
       _client = null;
       stateMachine.transitionTo(SessionState.disconnected);
       rethrow;
-    } finally {
-      // Do NOT close pairVerify — it shares the AirPlayClient's http.Client
     }
   }
 

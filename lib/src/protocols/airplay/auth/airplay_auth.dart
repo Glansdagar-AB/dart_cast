@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
@@ -188,16 +189,65 @@ class AirPlayPairSetup {
 ///
 /// Uses stored [HapCredentials] to establish an authenticated session
 /// without requiring a PIN.
+///
+/// Supports two modes:
+/// - **HTTP client mode** (default): Uses an [http.Client] for pair-verify.
+///   Simple but creates a separate TCP connection from the HAP session.
+/// - **Raw socket mode** ([withSocket]): Uses a raw [Socket] for pair-verify.
+///   This allows the SAME socket to be reused for the subsequent HAP encrypted
+///   session, which is required by AirPlay devices that bind authentication
+///   to a specific TCP connection.
 class AirPlayPairVerify {
   final String host;
   final int port;
-  final http.Client _httpClient;
+  final http.Client? _httpClient;
+  final Socket? _socket;
 
   AirPlayPairVerify({
     required this.host,
     required this.port,
     http.Client? httpClient,
-  }) : _httpClient = httpClient ?? http.Client();
+  })  : _httpClient = httpClient ?? http.Client(),
+        _socket = null;
+
+  /// Persistent socket listener state (for raw-socket mode).
+  StreamSubscription<Uint8List>? _socketSubscription;
+  final BytesBuilder _socketBuffer = BytesBuilder(copy: false);
+  Completer<void>? _dataArrived;
+  bool _socketDone = false;
+
+  /// Creates a pair-verify handler that operates over a raw [Socket].
+  ///
+  /// The socket is NOT closed by this class — ownership remains with the
+  /// caller so it can be handed off to [HapSession] after pair-verify.
+  AirPlayPairVerify.withSocket(
+    Socket socket, {
+    required this.host,
+    required this.port,
+  })  : _socket = socket,
+        _httpClient = null {
+    // Set up a single persistent listener on the socket stream.
+    // This avoids the "Stream has already been listened to" error
+    // when making multiple pair-verify requests over the same socket.
+    _socketSubscription = socket.listen(
+      (data) {
+        _socketBuffer.add(data);
+        _dataArrived?.complete();
+        _dataArrived = null;
+      },
+      onError: (Object error) {
+        _dataArrived?.completeError(error);
+        _dataArrived = null;
+      },
+      onDone: () {
+        _socketDone = true;
+        _dataArrived?.completeError(
+          AirPlayAuthException('Socket closed during pair-verify'),
+        );
+        _dataArrived = null;
+      },
+    );
+  }
 
   /// Runs the complete pair-verify flow using stored [credentials].
   ///
@@ -333,7 +383,10 @@ class AirPlayPairVerify {
   }
 
   Future<Uint8List> _postPairVerify(Uint8List body) async {
-    final response = await _httpClient.post(
+    if (_socket != null) {
+      return _rawHttpPost(_socket!, '/pair-verify', body);
+    }
+    final response = await _httpClient!.post(
       _uri('/pair-verify'),
       headers: {
         ..._defaultHeaders,
@@ -347,6 +400,152 @@ class AirPlayPairVerify {
       );
     }
     return Uint8List.fromList(response.bodyBytes);
+  }
+
+  /// Sends a raw HTTP POST over a [Socket] and reads the response.
+  ///
+  /// Uses the persistent socket listener set up in [withSocket] to avoid
+  /// "Stream has already been listened to" errors on subsequent calls.
+  Future<Uint8List> _rawHttpPost(
+      Socket socket, String path, Uint8List body) async {
+    // Build raw HTTP request
+    final request = StringBuffer();
+    request.write('POST $path HTTP/1.1\r\n');
+    request.write('Host: $host:$port\r\n');
+    request.write('Content-Type: application/octet-stream\r\n');
+    request.write('Content-Length: ${body.length}\r\n');
+    request.write('User-Agent: AirPlay/320.20\r\n');
+    request.write('X-Apple-HKP: 3\r\n');
+    request.write('Connection: keep-alive\r\n');
+    request.write('\r\n');
+
+    socket.add(utf8.encode(request.toString()));
+    socket.add(body);
+    await socket.flush();
+
+    // Wait for a complete HTTP response using the persistent listener.
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
+    while (DateTime.now().isBefore(deadline)) {
+      // Check if we already have enough buffered data
+      if (_socketBuffer.length > 0) {
+        final accumulated = Uint8List.fromList(_socketBuffer.toBytes());
+        final result = _tryParseRawHttpResponse(accumulated);
+        if (result != null) {
+          // Consume the bytes that were part of this response.
+          // _tryParseRawHttpResponse returns the body; we need to know
+          // how many bytes were consumed. Re-parse to find offset.
+          final consumed = _findResponseEnd(accumulated);
+          _socketBuffer.clear();
+          if (consumed < accumulated.length) {
+            _socketBuffer.add(accumulated.sublist(consumed));
+          }
+          return result;
+        }
+      }
+
+      if (_socketDone) {
+        throw AirPlayAuthException('Socket closed during pair-verify');
+      }
+
+      // Wait for more data
+      _dataArrived = Completer<void>();
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining.isNegative) break;
+      try {
+        await _dataArrived!.future.timeout(
+          remaining,
+          onTimeout: () => throw AirPlayAuthException('pair-verify timed out'),
+        );
+      } on AirPlayAuthException {
+        rethrow;
+      }
+    }
+
+    throw AirPlayAuthException('pair-verify timed out');
+  }
+
+  /// Returns the total number of bytes consumed by the HTTP response
+  /// (headers + body), so we can remove them from the buffer.
+  int _findResponseEnd(Uint8List data) {
+    int headerEnd = -1;
+    for (int i = 0; i < data.length - 3; i++) {
+      if (data[i] == 0x0D &&
+          data[i + 1] == 0x0A &&
+          data[i + 2] == 0x0D &&
+          data[i + 3] == 0x0A) {
+        headerEnd = i;
+        break;
+      }
+    }
+    if (headerEnd == -1) return 0;
+    final headerStr = utf8.decode(data.sublist(0, headerEnd));
+    final bodyStart = headerEnd + 4;
+    final clMatch = RegExp(r'content-length:\s*(\d+)', caseSensitive: false)
+        .firstMatch(headerStr);
+    if (clMatch != null) {
+      final contentLength = int.parse(clMatch.group(1)!);
+      return bodyStart + contentLength;
+    }
+    return data.length;
+  }
+
+  /// Tries to parse a raw HTTP response from accumulated bytes.
+  ///
+  /// Returns the response body bytes if a complete response has been received,
+  /// or null if more data is needed.
+  Uint8List? _tryParseRawHttpResponse(Uint8List data) {
+    // Find \r\n\r\n (end of headers)
+    int headerEnd = -1;
+    for (int i = 0; i < data.length - 3; i++) {
+      if (data[i] == 0x0D &&
+          data[i + 1] == 0x0A &&
+          data[i + 2] == 0x0D &&
+          data[i + 3] == 0x0A) {
+        headerEnd = i;
+        break;
+      }
+    }
+    if (headerEnd == -1) return null;
+
+    final headerStr = utf8.decode(data.sublist(0, headerEnd));
+    final bodyStart = headerEnd + 4;
+
+    // Parse status code
+    final statusMatch =
+        RegExp(r'HTTP/\d+\.\d+\s+(\d+)').firstMatch(headerStr);
+    if (statusMatch == null) return null;
+    final statusCode = int.parse(statusMatch.group(1)!);
+
+    // Parse Content-Length
+    final clMatch = RegExp(r'content-length:\s*(\d+)', caseSensitive: false)
+        .firstMatch(headerStr);
+    if (clMatch != null) {
+      final contentLength = int.parse(clMatch.group(1)!);
+      if (data.length < bodyStart + contentLength) return null; // Need more data
+      final bodyBytes = data.sublist(bodyStart, bodyStart + contentLength);
+      if (statusCode != 200) {
+        throw AirPlayAuthException(
+            'pair-verify failed with HTTP $statusCode');
+      }
+      return Uint8List.fromList(bodyBytes);
+    }
+
+    // No Content-Length — assume body is everything after headers
+    // (only valid once socket stops sending, but we return what we have)
+    if (data.length > bodyStart) {
+      if (statusCode != 200) {
+        throw AirPlayAuthException(
+            'pair-verify failed with HTTP $statusCode');
+      }
+      return Uint8List.fromList(data.sublist(bodyStart));
+    }
+
+    // Headers only, no body yet — for pair-verify there should always be a body
+    // Return empty body if status is not 200
+    if (statusCode != 200) {
+      throw AirPlayAuthException('pair-verify failed with HTTP $statusCode');
+    }
+    return Uint8List(0);
   }
 
   void _checkError(Map<int, List<int>> tlv, String step) {
@@ -401,8 +600,26 @@ class AirPlayPairVerify {
         path: path,
       );
 
-  /// Closes the underlying HTTP client.
-  void close() => _httpClient.close();
+  /// Releases the socket listener so the socket can be handed off to
+  /// [HapSession]. Must be called after [execute] completes and before
+  /// constructing a [HapSession] with the same socket.
+  ///
+  /// Only relevant in raw-socket mode; no-op otherwise.
+  Future<void> releaseSocket() async {
+    await _socketSubscription?.cancel();
+    _socketSubscription = null;
+  }
+
+  /// Closes the underlying HTTP client (if one was used).
+  ///
+  /// Does NOT close the socket in raw-socket mode — the caller retains
+  /// ownership so it can hand the socket off to [HapSession].
+  void close() {
+    _httpClient?.close();
+    // Cancel subscription but don't close the socket
+    _socketSubscription?.cancel();
+    _socketSubscription = null;
+  }
 
   Map<String, String> get _defaultHeaders => {
         'User-Agent': 'AirPlay/320.20',

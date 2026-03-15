@@ -550,4 +550,106 @@ void main() {
       });
     });
   });
+
+  group('DlnaSession.fromDevice()', () {
+    test('creates session from device with valid metadata', () {
+      final device = CastDevice(
+        id: 'uuid:test',
+        name: 'My TV',
+        protocol: CastProtocol.dlna,
+        address: InternetAddress('192.168.1.100'),
+        port: 49152,
+        metadata: {
+          'avTransportControlUrl': 'http://192.168.1.100:49152/AVTransport/control',
+          'renderingControlUrl': 'http://192.168.1.100:49152/RenderingControl/control',
+          'manufacturer': 'Samsung',
+          'modelName': 'UE55',
+        },
+      );
+
+      final session = DlnaSession.fromDevice(device);
+      expect(session.device.name, 'My TV');
+      expect(session.description.avTransportControlUrl, 'http://192.168.1.100:49152/AVTransport/control');
+      expect(session.description.renderingControlUrl, 'http://192.168.1.100:49152/RenderingControl/control');
+      expect(session.description.manufacturer, 'Samsung');
+    });
+
+    test('throws ArgumentError when avTransportControlUrl is missing', () {
+      final device = CastDevice(
+        id: 'uuid:test',
+        name: 'My TV',
+        protocol: CastProtocol.dlna,
+        address: InternetAddress('192.168.1.100'),
+        port: 49152,
+        metadata: {
+          'renderingControlUrl': 'http://192.168.1.100:49152/RenderingControl/control',
+        },
+      );
+
+      expect(
+        () => DlnaSession.fromDevice(device),
+        throwsA(isA<ArgumentError>().having(
+          (e) => e.message,
+          'message',
+          contains('missing the DLNA AVTransport control URL'),
+        )),
+      );
+    });
+
+    test('throws ArgumentError with available metadata keys listed', () {
+      final device = CastDevice(
+        id: 'uuid:test',
+        name: 'My TV',
+        protocol: CastProtocol.dlna,
+        address: InternetAddress('192.168.1.100'),
+        port: 49152,
+        metadata: {'someOtherKey': 'value'},
+      );
+
+      expect(
+        () => DlnaSession.fromDevice(device),
+        throwsA(isA<ArgumentError>().having(
+          (e) => e.message.toString(),
+          'message',
+          contains('someOtherKey'),
+        )),
+      );
+    });
+
+    test('loadMedia uses proxy URL not raw URL', () async {
+      final mockServer = MockDlnaServer();
+      await mockServer.start();
+
+      final device = CastDevice(
+        id: 'uuid:proxy-test',
+        name: 'Proxy TV',
+        protocol: CastProtocol.dlna,
+        address: InternetAddress('127.0.0.1'),
+        port: 8080,
+        metadata: {
+          'avTransportControlUrl': mockServer.avTransportUrl,
+          'renderingControlUrl': mockServer.renderingControlUrl,
+        },
+      );
+
+      final session = DlnaSession.fromDevice(device);
+      mockServer.transportState = 'PLAYING';
+      await session.connect();
+      await session.loadMedia(const CastMedia(
+        url: 'https://secret-cdn.example.com/video.m3u8',
+        type: CastMediaType.hls,
+        httpHeaders: {'Referer': 'https://megacloud.blog/'},
+      ));
+
+      final setUri = mockServer.capturedActions
+          .firstWhere((a) => a.action == 'SetAVTransportURI');
+      // Should contain proxy URL, NOT the raw CDN URL
+      expect(setUri.body, isNot(contains('secret-cdn.example.com')));
+      expect(setUri.body, contains('/stream/')); // proxy route
+
+      await session.disconnect();
+      session.dispose();
+      await mockServer.stop();
+    });
+  });
 }

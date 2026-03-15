@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../core/cast_device.dart';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
+import '../../core/media_proxy.dart';
 import '../../utils/logger.dart';
 import 'dlna_controller.dart';
 import 'dlna_device.dart';
@@ -15,6 +16,7 @@ class DlnaSession extends CastSession {
   final DlnaDeviceDescription description;
 
   final DlnaHttpClient _httpClient;
+  final MediaProxy _proxy;
   Timer? _pollTimer;
   bool _isPolling = false;
   CastMedia? _currentMedia;
@@ -30,7 +32,9 @@ class DlnaSession extends CastSession {
     required CastDevice device,
     required this.description,
     DlnaHttpClient? httpClient,
+    MediaProxy? proxy,
   })  : _httpClient = httpClient ?? DlnaHttpClient(),
+        _proxy = proxy ?? MediaProxy(),
         super(device);
 
   /// Creates a [DlnaSession] from a [CastDevice] discovered by
@@ -92,17 +96,35 @@ class DlnaSession extends CastSession {
     stateMachine.transitionTo(SessionState.loading);
     _currentMedia = media;
 
-    final subtitleUrl = media.subtitles.isNotEmpty
-        ? media.subtitles.first.url
-        : _currentSubtitle?.url;
+    // Start proxy and register media URL with headers
+    await _proxy.start();
+    final proxyUrl = _proxy.registerMedia(
+      media.url,
+      headers: media.httpHeaders,
+    );
+    CastLogger.info('DlnaSession: proxy URL = $proxyUrl');
 
-    // Send SetAVTransportURI
+    // Proxy subtitle URLs too if available
+    String? subtitleProxyUrl;
+    if (media.subtitles.isNotEmpty) {
+      subtitleProxyUrl = _proxy.registerMedia(
+        media.subtitles.first.url,
+        headers: media.httpHeaders,
+      );
+    } else if (_currentSubtitle != null) {
+      subtitleProxyUrl = _proxy.registerMedia(
+        _currentSubtitle!.url,
+        headers: media.httpHeaders,
+      );
+    }
+
+    // Send SetAVTransportURI with proxy URL (not original URL)
     await _sendAvTransport(
       'SetAVTransportURI',
       DlnaSoapBuilder.buildSetAVTransportURI(
-        media.url,
+        proxyUrl,
         title: media.title,
-        subtitleUrl: subtitleUrl,
+        subtitleUrl: subtitleProxyUrl,
       ),
     );
 
@@ -191,6 +213,7 @@ class DlnaSession extends CastSession {
       // Device may already be unreachable
     }
 
+    await _proxy.stop();
     stateMachine.transitionTo(SessionState.disconnected);
   }
 
@@ -198,6 +221,7 @@ class DlnaSession extends CastSession {
   void dispose() {
     _stopPolling();
     _httpClient.close();
+    _proxy.stop();
     super.dispose();
   }
 

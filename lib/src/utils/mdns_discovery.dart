@@ -122,46 +122,60 @@ class MdnsDiscovery {
     }
 
     try {
+      const nestedTimeout = Duration(seconds: 3);
+
       // Query for PTR records (service instances).
       await for (final PtrResourceRecord ptr in client.lookup<PtrResourceRecord>(
         ResourceRecordQuery.serverPointer(serviceType),
       )) {
-        // For each PTR result, look up SRV record (host + port).
-        await for (final SrvResourceRecord srv
-            in client.lookup<SrvResourceRecord>(
-          ResourceRecordQuery.service(ptr.domainName),
-        )) {
-          // Look up A record (IPv4 address).
-          await for (final IPAddressResourceRecord ip
-              in client.lookup<IPAddressResourceRecord>(
-            ResourceRecordQuery.addressIPv4(srv.target),
-          )) {
-            // Look up TXT records (metadata key=value pairs).
-            final txtRecords = <String, String>{};
-            await for (final TxtResourceRecord txt
-                in client.lookup<TxtResourceRecord>(
-              ResourceRecordQuery.text(ptr.domainName),
-            )) {
-              // The multicast_dns package joins TXT strings with writeln(),
-              // producing newline-separated key=value pairs.
-              for (final line in txt.text.split('\n')) {
-                final trimmed = line.trim();
-                if (trimmed.isEmpty) continue;
-                final eqIndex = trimmed.indexOf('=');
-                if (eqIndex > 0) {
-                  txtRecords[trimmed.substring(0, eqIndex)] =
-                      trimmed.substring(eqIndex + 1);
+        try {
+          // For each PTR result, look up SRV record (host + port).
+          await for (final SrvResourceRecord srv
+              in client.lookup<SrvResourceRecord>(
+            ResourceRecordQuery.service(ptr.domainName),
+          ).timeout(nestedTimeout, onTimeout: (sink) => sink.close())) {
+            try {
+              // Look up A record (IPv4 address).
+              await for (final IPAddressResourceRecord ip
+                  in client.lookup<IPAddressResourceRecord>(
+                ResourceRecordQuery.addressIPv4(srv.target),
+              ).timeout(nestedTimeout, onTimeout: (sink) => sink.close())) {
+                // Look up TXT records (metadata key=value pairs).
+                final txtRecords = <String, String>{};
+                try {
+                  await for (final TxtResourceRecord txt
+                      in client.lookup<TxtResourceRecord>(
+                    ResourceRecordQuery.text(ptr.domainName),
+                  ).timeout(nestedTimeout, onTimeout: (sink) => sink.close())) {
+                    // The multicast_dns package joins TXT strings with writeln(),
+                    // producing newline-separated key=value pairs.
+                    for (final line in txt.text.split('\n')) {
+                      final trimmed = line.trim();
+                      if (trimmed.isEmpty) continue;
+                      final eqIndex = trimmed.indexOf('=');
+                      if (eqIndex > 0) {
+                        txtRecords[trimmed.substring(0, eqIndex)] =
+                            trimmed.substring(eqIndex + 1);
+                      }
+                    }
+                  }
+                } catch (_) {
+                  // TXT lookup timed out — proceed with empty TXT records
                 }
-              }
-            }
 
-            yield MdnsServiceInfo(
-              name: ptr.domainName,
-              host: ip.address.address,
-              port: srv.port,
-              txtRecords: txtRecords,
-            );
+                yield MdnsServiceInfo(
+                  name: ptr.domainName,
+                  host: ip.address.address,
+                  port: srv.port,
+                  txtRecords: txtRecords,
+                );
+              }
+            } catch (_) {
+              // A record lookup timed out — skip this device
+            }
           }
+        } catch (_) {
+          // SRV lookup timed out — skip this device
         }
       }
     } finally {

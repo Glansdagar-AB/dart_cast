@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -171,6 +172,13 @@ class MediaProxy {
     HttpRequest request,
     String token,
   ) async {
+    if (_hlsStreamHandler == null) {
+      request.response
+        ..statusCode = HttpStatus.serviceUnavailable
+        ..close();
+      return;
+    }
+
     final route = _routes[token];
     if (route == null || route.type != _RouteType.hlsStream) {
       request.response.statusCode = HttpStatus.notFound;
@@ -245,7 +253,7 @@ class MediaProxy {
       // Buffer the playlist content for rewriting
       final body = await upstreamResponse
           .fold<List<int>>(<int>[], (prev, chunk) => prev..addAll(chunk));
-      final content = String.fromCharCodes(body);
+      final content = utf8.decode(body);
 
       if (content.trimLeft().startsWith('#EXTM3U')) {
         final rewritten = HlsParser.rewritePlaylist(
@@ -256,13 +264,14 @@ class MediaProxy {
         );
 
         // Override content type and length for rewritten playlist
+        final encoded = utf8.encode(rewritten);
         request.response.headers.contentType =
             ContentType('application', 'vnd.apple.mpegurl');
         request.response.headers.set(
           'Content-Length',
-          rewritten.length.toString(),
+          encoded.length.toString(),
         );
-        request.response.write(rewritten);
+        request.response.add(encoded);
         await request.response.close();
         return;
       }

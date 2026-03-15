@@ -17,6 +17,11 @@ class MockDlnaServer {
   String get baseUrl => 'http://127.0.0.1:${_server.port}';
   String get avTransportUrl => '$baseUrl/AVTransport/control';
   String get renderingControlUrl => '$baseUrl/RenderingControl/control';
+  String get connectionManagerUrl => '$baseUrl/ConnectionManager/control';
+
+  /// Supported protocol info entries for GetProtocolInfo Sink response.
+  /// Set this to control what supportsMediaType() will see.
+  List<String> supportedProtocols = [];
 
   final List<_CapturedSoapAction> capturedActions = [];
 
@@ -102,6 +107,14 @@ class MockDlnaServer {
           'GetVolumeResponse',
           DlnaServiceType.renderingControl,
           '<CurrentVolume>$_volume</CurrentVolume>',
+        ));
+        break;
+      case 'GetProtocolInfo':
+        final sink = supportedProtocols.join(',');
+        request.response.write(_soapResponse(
+          'GetProtocolInfoResponse',
+          DlnaServiceType.connectionManager,
+          '<Source></Source><Sink>$sink</Sink>',
         ));
         break;
       default:
@@ -541,12 +554,15 @@ void main() {
           format: 'srt',
         ));
 
-        // Should have called SetAVTransportURI again with subtitle
+        // Should have called SetAVTransportURI again with proxied subtitle
         final setUriActions = mockServer.capturedActions
             .where((a) => a.action == 'SetAVTransportURI')
             .toList();
         expect(setUriActions, hasLength(1));
-        expect(setUriActions.first.body, contains('subs.srt'));
+        // Subtitle URL should be proxied (not raw), so it should contain /stream/
+        expect(setUriActions.first.body, contains('/stream/'));
+        // Raw subtitle URL should NOT appear (it's proxied)
+        expect(setUriActions.first.body, isNot(contains('subs.srt')));
       });
     });
   });
@@ -648,6 +664,116 @@ void main() {
       expect(setUri.body, contains('/ts-stream/')); // HLS uses ts-stream route
 
       await session.disconnect();
+      session.dispose();
+      await mockServer.stop();
+    });
+  });
+
+  group('supportsMediaType', () {
+    test('returns false when connectionManagerControlUrl is null', () async {
+      final mockServer = MockDlnaServer();
+      await mockServer.start();
+
+      final device = CastDevice(
+        id: 'uuid:no-cm',
+        name: 'No CM TV',
+        protocol: CastProtocol.dlna,
+        address: InternetAddress('127.0.0.1'),
+        port: 8080,
+      );
+
+      final description = DlnaDeviceDescription(
+        friendlyName: 'No CM TV',
+        udn: 'uuid:no-cm',
+        avTransportControlUrl: mockServer.avTransportUrl,
+        renderingControlUrl: mockServer.renderingControlUrl,
+        connectionManagerControlUrl: null,
+        locationUrl: mockServer.baseUrl,
+      );
+
+      final session = DlnaSession(
+        device: device,
+        description: description,
+      );
+
+      final result = await session.supportsMediaType('video/mp4');
+      expect(result, isFalse);
+
+      session.dispose();
+      await mockServer.stop();
+    });
+
+    test('returns true when Sink contains the queried MIME type', () async {
+      final mockServer = MockDlnaServer();
+      await mockServer.start();
+      mockServer.supportedProtocols = [
+        'http-get:*:video/mp4:*',
+        'http-get:*:video/mp2t:*',
+        'http-get:*:audio/mpeg:*',
+      ];
+
+      final device = CastDevice(
+        id: 'uuid:cm-test',
+        name: 'CM TV',
+        protocol: CastProtocol.dlna,
+        address: InternetAddress('127.0.0.1'),
+        port: 8080,
+      );
+
+      final description = DlnaDeviceDescription(
+        friendlyName: 'CM TV',
+        udn: 'uuid:cm-test',
+        avTransportControlUrl: mockServer.avTransportUrl,
+        renderingControlUrl: mockServer.renderingControlUrl,
+        connectionManagerControlUrl: mockServer.connectionManagerUrl,
+        locationUrl: mockServer.baseUrl,
+      );
+
+      final session = DlnaSession(
+        device: device,
+        description: description,
+      );
+
+      final result = await session.supportsMediaType('video/mp4');
+      expect(result, isTrue);
+
+      session.dispose();
+      await mockServer.stop();
+    });
+
+    test('returns false when Sink does not contain the queried MIME type', () async {
+      final mockServer = MockDlnaServer();
+      await mockServer.start();
+      mockServer.supportedProtocols = [
+        'http-get:*:video/mp4:*',
+        'http-get:*:audio/mpeg:*',
+      ];
+
+      final device = CastDevice(
+        id: 'uuid:cm-test2',
+        name: 'CM TV 2',
+        protocol: CastProtocol.dlna,
+        address: InternetAddress('127.0.0.1'),
+        port: 8080,
+      );
+
+      final description = DlnaDeviceDescription(
+        friendlyName: 'CM TV 2',
+        udn: 'uuid:cm-test2',
+        avTransportControlUrl: mockServer.avTransportUrl,
+        renderingControlUrl: mockServer.renderingControlUrl,
+        connectionManagerControlUrl: mockServer.connectionManagerUrl,
+        locationUrl: mockServer.baseUrl,
+      );
+
+      final session = DlnaSession(
+        device: device,
+        description: description,
+      );
+
+      final result = await session.supportsMediaType('video/webm');
+      expect(result, isFalse);
+
       session.dispose();
       await mockServer.stop();
     });

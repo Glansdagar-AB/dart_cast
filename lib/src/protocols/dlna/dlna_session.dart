@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async' show Timer, unawaited;
 
 import '../../core/cast_device.dart';
 import '../../core/cast_media.dart';
@@ -21,6 +21,8 @@ class DlnaSession extends CastSession {
   bool _isPolling = false;
   CastMedia? _currentMedia;
   CastSubtitle? _currentSubtitle;
+  String? _currentProxyUrl;
+  String? _currentProtocolInfo;
 
   /// Creates a [DlnaSession] for the given [device] and [description].
   ///
@@ -128,6 +130,9 @@ class DlnaSession extends CastSession {
       protocolInfo = 'http-get:*:video/mp4:*';
     }
 
+    _currentProxyUrl = proxyUrl;
+    _currentProtocolInfo = protocolInfo;
+
     CastLogger.info('DlnaSession: proxy URL = $proxyUrl');
 
     // Proxy subtitle URLs too if available
@@ -213,15 +218,24 @@ class DlnaSession extends CastSession {
   Future<void> setSubtitle(CastSubtitle? subtitle) async {
     _currentSubtitle = subtitle;
     final media = _currentMedia;
-    if (media == null) return;
+    if (media == null || _currentProxyUrl == null) return;
 
-    // Re-send SetAVTransportURI with updated subtitle
+    String? subtitleProxyUrl;
+    if (subtitle != null) {
+      subtitleProxyUrl = _proxy.registerMedia(
+        subtitle.url,
+        headers: media.httpHeaders,
+      );
+    }
+
+    // Re-send SetAVTransportURI with proxy URL and proxied subtitle
     await _sendAvTransport(
       'SetAVTransportURI',
       DlnaSoapBuilder.buildSetAVTransportURI(
-        media.url,
+        _currentProxyUrl!,
         title: media.title,
-        subtitleUrl: subtitle?.url,
+        subtitleUrl: subtitleProxyUrl,
+        protocolInfo: _currentProtocolInfo ?? 'http-get:*:video/mp4:*',
       ),
     );
 
@@ -244,11 +258,16 @@ class DlnaSession extends CastSession {
     stateMachine.transitionTo(SessionState.disconnected);
   }
 
+  /// Disposes of resources used by this session.
+  ///
+  /// Prefer calling [disconnect] before [dispose] for a clean shutdown
+  /// that awaits the proxy server stop.
   @override
   void dispose() {
     _stopPolling();
     _httpClient.close();
-    _proxy.stop();
+    // Fire-and-forget — callers should await disconnect() before dispose() for clean shutdown
+    unawaited(_proxy.stop());
     super.dispose();
   }
 

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'hls_parser.dart';
@@ -113,7 +114,7 @@ class HlsStreamHandler {
     final response = await request.close();
     final bytes = await response
         .fold<List<int>>(<int>[], (prev, chunk) => prev..addAll(chunk));
-    return String.fromCharCodes(bytes);
+    return utf8.decode(bytes);
   }
 
   /// Closes the underlying HTTP client.

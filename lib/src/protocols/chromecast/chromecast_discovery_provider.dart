@@ -4,11 +4,6 @@ import '../../core/cast_device.dart';
 import '../../core/discovery_provider.dart';
 import '../../utils/mdns_discovery.dart';
 
-/// Function type for performing mDNS service discovery.
-///
-/// Returns a stream of [MdnsServiceInfo] entries found on the network.
-typedef MdnsLookup = Stream<MdnsServiceInfo> Function(String serviceType);
-
 /// Discovers Chromecast devices via mDNS (_googlecast._tcp.local).
 ///
 /// Queries the local network for Chromecast services, parses TXT records

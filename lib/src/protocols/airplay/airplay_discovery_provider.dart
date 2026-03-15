@@ -4,9 +4,6 @@ import '../../core/cast_device.dart';
 import '../../core/discovery_provider.dart';
 import '../../utils/mdns_discovery.dart';
 
-/// Function type for performing mDNS service discovery.
-typedef MdnsLookup = Stream<MdnsServiceInfo> Function(String serviceType);
-
 /// Discovers AirPlay devices via mDNS (_airplay._tcp.local).
 ///
 /// Queries the local network for AirPlay services, parses TXT records

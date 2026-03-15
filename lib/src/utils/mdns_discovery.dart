@@ -86,6 +86,11 @@ class MdnsServiceInfo {
   }
 }
 
+/// Function type for performing mDNS service discovery.
+///
+/// Returns a stream of [MdnsServiceInfo] entries found on the network.
+typedef MdnsLookup = Stream<MdnsServiceInfo> Function(String serviceType);
+
 /// Constants and utilities for mDNS-based device discovery.
 class MdnsDiscovery {
   MdnsDiscovery._();

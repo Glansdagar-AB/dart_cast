@@ -434,6 +434,13 @@ class HapSession {
     CastLogger.info(
         'HAP session: RTSP SETUP response: ${setupResp.statusCode}');
 
+    // FEEDBACK — pyatv sends POST /feedback between SETUP and RECORD
+    CastLogger.info('HAP session: POST /feedback');
+    final feedbackResp =
+        await sendRtspRequest('POST', '/feedback');
+    CastLogger.info(
+        'HAP session: /feedback response: ${feedbackResp.statusCode}');
+
     // RECORD
     CastLogger.info('HAP session: RTSP RECORD');
     final recordResp = await sendRtspRequest('RECORD', '*');

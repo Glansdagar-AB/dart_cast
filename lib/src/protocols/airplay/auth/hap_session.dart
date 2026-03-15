@@ -101,6 +101,19 @@ class HapSession {
   /// Session ID for X-Apple-Session-ID header.
   String _sessionId;
 
+  /// Persistent socket listener — set up once to avoid "Stream has already
+  /// been listened to" errors on the single-subscription socket stream.
+  late final StreamSubscription<Uint8List> _socketSubscription;
+
+  /// Raw encrypted bytes received from the socket, waiting to be consumed.
+  final BytesBuilder _rawReceiveBuffer = BytesBuilder(copy: false);
+
+  /// Completer that is completed whenever new data arrives on the socket.
+  Completer<void>? _dataArrived;
+
+  /// Whether the socket has been closed by the remote end.
+  bool _socketDone = false;
+
   /// Creates a [HapSession] wrapping a raw TCP [socket].
   ///
   /// [outputKey] encrypts data sent to the device.
@@ -115,7 +128,31 @@ class HapSession {
   })  : _socket = socket,
         _outputKey = outputKey,
         _inputKey = inputKey,
-        _sessionId = sessionId ?? _generateUuid();
+        _sessionId = sessionId ?? _generateUuid() {
+    _setupSocketListener();
+  }
+
+  /// Sets up the ONE persistent listener on the socket stream.
+  void _setupSocketListener() {
+    _socketSubscription = _socket.listen(
+      (data) {
+        _rawReceiveBuffer.add(data);
+        _dataArrived?.complete();
+        _dataArrived = null;
+      },
+      onError: (Object error) {
+        _dataArrived?.completeError(error);
+        _dataArrived = null;
+      },
+      onDone: () {
+        _socketDone = true;
+        _dataArrived?.completeError(
+          HapSessionException('Socket closed unexpectedly'),
+        );
+        _dataArrived = null;
+      },
+    );
+  }
 
   /// The current session ID.
   String get sessionId => _sessionId;
@@ -292,62 +329,92 @@ class HapSession {
 
   /// Reads encrypted frames from the socket until a complete HTTP response
   /// is received.
+  ///
+  /// Uses the persistent socket listener — never calls `_socket.listen()`
+  /// directly, which would fail on second invocation since Dart sockets are
+  /// single-subscription streams.
   Future<Uint8List> _readEncryptedResponse() async {
-    final completer = Completer<Uint8List>();
     final decryptedBuffer = BytesBuilder(copy: false);
-    StreamSubscription<Uint8List>? subscription;
+    final deadline = DateTime.now().add(const Duration(seconds: 30));
 
-    // Timeout after 30 seconds
-    final timer = Timer(const Duration(seconds: 30), () {
-      if (!completer.isCompleted) {
-        subscription?.cancel();
-        completer.completeError(
-          HapSessionException('Timed out waiting for response'),
-        );
+    while (DateTime.now().isBefore(deadline)) {
+      // Process any raw data that has accumulated in the buffer.
+      if (_rawReceiveBuffer.length > 0) {
+        final raw = _rawReceiveBuffer.toBytes();
+        _rawReceiveBuffer.clear();
+        final decrypted = await decrypt(Uint8List.fromList(raw));
+        if (decrypted.isNotEmpty) {
+          decryptedBuffer.add(decrypted);
+        }
+
+        // Check if we have a complete HTTP response.
+        final accumulated = decryptedBuffer.toBytes();
+        if (_isCompleteHttpResponse(accumulated)) {
+          return Uint8List.fromList(accumulated);
+        }
       }
-    });
 
-    subscription = _socket.listen(
-      (data) async {
-        try {
-          final decrypted = await decrypt(Uint8List.fromList(data));
-          if (decrypted.isNotEmpty) {
-            decryptedBuffer.add(decrypted);
-          }
+      // If the socket is done and there is no more data, return what we have
+      // (mirrors the original onDone behaviour).
+      if (_socketDone) {
+        return Uint8List.fromList(decryptedBuffer.toBytes());
+      }
 
-          // Check if we have a complete HTTP response
-          final accumulated = decryptedBuffer.toBytes();
-          if (_isCompleteHttpResponse(accumulated)) {
-            timer.cancel();
-            subscription?.cancel();
-            if (!completer.isCompleted) {
-              completer.complete(Uint8List.fromList(accumulated));
-            }
-          }
-        } catch (e) {
-          timer.cancel();
-          subscription?.cancel();
-          if (!completer.isCompleted) {
-            completer.completeError(e);
-          }
-        }
-      },
-      onError: (Object error) {
-        timer.cancel();
-        if (!completer.isCompleted) {
-          completer.completeError(error);
-        }
-      },
-      onDone: () {
-        timer.cancel();
-        if (!completer.isCompleted) {
-          // Socket closed — return whatever we have
-          completer.complete(Uint8List.fromList(decryptedBuffer.toBytes()));
-        }
-      },
-    );
+      // Wait for the next chunk of data from the persistent listener.
+      _dataArrived = Completer<void>();
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining.isNegative) break;
+      try {
+        await _dataArrived!.future.timeout(
+          remaining,
+          onTimeout: () =>
+              throw HapSessionException('Timed out waiting for response'),
+        );
+      } on HapSessionException {
+        rethrow;
+      }
+    }
 
-    return completer.future;
+    throw HapSessionException('Timed out waiting for response');
+  }
+
+  /// Waits for any decrypted data to arrive from the socket and returns it.
+  ///
+  /// Unlike [_readEncryptedResponse], this does not wait for a complete HTTP
+  /// response — it returns as soon as at least one decrypted byte is available.
+  /// Used by tests that need to read raw decrypted data from the socket without
+  /// HTTP framing expectations.
+  // Visible for testing only.
+  Future<Uint8List> readDecryptedData({
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+
+    while (DateTime.now().isBefore(deadline)) {
+      if (_rawReceiveBuffer.length > 0) {
+        final raw = _rawReceiveBuffer.toBytes();
+        _rawReceiveBuffer.clear();
+        final decrypted = await decrypt(Uint8List.fromList(raw));
+        if (decrypted.isNotEmpty) {
+          return decrypted;
+        }
+      }
+
+      if (_socketDone) {
+        return Uint8List(0);
+      }
+
+      _dataArrived = Completer<void>();
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining.isNegative) break;
+      await _dataArrived!.future.timeout(
+        remaining,
+        onTimeout: () =>
+            throw HapSessionException('Timed out waiting for data'),
+      );
+    }
+
+    throw HapSessionException('Timed out waiting for data');
   }
 
   /// Checks if the accumulated bytes form a complete HTTP response.
@@ -529,8 +596,13 @@ class HapSession {
     }
   }
 
-  /// Closes the underlying socket.
+  /// Closes the underlying socket and cancels the persistent listener.
   Future<void> close() async {
+    try {
+      await _socketSubscription.cancel();
+    } catch (_) {
+      // Ignore errors during subscription cancel
+    }
     try {
       _socket.destroy();
     } catch (_) {

@@ -303,10 +303,10 @@ void main() {
         sessionId: 'test-session-id',
       );
 
-      // Server side: decrypt request, send encrypted response
-      server.listen((serverSocket) {
-        // The server uses reversed keys: inputKey = client's outputKey,
-        // outputKey = client's inputKey
+      // Server side: decrypt request, send encrypted response.
+      // HapSession's constructor sets up a single persistent listener on
+      // the socket, so we must NOT call serverSocket.listen() separately.
+      server.listen((serverSocket) async {
         final serverDecSession = HapSession(
           socket: serverSocket,
           outputKey: Uint8List.fromList(key), // matches client's inputKey
@@ -315,28 +315,25 @@ void main() {
           port: server.port,
         );
 
-        serverSocket.listen((data) async {
-          try {
-            // Decrypt the request
-            final decrypted =
-                await serverDecSession.decrypt(Uint8List.fromList(data));
-            final requestStr = utf8.decode(decrypted);
+        try {
+          // Read decrypted data via the session's internal buffer
+          final decrypted = await serverDecSession.readDecryptedData();
+          final requestStr = utf8.decode(decrypted);
 
-            // Verify it looks like an HTTP request
-            if (requestStr.contains('GET /test-endpoint')) {
-              // Send encrypted HTTP response
-              final responseStr =
-                  'HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, World!';
-              final responseBytes =
-                  Uint8List.fromList(utf8.encode(responseStr));
-              final encrypted = await serverDecSession.encrypt(responseBytes);
-              serverSocket.add(encrypted);
-              await serverSocket.flush();
-            }
-          } catch (e) {
-            // Ignore decryption errors in test
+          // Verify it looks like an HTTP request
+          if (requestStr.contains('GET /test-endpoint')) {
+            // Send encrypted HTTP response
+            final responseStr =
+                'HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, World!';
+            final respBytes =
+                Uint8List.fromList(utf8.encode(responseStr));
+            final encrypted = await serverDecSession.encrypt(respBytes);
+            serverSocket.add(encrypted);
+            await serverSocket.flush();
           }
-        });
+        } catch (e) {
+          // Ignore decryption errors in test
+        }
       });
 
       try {

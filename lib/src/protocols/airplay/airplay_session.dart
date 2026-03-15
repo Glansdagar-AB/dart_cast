@@ -9,6 +9,7 @@ import '../../utils/logger.dart';
 import 'airplay_client.dart';
 import 'auth/airplay_auth.dart';
 import 'auth/hap_credentials.dart';
+import 'auth/hap_session.dart';
 import 'plist_codec.dart';
 
 /// AirPlay 1 cast session with playback control and position polling.
@@ -20,6 +21,7 @@ import 'plist_codec.dart';
 /// - Supports HAP authentication for devices that require it (Apple TV tvOS 10.2+)
 class AirPlaySession extends CastSession {
   AirPlayClient? _client;
+  HapSession? _hapSession;
   final MediaProxy _proxy = MediaProxy();
   Timer? _pollTimer;
   bool _isPolling = false;
@@ -97,14 +99,19 @@ class AirPlaySession extends CastSession {
     try {
       CastLogger.info(
           'AirPlay: attempting pair-verify with stored credentials');
-      await pairVerify.execute(credentials!);
+      final sharedSecret = await pairVerify.execute(credentials!);
 
-      CastLogger.info('AirPlay: pair-verify successful');
-      CastLogger.warning(
-          'AirPlay: Note — this device requires an encrypted HAP session '
-          'for media commands. Encrypted session support is not yet implemented. '
-          'Media playback may fail with 403 or connection reset. '
-          'Consider using Chromecast protocol for this device instead.');
+      CastLogger.info('AirPlay: pair-verify successful, creating HAP session');
+
+      // Create encrypted HAP session for all subsequent media commands
+      _hapSession = await HapSession.connect(
+        host: device.address.address,
+        port: device.port,
+        sharedSecret: sharedSecret,
+        sessionId: _client!.sessionId,
+      );
+
+      CastLogger.info('AirPlay: HAP encrypted session established');
       stateMachine.transitionTo(SessionState.connected);
     } on AirPlayAuthException catch (e) {
       // Auth failure — credentials may be stale, need re-pairing
@@ -196,10 +203,14 @@ class AirPlaySession extends CastSession {
         playUrl = proxyUrl;
       }
 
-      // Start playback on the device
+      // Start playback on the device via encrypted channel if available
       // AirPlay start position is fractional (0.0-1.0); without knowing
       // total duration we default to 0.0.
-      await _client!.play(playUrl, startPosition: 0.0);
+      if (_hapSession != null) {
+        await _hapSession!.play(playUrl, startPosition: 0.0);
+      } else {
+        await _client!.play(playUrl, startPosition: 0.0);
+      }
 
       // Start polling for playback state
       _startPolling();
@@ -242,7 +253,11 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> play() async {
     _ensureClient();
-    await _client!.rate(1);
+    if (_hapSession != null) {
+      await _hapSession!.rate(1);
+    } else {
+      await _client!.rate(1);
+    }
     if (stateMachine.canTransitionTo(SessionState.playing)) {
       stateMachine.transitionTo(SessionState.playing);
     }
@@ -252,7 +267,11 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> pause() async {
     _ensureClient();
-    await _client!.rate(0);
+    if (_hapSession != null) {
+      await _hapSession!.rate(0);
+    } else {
+      await _client!.rate(0);
+    }
     if (stateMachine.canTransitionTo(SessionState.paused)) {
       stateMachine.transitionTo(SessionState.paused);
     }
@@ -263,7 +282,11 @@ class AirPlaySession extends CastSession {
   Future<void> stop() async {
     _ensureClient();
     _stopPolling();
-    await _client!.stop();
+    if (_hapSession != null) {
+      await _hapSession!.stop();
+    } else {
+      await _client!.stop();
+    }
     _proxy.cleanupPreviousMedia();
     if (stateMachine.canTransitionTo(SessionState.idle)) {
       stateMachine.transitionTo(SessionState.idle);
@@ -274,7 +297,11 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> seek(Duration position) async {
     _ensureClient();
-    await _client!.scrub(position.inMilliseconds / 1000.0);
+    if (_hapSession != null) {
+      await _hapSession!.scrub(position.inMilliseconds / 1000.0);
+    } else {
+      await _client!.scrub(position.inMilliseconds / 1000.0);
+    }
   }
 
   /// Sets volume. AirPlay 1 has no volume endpoint, so this stores locally.
@@ -321,7 +348,11 @@ class AirPlaySession extends CastSession {
       playUrl = proxyUrl;
     }
 
-    await _client!.play(playUrl, startPosition: 0.0);
+    if (_hapSession != null) {
+      await _hapSession!.play(playUrl, startPosition: 0.0);
+    } else {
+      await _client!.play(playUrl, startPosition: 0.0);
+    }
   }
 
   /// Disconnects from the device, stopping playback and cleaning up.
@@ -330,13 +361,17 @@ class AirPlaySession extends CastSession {
     _stopPolling();
 
     try {
-      if (_client != null) {
+      if (_hapSession != null) {
+        await _hapSession!.stop();
+      } else if (_client != null) {
         await _client!.stop();
       }
     } catch (_) {
       // Ignore errors during disconnect cleanup
     }
 
+    await _hapSession?.close();
+    _hapSession = null;
     _client?.close();
     _client = null;
     await _proxy.stop();
@@ -347,6 +382,8 @@ class AirPlaySession extends CastSession {
   @override
   void dispose() {
     _stopPolling();
+    _hapSession?.close();
+    _hapSession = null;
     _client?.close();
     _client = null;
     // Don't await — fire and forget during dispose
@@ -375,7 +412,12 @@ class AirPlaySession extends CastSession {
     _isPolling = true;
 
     try {
-      final info = await _client!.getPlaybackInfo();
+      final PlaybackInfo info;
+      if (_hapSession != null) {
+        info = await _hapSession!.getPlaybackInfo();
+      } else {
+        info = await _client!.getPlaybackInfo();
+      }
       _updateFromPlaybackInfo(info);
     } catch (_) {
       // Connection lost or device unresponsive — could transition to disconnected

@@ -20,6 +20,7 @@ export 'src/protocols/airplay/airplay_discovery_provider.dart';
 export 'src/protocols/airplay/airplay_session.dart';
 export 'src/protocols/airplay/auth/airplay_auth.dart';
 export 'src/protocols/airplay/auth/hap_credentials.dart';
+export 'src/protocols/airplay/auth/hap_session.dart';
 export 'src/protocols/airplay/auth/hap_srp.dart';
 export 'src/protocols/airplay/auth/tlv8.dart';
 export 'src/protocols/airplay/plist_codec.dart';

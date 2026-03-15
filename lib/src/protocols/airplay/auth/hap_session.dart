@@ -552,26 +552,44 @@ class HapSession {
           'X-Apple-Session-ID': _sessionId,
         },
         body: utf8.encode(body));
-    CastLogger.info('HAP session: /play response: ${response.statusCode}');
+    CastLogger.info(
+        'HAP session: /play response: ${response.statusCode} body: ${response.bodyText}');
 
-    // AirPlay may return 200 (OK) or other codes
-    if (response.statusCode >= 400) {
-      // Try with x-apple-binary-plist format as fallback
-      CastLogger.info('HAP session: /play failed with text/parameters, trying binary plist');
-      // Build a simple XML plist (binary plist is complex to encode without a library)
-      final plistBody = '<?xml version="1.0" encoding="UTF-8"?>\n'
-          '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-          '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-          '<plist version="1.0">\n'
-          '<dict>\n'
-          '  <key>Content-Location</key>\n'
-          '  <string>$url</string>\n'
-          '  <key>Start-Position</key>\n'
-          '  <real>$startPosition</real>\n'
-          '</dict>\n'
-          '</plist>\n';
+    if (response.statusCode < 400) return;
 
-      final response2 = await sendRequest('POST', '/play',
+    // Try with application/x-apple-binary-plist content type and XML plist body
+    // (pyatv uses binary plist but XML plist is also accepted by many devices)
+    CastLogger.info(
+        'HAP session: /play failed with text/parameters, trying plist format');
+    final plistBody = '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        '<dict>\n'
+        '  <key>Content-Location</key>\n'
+        '  <string>$url</string>\n'
+        '  <key>Start-Position</key>\n'
+        '  <real>$startPosition</real>\n'
+        '  <key>X-Apple-Session-ID</key>\n'
+        '  <string>$_sessionId</string>\n'
+        '</dict>\n'
+        '</plist>\n';
+
+    final response2 = await sendRequest('POST', '/play',
+        headers: {
+          'User-Agent': 'AirPlay/550.10',
+          'Content-Type': 'application/x-apple-binary-plist',
+          'X-Apple-ProtocolVersion': '1',
+          'X-Apple-Session-ID': _sessionId,
+        },
+        body: utf8.encode(plistBody));
+    CastLogger.info(
+        'HAP session: /play plist response: ${response2.statusCode} body: ${response2.bodyText}');
+
+    if (response2.statusCode >= 400) {
+      // Last try: /play with just the URL in the path
+      CastLogger.info('HAP session: trying POST /play with reversed content type');
+      final response3 = await sendRequest('POST', '/play',
           headers: {
             'User-Agent': 'AirPlay/550.10',
             'Content-Type': 'text/x-apple-plist+xml',
@@ -579,8 +597,9 @@ class HapSession {
             'X-Apple-Session-ID': _sessionId,
           },
           body: utf8.encode(plistBody));
-      CastLogger.info('HAP session: /play plist response: ${response2.statusCode}');
-      _checkResponse(response2, 'play');
+      CastLogger.info(
+          'HAP session: /play xml-plist response: ${response3.statusCode} body: ${response3.bodyText}');
+      _checkResponse(response3, 'play');
     }
   }
 

@@ -5,6 +5,7 @@ library;
 export 'src/core/cast_device.dart';
 export 'src/core/cast_exceptions.dart';
 export 'src/core/cast_media.dart';
+export 'src/core/cast_session.dart';
 
 // Utils
 export 'src/utils/logger.dart';

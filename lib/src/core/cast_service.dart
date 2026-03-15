@@ -4,7 +4,6 @@ import 'cast_device.dart';
 import 'cast_session.dart';
 import 'discovery_manager.dart';
 import 'discovery_provider.dart';
-import '../utils/logger.dart';
 
 /// Factory function for creating protocol-specific sessions.
 typedef SessionFactory = CastSession Function(CastDevice device);

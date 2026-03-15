@@ -19,6 +19,12 @@ class MockAirPlayServer {
   String? lastUserAgent;
   Map<String, String> lastQueryParameters = {};
 
+  /// Configurable playback rate returned by /playback-info (default 1.0).
+  double playbackRate = 1.0;
+
+  /// Configurable readyToPlay returned by /playback-info (default true).
+  bool readyToPlay = true;
+
   /// Starts the mock server on a random available port.
   Future<void> start() async {
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -122,9 +128,9 @@ class MockAirPlayServer {
     <key>position</key>
     <real>123.456789</real>
     <key>rate</key>
-    <real>1.000000</real>
+    <real>${playbackRate.toStringAsFixed(6)}</real>
     <key>readyToPlay</key>
-    <true/>
+    <$readyToPlay/>
     <key>playbackBufferEmpty</key>
     <false/>
     <key>playbackLikelyToKeepUp</key>

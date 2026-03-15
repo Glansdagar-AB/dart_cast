@@ -1,7 +1,4 @@
-import 'dart:io';
-
 import 'package:dart_cast/src/protocols/airplay/airplay_client.dart';
-import 'package:dart_cast/src/protocols/airplay/plist_codec.dart';
 import 'package:test/test.dart';
 
 import 'mock_airplay_server.dart';

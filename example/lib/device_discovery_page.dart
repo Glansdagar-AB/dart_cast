@@ -122,30 +122,43 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
   /// create the session manually. For other protocols, we use the
   /// CastService.connect() convenience method.
   Future<void> _connectToDevice(CastDevice device) async {
-    // Close the bottom sheet before navigating.
+    // Close the bottom sheet
     if (mounted) Navigator.of(context).pop();
+
+    // Show a connecting dialog
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 24),
+              Expanded(
+                child: Text('Connecting to ${device.name}...'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     try {
       CastSession session;
 
       if (device.protocol == CastProtocol.dlna) {
-        // DLNA requires fetching the device description XML first.
-        // The description contains AVTransport and RenderingControl URLs
-        // needed for SOAP-based playback control.
-        final locationUrl = device.metadata['location'] ?? '';
-        final description = DlnaDeviceDescription(
-          friendlyName: device.name,
-          udn: device.id,
-          locationUrl: locationUrl,
-          avTransportControlUrl: device.metadata['avTransportControlUrl'],
-          renderingControlUrl: device.metadata['renderingControlUrl'],
-        );
-        session = DlnaSession(device: device, description: description);
+        // DLNA sessions need a device description from discovery metadata.
+        session = DlnaSession.fromDevice(device);
+        await session.connect();
       } else {
         // For Chromecast and AirPlay, CastService.connect() uses the
         // sessionFactory to create the appropriate session.
         session = await _castService.connect(device);
       }
+
+      // Dismiss connecting dialog
+      if (mounted) Navigator.of(context).pop();
 
       if (mounted) {
         Navigator.of(context).push(
@@ -159,6 +172,9 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
         );
       }
     } catch (e) {
+      // Dismiss connecting dialog
+      if (mounted) Navigator.of(context).pop();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to connect: $e')),

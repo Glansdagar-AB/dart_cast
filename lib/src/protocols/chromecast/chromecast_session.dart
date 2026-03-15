@@ -11,6 +11,7 @@ import '../../core/cast_device.dart';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
+import '../../utils/logger.dart';
 import 'cast_media_channel.dart';
 import 'cast_receiver_channel.dart';
 import 'castv2_channel.dart';
@@ -84,6 +85,8 @@ class ChromecastSession extends CastSession {
   /// CONNECT to transportId.
   @override
   Future<void> connect() async {
+    CastLogger.info(
+        'Chromecast: connecting to ${device.name} at ${device.address.address}:${device.port}');
     stateMachine.transitionTo(SessionState.connecting);
 
     // 1. TLS connect
@@ -131,6 +134,8 @@ class ChromecastSession extends CastSession {
       payload: CastReceiverChannel.buildConnect(),
     );
 
+    CastLogger.info(
+        'Chromecast: connected to ${device.name}, transportId=$_transportId');
     stateMachine.transitionTo(SessionState.connected);
   }
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
+import '../../utils/logger.dart';
 import 'airplay_client.dart';
 import 'plist_codec.dart';
 
@@ -31,6 +32,8 @@ class AirPlaySession extends CastSession {
   /// is reachable, and transitions to [SessionState.connected].
   @override
   Future<void> connect() async {
+    CastLogger.info(
+        'AirPlay: connecting to ${device.name} at ${device.address.address}:${device.port}');
     stateMachine.transitionTo(SessionState.connecting);
 
     _client = AirPlayClient(
@@ -40,8 +43,10 @@ class AirPlaySession extends CastSession {
 
     try {
       await _client!.getServerInfo();
+      CastLogger.info('AirPlay: connected to ${device.name}');
       stateMachine.transitionTo(SessionState.connected);
     } catch (e) {
+      CastLogger.error('AirPlay: connection failed to ${device.name}: $e');
       _client?.close();
       _client = null;
       stateMachine.transitionTo(SessionState.disconnected);

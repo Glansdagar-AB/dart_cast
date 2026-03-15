@@ -1,0 +1,15 @@
+name: dart_cast
+description: A Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
+version: 0.1.0
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  http: ^1.2.0
+  multicast_dns: ^0.3.2+6
+  protobuf: ^3.1.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.0.0

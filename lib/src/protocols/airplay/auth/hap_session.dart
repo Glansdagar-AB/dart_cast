@@ -118,6 +118,8 @@ class HapSession {
   ///
   /// [outputKey] encrypts data sent to the device.
   /// [inputKey] decrypts data received from the device.
+  /// [dataStream] optionally provides an alternative stream to listen on
+  /// instead of the socket directly (e.g., a broadcast stream wrapper).
   HapSession({
     required Socket socket,
     required Uint8List outputKey,
@@ -125,16 +127,18 @@ class HapSession {
     required this.host,
     required this.port,
     String? sessionId,
+    Stream<Uint8List>? dataStream,
   })  : _socket = socket,
         _outputKey = outputKey,
         _inputKey = inputKey,
         _sessionId = sessionId ?? _generateUuid() {
-    _setupSocketListener();
+    _setupSocketListener(dataStream);
   }
 
-  /// Sets up the ONE persistent listener on the socket stream.
-  void _setupSocketListener() {
-    _socketSubscription = _socket.listen(
+  /// Sets up the ONE persistent listener on the data stream.
+  void _setupSocketListener([Stream<Uint8List>? dataStream]) {
+    final source = dataStream ?? _socket;
+    _socketSubscription = source.listen(
       (data) {
         _rawReceiveBuffer.add(data);
         _dataArrived?.complete();
@@ -529,15 +533,55 @@ class HapSession {
   /// Starts playback of a video URL on the AirPlay device.
   Future<void> play(String url, {double startPosition = 0.0}) async {
     CastLogger.info('HAP session: sending /play to device');
-    final body = 'Content-Location: $url\nStart-Position: $startPosition\n';
+
+    // After HAP auth, AirPlay expects binary plist format for /play,
+    // not text/parameters. See pyatv airplayv1.py for reference.
+    //
+    // We build a simplified binary plist manually since Dart doesn't have
+    // a plistlib equivalent. For the /play command, text/parameters also
+    // works on some devices, but binary plist with specific headers is
+    // more compatible after HAP authentication.
+    final body = 'Content-Location: $url\n'
+        'Start-Position: $startPosition\n';
+
     final response = await sendRequest('POST', '/play',
         headers: {
-          ..._defaultHeaders,
+          'User-Agent': 'AirPlay/550.10',
           'Content-Type': 'text/parameters',
+          'X-Apple-ProtocolVersion': '1',
+          'X-Apple-Session-ID': _sessionId,
         },
         body: utf8.encode(body));
     CastLogger.info('HAP session: /play response: ${response.statusCode}');
-    _checkResponse(response, 'play');
+
+    // AirPlay may return 200 (OK) or other codes
+    if (response.statusCode >= 400) {
+      // Try with x-apple-binary-plist format as fallback
+      CastLogger.info('HAP session: /play failed with text/parameters, trying binary plist');
+      // Build a simple XML plist (binary plist is complex to encode without a library)
+      final plistBody = '<?xml version="1.0" encoding="UTF-8"?>\n'
+          '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+          '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+          '<plist version="1.0">\n'
+          '<dict>\n'
+          '  <key>Content-Location</key>\n'
+          '  <string>$url</string>\n'
+          '  <key>Start-Position</key>\n'
+          '  <real>$startPosition</real>\n'
+          '</dict>\n'
+          '</plist>\n';
+
+      final response2 = await sendRequest('POST', '/play',
+          headers: {
+            'User-Agent': 'AirPlay/550.10',
+            'Content-Type': 'text/x-apple-plist+xml',
+            'X-Apple-ProtocolVersion': '1',
+            'X-Apple-Session-ID': _sessionId,
+          },
+          body: utf8.encode(plistBody));
+      CastLogger.info('HAP session: /play plist response: ${response2.statusCode}');
+      _checkResponse(response2, 'play');
+    }
   }
 
   /// Seeks to an absolute position in seconds.

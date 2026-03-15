@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import '../../core/cast_exceptions.dart';
 import '../../core/cast_media.dart';
@@ -96,6 +97,7 @@ class AirPlaySession extends CastSession {
     }
 
     Socket? rawSocket;
+    StreamController<Uint8List>? socketBroadcast;
     try {
       CastLogger.info(
           'AirPlay: opening raw socket for pair-verify + HAP session');
@@ -104,23 +106,31 @@ class AirPlaySession extends CastSession {
         device.port,
       );
 
-      // Pair-verify over the raw socket
+      // Wrap the socket's single-subscription stream in a broadcast controller.
+      // This lets both pair-verify and HapSession subscribe independently.
+      socketBroadcast = StreamController<Uint8List>.broadcast();
+      rawSocket.listen(
+        (data) => socketBroadcast!.add(Uint8List.fromList(data)),
+        onError: (e) => socketBroadcast!.addError(e),
+        onDone: () => socketBroadcast!.close(),
+      );
+
+      // Pair-verify over the raw socket using the broadcast stream for reading
       final pairVerify = AirPlayPairVerify.withSocket(
         rawSocket,
         host: device.address.address,
         port: device.port,
+        dataStream: socketBroadcast.stream,
       );
 
       CastLogger.info(
           'AirPlay: attempting pair-verify with stored credentials');
       final sharedSecret = await pairVerify.execute(credentials!);
 
-      // Release the socket listener so HapSession can take over
-      await pairVerify.releaseSocket();
-
       CastLogger.info('AirPlay: pair-verify successful, creating HAP session');
 
       // Derive encryption keys and create HAP session on the SAME socket
+      // using the SAME broadcast stream for reading
       final keys = await deriveHapSessionKeys(sharedSecret);
       _hapSession = HapSession(
         socket: rawSocket,
@@ -129,6 +139,7 @@ class AirPlaySession extends CastSession {
         host: device.address.address,
         port: device.port,
         sessionId: _client!.sessionId,
+        dataStream: socketBroadcast.stream,
       );
 
       CastLogger.info('AirPlay: HAP encrypted session established');

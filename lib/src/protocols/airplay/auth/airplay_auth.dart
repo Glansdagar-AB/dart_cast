@@ -224,12 +224,12 @@ class AirPlayPairVerify {
     Socket socket, {
     required this.host,
     required this.port,
+    Stream<Uint8List>? dataStream,
   })  : _socket = socket,
         _httpClient = null {
-    // Set up a single persistent listener on the socket stream.
-    // This avoids the "Stream has already been listened to" error
-    // when making multiple pair-verify requests over the same socket.
-    _socketSubscription = socket.listen(
+    // Listen on the provided dataStream (broadcast wrapper) or socket directly.
+    final source = dataStream ?? socket;
+    _socketSubscription = source.listen(
       (data) {
         _socketBuffer.add(data);
         _dataArrived?.complete();

@@ -9,3 +9,4 @@ export 'src/core/cast_session.dart';
 
 // Utils
 export 'src/utils/logger.dart';
+export 'src/utils/network_utils.dart';

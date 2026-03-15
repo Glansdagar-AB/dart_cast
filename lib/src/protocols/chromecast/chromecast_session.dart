@@ -64,6 +64,9 @@ class ChromecastSession extends CastSession {
   /// Whether the heartbeat timer is currently active.
   bool get isHeartbeatActive => _heartbeatTimer?.isActive ?? false;
 
+  /// Whether the position polling timer is currently active.
+  bool get isPositionPollingActive => _positionPollTimer?.isActive ?? false;
+
   // ---------------------------------------------------------------------------
   // Constructors
   // ---------------------------------------------------------------------------
@@ -284,6 +287,7 @@ class ChromecastSession extends CastSession {
   @override
   Future<void> disconnect() async {
     _stopHeartbeat();
+    _stopPositionPolling();
     _mediaStatusSubscription?.cancel();
     _mediaStatusSubscription = null;
 
@@ -321,6 +325,7 @@ class ChromecastSession extends CastSession {
   @override
   void dispose() {
     _stopHeartbeat();
+    _stopPositionPolling();
     _mediaStatusSubscription?.cancel();
     _proxy.stop();
     super.dispose();

@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-example-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: cd example && flutter pub get && flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: example-android
+          path: example/build/app/outputs/flutter-apk/app-release.apk
+
+  build-example-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: cd example && flutter pub get && flutter build macos --release
+      - run: |
+          cd example/build/macos/Build/Products/Release
+          zip -r dart_cast_example_macos.zip dart_cast_example.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: example-macos
+          path: example/build/macos/Build/Products/Release/dart_cast_example_macos.zip
+
+  build-example-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: cd example && flutter pub get && flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: example-windows
+          path: example/build/windows/x64/runner/Release/
+
+  create-release:
+    needs: [build-example-android, build-example-macos, build-example-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/example-android/app-release.apk
+            artifacts/example-macos/dart_cast_example_macos.zip
+            artifacts/example-windows/**/*

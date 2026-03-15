@@ -89,6 +89,12 @@ class HapSession {
   int _outputCounter = 0;
   int _inputCounter = 0;
 
+  /// RTSP CSeq counter for RTSP exchanges.
+  int _cseq = 0;
+
+  /// Whether the RTSP session has been set up (SETUP + RECORD completed).
+  bool _rtspSessionSetUp = false;
+
   /// Buffer for incomplete encrypted data received from the device.
   final BytesBuilder _receiveBuffer = BytesBuilder(copy: false);
 
@@ -336,6 +342,128 @@ class HapSession {
     return _parseHttpResponse(responseBytes);
   }
 
+  /// Sends an RTSP request over the encrypted channel and returns the response.
+  ///
+  /// RTSP requests use `RTSP/1.0` as the protocol line instead of `HTTP/1.1`,
+  /// and include an auto-incrementing `CSeq` header. The [uri] is typically
+  /// `*` for SETUP/RECORD or a path like `/play` for media commands.
+  Future<HapHttpResponse> sendRtspRequest(
+    String method,
+    String uri, {
+    Map<String, String>? headers,
+    List<int>? body,
+  }) async {
+    _cseq++;
+    CastLogger.debug('HAP session: sendRtspRequest $method $uri (CSeq=$_cseq)');
+
+    final requestHeaders = <String, String>{
+      'CSeq': '$_cseq',
+      'User-Agent': 'AirPlay/550.10',
+      'X-Apple-Session-ID': _sessionId,
+      ...?headers,
+    };
+
+    if (body != null && body.isNotEmpty) {
+      requestHeaders['Content-Length'] = '${body.length}';
+    }
+
+    final buffer = StringBuffer();
+    buffer.write('$method $uri RTSP/1.0\r\n');
+    for (final entry in requestHeaders.entries) {
+      buffer.write('${entry.key}: ${entry.value}\r\n');
+    }
+    buffer.write('\r\n');
+
+    final headerBytes = utf8.encode(buffer.toString());
+    final requestBytes = body != null && body.isNotEmpty
+        ? Uint8List.fromList([...headerBytes, ...body])
+        : Uint8List.fromList(headerBytes);
+
+    // Encrypt and send
+    CastLogger.debug('HAP session: encrypting ${requestBytes.length} RTSP bytes');
+    final encrypted = await encrypt(requestBytes);
+    CastLogger.debug(
+        'HAP session: sending ${encrypted.length} encrypted RTSP bytes');
+    _socket.add(encrypted);
+    await _socket.flush();
+    CastLogger.debug('HAP session: waiting for encrypted RTSP response...');
+
+    // Read response
+    final responseBytes = await _readEncryptedResponse();
+    CastLogger.debug(
+        'HAP session: received ${responseBytes.length} decrypted RTSP response bytes');
+    return _parseHttpResponse(responseBytes);
+  }
+
+  /// Performs AirPlay 2 RTSP session setup required before `/play`.
+  ///
+  /// This sends SETUP (with device info) and RECORD over the HAP encrypted
+  /// channel, which is required by AirPlay 2 devices before they will accept
+  /// media commands like `/play`.
+  Future<void> setupRtspSession() async {
+    if (_rtspSessionSetUp) return;
+
+    CastLogger.info('HAP session: RTSP SETUP');
+    final sessionUuid = _generateUuid().toUpperCase();
+
+    final setupBody = _buildXmlPlist({
+      'deviceID': 'AA:BB:CC:DD:EE:FF',
+      'sessionUUID': sessionUuid,
+      'timingPort': 0,
+      'timingProtocol': 'NTP',
+      'isMultiSelectAirPlay': true,
+      'groupContainsGroupLeader': false,
+      'macAddress': 'AA:BB:CC:DD:EE:FF',
+      'model': 'iPhone14,3',
+      'name': 'dart_cast',
+      'osBuildVersion': '20F66',
+      'osName': 'iPhone OS',
+      'osVersion': '16.5',
+      'sourceVersion': '690.7.1',
+    });
+
+    final setupResp = await sendRtspRequest(
+      'SETUP',
+      '*',
+      headers: {'Content-Type': 'application/x-apple-binary-plist'},
+      body: utf8.encode(setupBody),
+    );
+    CastLogger.info(
+        'HAP session: RTSP SETUP response: ${setupResp.statusCode}');
+
+    // RECORD
+    CastLogger.info('HAP session: RTSP RECORD');
+    final recordResp = await sendRtspRequest('RECORD', '*');
+    CastLogger.info(
+        'HAP session: RTSP RECORD response: ${recordResp.statusCode}');
+
+    _rtspSessionSetUp = true;
+  }
+
+  /// Builds an XML plist string from a map of key-value pairs.
+  static String _buildXmlPlist(Map<String, dynamic> dict) {
+    final buffer = StringBuffer();
+    buffer.write('<?xml version="1.0" encoding="UTF-8"?>\n');
+    buffer.write('<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n');
+    buffer.write('<plist version="1.0">\n<dict>\n');
+    for (final entry in dict.entries) {
+      buffer.write('  <key>${entry.key}</key>\n');
+      final value = entry.value;
+      if (value is String) {
+        buffer.write('  <string>$value</string>\n');
+      } else if (value is int) {
+        buffer.write('  <integer>$value</integer>\n');
+      } else if (value is double) {
+        buffer.write('  <real>$value</real>\n');
+      } else if (value is bool) {
+        buffer.write('  <${value ? 'true' : 'false'}/>\n');
+      }
+    }
+    buffer.write('</dict>\n</plist>\n');
+    return buffer.toString();
+  }
+
   /// Reads encrypted frames from the socket until a complete HTTP response
   /// is received.
   ///
@@ -488,11 +616,12 @@ class HapSession {
     }
 
     final statusLine = lines.first;
+    // Accept both HTTP/1.1 and RTSP/1.0 status lines
     final statusMatch =
-        RegExp(r'HTTP/\d+\.\d+\s+(\d+)\s*(.*)').firstMatch(statusLine);
+        RegExp(r'(?:HTTP|RTSP)/\d+\.\d+\s+(\d+)\s*(.*)').firstMatch(statusLine);
     if (statusMatch == null) {
       throw HapSessionException(
-          'Invalid HTTP response status line: $statusLine');
+          'Invalid HTTP/RTSP response status line: $statusLine');
     }
 
     final statusCode = int.parse(statusMatch.group(1)!);
@@ -531,76 +660,56 @@ class HapSession {
       };
 
   /// Starts playback of a video URL on the AirPlay device.
+  ///
+  /// AirPlay 2 requires an RTSP session (SETUP + RECORD) before accepting
+  /// `/play`. This method automatically sets up the RTSP session if it hasn't
+  /// been done yet, then sends the play command with the extended AirPlay 2
+  /// plist body, and finally sets the rate to 1.0 to begin playback.
   Future<void> play(String url, {double startPosition = 0.0}) async {
     CastLogger.info('HAP session: sending /play to device');
 
-    // After HAP auth, AirPlay expects binary plist format for /play,
-    // not text/parameters. See pyatv airplayv1.py for reference.
-    //
-    // We build a simplified binary plist manually since Dart doesn't have
-    // a plistlib equivalent. For the /play command, text/parameters also
-    // works on some devices, but binary plist with specific headers is
-    // more compatible after HAP authentication.
-    final body = 'Content-Location: $url\n'
-        'Start-Position: $startPosition\n';
+    // Step 1: Set up the RTSP session if not already done
+    await setupRtspSession();
 
+    // Step 2: POST /play with AirPlay 2 plist body
+    final playUuid = _generateUuid();
+    final playBody = _buildXmlPlist({
+      'Content-Location': url,
+      'Start-Position-Seconds': startPosition,
+      'uuid': playUuid,
+      'streamType': 1,
+      'mediaType': 'file',
+      'volume': 1.0,
+      'rate': 1.0,
+    });
+
+    _cseq++;
     final response = await sendRequest('POST', '/play',
         headers: {
+          'CSeq': '$_cseq',
           'User-Agent': 'AirPlay/550.10',
-          'Content-Type': 'text/parameters',
-          'X-Apple-ProtocolVersion': '1',
+          'Content-Type': 'application/x-apple-binary-plist',
           'X-Apple-Session-ID': _sessionId,
         },
-        body: utf8.encode(body));
+        body: utf8.encode(playBody));
     CastLogger.info(
         'HAP session: /play response: ${response.statusCode} body: ${response.bodyText}');
 
-    if (response.statusCode < 400) return;
-
-    // Try with application/x-apple-binary-plist content type and XML plist body
-    // (pyatv uses binary plist but XML plist is also accepted by many devices)
-    CastLogger.info(
-        'HAP session: /play failed with text/parameters, trying plist format');
-    final plistBody = '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-        '<plist version="1.0">\n'
-        '<dict>\n'
-        '  <key>Content-Location</key>\n'
-        '  <string>$url</string>\n'
-        '  <key>Start-Position</key>\n'
-        '  <real>$startPosition</real>\n'
-        '  <key>X-Apple-Session-ID</key>\n'
-        '  <string>$_sessionId</string>\n'
-        '</dict>\n'
-        '</plist>\n';
-
-    final response2 = await sendRequest('POST', '/play',
-        headers: {
-          'User-Agent': 'AirPlay/550.10',
-          'Content-Type': 'application/x-apple-binary-plist',
-          'X-Apple-ProtocolVersion': '1',
-          'X-Apple-Session-ID': _sessionId,
-        },
-        body: utf8.encode(plistBody));
-    CastLogger.info(
-        'HAP session: /play plist response: ${response2.statusCode} body: ${response2.bodyText}');
-
-    if (response2.statusCode >= 400) {
-      // Last try: /play with just the URL in the path
-      CastLogger.info('HAP session: trying POST /play with reversed content type');
-      final response3 = await sendRequest('POST', '/play',
-          headers: {
-            'User-Agent': 'AirPlay/550.10',
-            'Content-Type': 'text/x-apple-plist+xml',
-            'X-Apple-ProtocolVersion': '1',
-            'X-Apple-Session-ID': _sessionId,
-          },
-          body: utf8.encode(plistBody));
-      CastLogger.info(
-          'HAP session: /play xml-plist response: ${response3.statusCode} body: ${response3.bodyText}');
-      _checkResponse(response3, 'play');
+    if (response.statusCode >= 400) {
+      _checkResponse(response, 'play');
     }
+
+    // Step 3: POST /rate?value=1.0 to start actual playback
+    _cseq++;
+    final rateResponse = await sendRequest('POST', '/rate',
+        queryParameters: {'value': '1.000000'},
+        headers: {
+          'CSeq': '$_cseq',
+          'User-Agent': 'AirPlay/550.10',
+          'X-Apple-Session-ID': _sessionId,
+        });
+    CastLogger.info(
+        'HAP session: /rate response: ${rateResponse.statusCode}');
   }
 
   /// Seeks to an absolute position in seconds.
@@ -626,6 +735,9 @@ class HapSession {
   }
 
   /// Stops playback and generates a new session ID.
+  ///
+  /// Also resets the RTSP session state so that a new SETUP + RECORD
+  /// sequence will be performed on the next [play] call.
   Future<void> stop() async {
     final response = await sendRequest(
       'POST',
@@ -634,6 +746,8 @@ class HapSession {
     );
     _checkResponse(response, 'stop');
     _sessionId = _generateUuid();
+    _rtspSessionSetUp = false;
+    _cseq = 0;
   }
 
   /// Gets detailed playback state as a [PlaybackInfo].

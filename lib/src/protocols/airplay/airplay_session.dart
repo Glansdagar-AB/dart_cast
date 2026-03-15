@@ -100,6 +100,11 @@ class AirPlaySession extends CastSession {
       await pairVerify.execute(credentials!);
 
       CastLogger.info('AirPlay: pair-verify successful');
+      CastLogger.warning(
+          'AirPlay: Note — this device requires an encrypted HAP session '
+          'for media commands. Encrypted session support is not yet implemented. '
+          'Media playback may fail with 403 or connection reset. '
+          'Consider using Chromecast protocol for this device instead.');
       stateMachine.transitionTo(SessionState.connected);
     } on AirPlayAuthException catch (e) {
       // Auth failure — credentials may be stale, need re-pairing

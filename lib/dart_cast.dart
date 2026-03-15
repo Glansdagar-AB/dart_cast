@@ -7,6 +7,7 @@ export 'src/core/cast_exceptions.dart';
 export 'src/core/cast_media.dart';
 export 'src/core/cast_session.dart';
 export 'src/core/hls_parser.dart';
+export 'src/core/media_proxy.dart';
 
 // Utils
 export 'src/utils/logger.dart';

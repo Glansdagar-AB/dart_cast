@@ -235,7 +235,8 @@ class AirPlaySession extends CastSession {
       }
 
       // Start playback on the device via encrypted channel if available
-      CastLogger.info('AirPlay: sending /play with URL: ${playUrl.substring(0, playUrl.length.clamp(0, 80))}...');
+      CastLogger.info(
+          'AirPlay: sending /play with URL: ${playUrl.substring(0, playUrl.length.clamp(0, 80))}...');
       if (_hapSession != null) {
         CastLogger.info('AirPlay: using HAP encrypted session for /play');
         await _hapSession!.play(playUrl, startPosition: 0.0);

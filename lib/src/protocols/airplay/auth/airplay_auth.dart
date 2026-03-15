@@ -511,8 +511,7 @@ class AirPlayPairVerify {
     final bodyStart = headerEnd + 4;
 
     // Parse status code
-    final statusMatch =
-        RegExp(r'HTTP/\d+\.\d+\s+(\d+)').firstMatch(headerStr);
+    final statusMatch = RegExp(r'HTTP/\d+\.\d+\s+(\d+)').firstMatch(headerStr);
     if (statusMatch == null) return null;
     final statusCode = int.parse(statusMatch.group(1)!);
 
@@ -521,11 +520,11 @@ class AirPlayPairVerify {
         .firstMatch(headerStr);
     if (clMatch != null) {
       final contentLength = int.parse(clMatch.group(1)!);
-      if (data.length < bodyStart + contentLength) return null; // Need more data
+      if (data.length < bodyStart + contentLength)
+        return null; // Need more data
       final bodyBytes = data.sublist(bodyStart, bodyStart + contentLength);
       if (statusCode != 200) {
-        throw AirPlayAuthException(
-            'pair-verify failed with HTTP $statusCode');
+        throw AirPlayAuthException('pair-verify failed with HTTP $statusCode');
       }
       return Uint8List.fromList(bodyBytes);
     }
@@ -534,8 +533,7 @@ class AirPlayPairVerify {
     // (only valid once socket stops sending, but we return what we have)
     if (data.length > bodyStart) {
       if (statusCode != 200) {
-        throw AirPlayAuthException(
-            'pair-verify failed with HTTP $statusCode');
+        throw AirPlayAuthException('pair-verify failed with HTTP $statusCode');
       }
       return Uint8List.fromList(data.sublist(bodyStart));
     }

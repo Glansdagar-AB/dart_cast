@@ -213,8 +213,7 @@ void main() {
 
       // Offset table should have numObjects entries of offsetSize bytes each
       final expectedOffsetTableSize = numObjectsLo * offsetSize;
-      final actualOffsetTableSize =
-          result.length - 32 - offsetTableOffsetLo;
+      final actualOffsetTableSize = result.length - 32 - offsetTableOffsetLo;
       expect(actualOffsetTableSize, equals(expectedOffsetTableSize));
     });
   });

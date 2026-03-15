@@ -332,14 +332,16 @@ class HapSession {
     // Encrypt and send
     CastLogger.debug('HAP session: encrypting ${requestBytes.length} bytes');
     final encrypted = await encrypt(requestBytes);
-    CastLogger.debug('HAP session: sending ${encrypted.length} encrypted bytes');
+    CastLogger.debug(
+        'HAP session: sending ${encrypted.length} encrypted bytes');
     _socket.add(encrypted);
     await _socket.flush();
     CastLogger.debug('HAP session: waiting for encrypted response...');
 
     // Read response
     final responseBytes = await _readEncryptedResponse();
-    CastLogger.debug('HAP session: received ${responseBytes.length} decrypted response bytes');
+    CastLogger.debug(
+        'HAP session: received ${responseBytes.length} decrypted response bytes');
     return _parseHttpResponse(responseBytes);
   }
 
@@ -381,7 +383,8 @@ class HapSession {
         : Uint8List.fromList(headerBytes);
 
     // Encrypt and send
-    CastLogger.debug('HAP session: encrypting ${requestBytes.length} RTSP bytes');
+    CastLogger.debug(
+        'HAP session: encrypting ${requestBytes.length} RTSP bytes');
     final encrypted = await encrypt(requestBytes);
     CastLogger.debug(
         'HAP session: sending ${encrypted.length} encrypted RTSP bytes');
@@ -667,8 +670,7 @@ class HapSession {
 
     // Step 3: POST /rate?value=1.0 to start actual playback
     final rateResponse = await sendRtspRequest('POST', '/rate?value=1.000000');
-    CastLogger.info(
-        'HAP session: /rate response: ${rateResponse.statusCode}');
+    CastLogger.info('HAP session: /rate response: ${rateResponse.statusCode}');
   }
 
   /// Seeks to an absolute position in seconds.

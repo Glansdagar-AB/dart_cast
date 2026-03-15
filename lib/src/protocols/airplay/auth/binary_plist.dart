@@ -140,8 +140,7 @@ class BinaryPlistEncoder {
   }
 
   /// Serializes a single object into the byte builder.
-  void _writeObject(
-      Object? obj, BytesBuilder builder, int objectRefSize) {
+  void _writeObject(Object? obj, BytesBuilder builder, int objectRefSize) {
     if (obj == null) {
       builder.addByte(0x00); // null
       return;

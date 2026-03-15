@@ -325,8 +325,7 @@ void main() {
             // Send encrypted HTTP response
             final responseStr =
                 'HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, World!';
-            final respBytes =
-                Uint8List.fromList(utf8.encode(responseStr));
+            final respBytes = Uint8List.fromList(utf8.encode(responseStr));
             final encrypted = await serverDecSession.encrypt(respBytes);
             serverSocket.add(encrypted);
             await serverSocket.flush();

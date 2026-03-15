@@ -645,7 +645,7 @@ void main() {
           .firstWhere((a) => a.action == 'SetAVTransportURI');
       // Should contain proxy URL, NOT the raw CDN URL
       expect(setUri.body, isNot(contains('secret-cdn.example.com')));
-      expect(setUri.body, contains('/stream/')); // proxy route
+      expect(setUri.body, contains('/ts-stream/')); // HLS uses ts-stream route
 
       await session.disconnect();
       session.dispose();

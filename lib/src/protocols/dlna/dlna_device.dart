@@ -22,6 +22,9 @@ class DlnaDeviceDescription {
   /// Absolute URL for RenderingControl SOAP control.
   final String? renderingControlUrl;
 
+  /// Absolute URL for ConnectionManager SOAP control.
+  final String? connectionManagerControlUrl;
+
   /// The location URL this description was fetched from.
   final String locationUrl;
 
@@ -32,6 +35,7 @@ class DlnaDeviceDescription {
     required this.udn,
     this.avTransportControlUrl,
     this.renderingControlUrl,
+    this.connectionManagerControlUrl,
     required this.locationUrl,
   });
 
@@ -53,6 +57,7 @@ class DlnaDeviceDescription {
     // Extract service control URLs.
     String? avTransportControlUrl;
     String? renderingControlUrl;
+    String? connectionManagerControlUrl;
 
     final serviceBlocks = RegExp(
       r'<service>([\s\S]*?)</service>',
@@ -72,6 +77,8 @@ class DlnaDeviceDescription {
         avTransportControlUrl = resolvedUrl;
       } else if (serviceType.contains('RenderingControl')) {
         renderingControlUrl = resolvedUrl;
+      } else if (serviceType.contains('ConnectionManager')) {
+        connectionManagerControlUrl = resolvedUrl;
       }
     }
 
@@ -82,6 +89,7 @@ class DlnaDeviceDescription {
       udn: udn,
       avTransportControlUrl: avTransportControlUrl,
       renderingControlUrl: renderingControlUrl,
+      connectionManagerControlUrl: connectionManagerControlUrl,
       locationUrl: locationUrl,
     );
   }
@@ -96,6 +104,9 @@ class DlnaDeviceDescription {
     }
     if (renderingControlUrl != null) {
       metadata['renderingControlUrl'] = renderingControlUrl!;
+    }
+    if (connectionManagerControlUrl != null) {
+      metadata['connectionManagerControlUrl'] = connectionManagerControlUrl!;
     }
     if (manufacturer != null) {
       metadata['manufacturer'] = manufacturer!;

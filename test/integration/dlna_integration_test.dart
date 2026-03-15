@@ -145,7 +145,7 @@ void main() {
           .firstWhere((a) => a.action == 'SetAVTransportURI');
       // URL should be proxied (not the raw URL), and title should be present
       expect(setUri.body, isNot(contains('example.com/test.m3u8')));
-      expect(setUri.body, contains('/stream/')); // proxy URL pattern
+      expect(setUri.body, contains('/ts-stream/')); // HLS uses ts-stream route
       expect(setUri.body, contains('My Show'));
     });
 

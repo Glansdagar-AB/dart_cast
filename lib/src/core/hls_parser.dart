@@ -150,6 +150,84 @@ class HlsParser {
     );
   }
 
+  /// Extract segment URLs from a media playlist.
+  ///
+  /// Parses `#EXTINF` lines and collects the next-line URIs,
+  /// resolving them against [baseUrl].
+  static List<String> extractSegmentUrls(String content, String baseUrl) {
+    final lines = content.split('\n');
+    final segments = <String>[];
+    var expectUri = false;
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+
+      if (trimmed.startsWith('#EXTINF:')) {
+        expectUri = true;
+        continue;
+      }
+
+      // #EXT-X-BYTERANGE can appear between #EXTINF and the segment URI
+      if (trimmed.startsWith('#EXT-X-BYTERANGE:') && expectUri) {
+        continue;
+      }
+
+      if (expectUri && !trimmed.startsWith('#')) {
+        segments.add(resolveUrl(trimmed, baseUrl));
+        expectUri = false;
+        continue;
+      }
+
+      if (trimmed.startsWith('#')) {
+        // Other tags reset expectUri unless it's a byterange
+        if (!trimmed.startsWith('#EXT-X-BYTERANGE:')) {
+          expectUri = false;
+        }
+        continue;
+      }
+
+      expectUri = false;
+    }
+
+    return segments;
+  }
+
+  /// Given a master playlist, extract variant playlist URLs sorted by
+  /// bandwidth (highest first).
+  static List<({String url, int bandwidth})> extractVariants(
+    String content,
+    String baseUrl,
+  ) {
+    final lines = content.split('\n');
+    final variants = <({String url, int bandwidth})>[];
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.startsWith('#EXT-X-STREAM-INF:')) {
+        // Extract BANDWIDTH
+        final bwMatch = RegExp(r'BANDWIDTH=(\d+)').firstMatch(line);
+        final bandwidth = bwMatch != null ? int.parse(bwMatch.group(1)!) : 0;
+
+        // Next non-empty, non-comment line is the URI
+        for (var j = i + 1; j < lines.length; j++) {
+          final nextLine = lines[j].trim();
+          if (nextLine.isEmpty) continue;
+          if (nextLine.startsWith('#')) continue;
+          variants.add((
+            url: resolveUrl(nextLine, baseUrl),
+            bandwidth: bandwidth,
+          ));
+          break;
+        }
+      }
+    }
+
+    // Sort by bandwidth descending (highest quality first)
+    variants.sort((a, b) => b.bandwidth.compareTo(a.bandwidth));
+    return variants;
+  }
+
   /// Constructs a proxy URL for the given original URL.
   static String _buildProxyUrl(
     String proxyBaseUrl,

@@ -62,6 +62,9 @@ class DlnaSession extends CastSession {
       );
     }
 
+    final connectionManagerControlUrl =
+        device.metadata['connectionManagerControlUrl'];
+
     final description = DlnaDeviceDescription(
       friendlyName: device.name,
       udn: device.id,
@@ -69,6 +72,7 @@ class DlnaSession extends CastSession {
       modelName: device.metadata['modelName'],
       avTransportControlUrl: avTransportUrl,
       renderingControlUrl: renderingControlUrl,
+      connectionManagerControlUrl: connectionManagerControlUrl,
       locationUrl: 'http://${device.address.address}:${device.port}',
     );
 
@@ -98,10 +102,32 @@ class DlnaSession extends CastSession {
 
     // Start proxy and register media URL with headers
     await _proxy.start();
-    final proxyUrl = _proxy.registerMedia(
-      media.url,
-      headers: media.httpHeaders,
-    );
+
+    // Determine proxy URL and protocolInfo based on media type
+    final String proxyUrl;
+    final String protocolInfo;
+
+    if (media.type == CastMediaType.hls) {
+      // For HLS, serve as continuous MPEG-TS stream for DLNA compatibility
+      proxyUrl = _proxy.registerHlsAsStream(
+        media.url,
+        headers: media.httpHeaders,
+      );
+      protocolInfo = 'http-get:*:video/mp2t:*';
+    } else if (media.type == CastMediaType.mpegTs) {
+      proxyUrl = _proxy.registerMedia(
+        media.url,
+        headers: media.httpHeaders,
+      );
+      protocolInfo = 'http-get:*:video/mp2t:*';
+    } else {
+      proxyUrl = _proxy.registerMedia(
+        media.url,
+        headers: media.httpHeaders,
+      );
+      protocolInfo = 'http-get:*:video/mp4:*';
+    }
+
     CastLogger.info('DlnaSession: proxy URL = $proxyUrl');
 
     // Proxy subtitle URLs too if available
@@ -125,6 +151,7 @@ class DlnaSession extends CastSession {
         proxyUrl,
         title: media.title,
         subtitleUrl: subtitleProxyUrl,
+        protocolInfo: protocolInfo,
       ),
     );
 
@@ -223,6 +250,29 @@ class DlnaSession extends CastSession {
     _httpClient.close();
     _proxy.stop();
     super.dispose();
+  }
+
+  /// Checks whether the device supports the given [mimeType].
+  ///
+  /// Queries the ConnectionManager's GetProtocolInfo action and checks
+  /// whether the Sink list contains the specified MIME type.
+  /// Returns `false` if no ConnectionManager URL is available.
+  Future<bool> supportsMediaType(String mimeType) async {
+    final controlUrl = description.connectionManagerControlUrl;
+    if (controlUrl == null) return false;
+
+    try {
+      final response = await _httpClient.sendAction(
+        controlUrl,
+        DlnaServiceType.connectionManager,
+        'GetProtocolInfo',
+        DlnaSoapBuilder.buildGetProtocolInfo(),
+      );
+      final protocols = DlnaSoapParser.parseProtocolInfo(response);
+      return protocols.any((p) => p.contains(mimeType));
+    } catch (_) {
+      return false;
+    }
   }
 
   // -- Private helpers --

@@ -2,10 +2,11 @@ import 'dart:io';
 import 'dart:math';
 
 import 'hls_parser.dart';
+import 'hls_stream_proxy.dart';
 import '../utils/network_utils.dart';
 
 /// Route type for proxy routing.
-enum _RouteType { remote, localFile }
+enum _RouteType { remote, localFile, hlsStream }
 
 /// A registered proxy route.
 class _ProxyRoute {
@@ -27,6 +28,7 @@ class _ProxyRoute {
 class MediaProxy {
   HttpServer? _server;
   HttpClient? _httpClient;
+  HlsStreamHandler? _hlsStreamHandler;
   String? _baseUrl;
   final Map<String, _ProxyRoute> _routes = {};
   final Random _random = Random.secure();
@@ -42,6 +44,7 @@ class MediaProxy {
     if (_server != null) return;
 
     _httpClient = HttpClient();
+    _hlsStreamHandler = HlsStreamHandler(httpClient: _httpClient);
 
     final ip = await NetworkUtils.getLocalIpAddress();
     final bindAddress = ip ?? '0.0.0.0';
@@ -59,6 +62,7 @@ class MediaProxy {
     _server = null;
     _httpClient?.close(force: true);
     _httpClient = null;
+    _hlsStreamHandler = null;
     _baseUrl = null;
     _routes.clear();
   }
@@ -88,6 +92,25 @@ class MediaProxy {
     return '$_baseUrl/file/$token';
   }
 
+  /// Registers an HLS stream to be served as continuous MPEG-TS.
+  ///
+  /// When a client (e.g. a DLNA TV) GETs the returned URL, the proxy fetches
+  /// the m3u8 playlist, resolves all segments, and pipes them sequentially
+  /// as a single `video/mp2t` response. This is useful for devices that do
+  /// not support HLS natively.
+  String registerHlsAsStream(
+    String m3u8Url, {
+    Map<String, String> headers = const {},
+  }) {
+    final token = _generateToken();
+    _routes[token] = _ProxyRoute(
+      type: _RouteType.hlsStream,
+      url: m3u8Url,
+      headers: headers,
+    );
+    return '$_baseUrl/ts-stream/$token';
+  }
+
   /// Removes all previously registered routes, optionally keeping [excludeToken].
   void cleanupPreviousMedia({String? excludeToken}) {
     if (excludeToken != null) {
@@ -110,6 +133,13 @@ class MediaProxy {
   Future<void> _handleRequest(HttpRequest request) async {
     try {
       final path = request.uri.path;
+
+      // Route: /ts-stream/<token> — HLS-to-MPEG-TS streaming
+      if (path.startsWith('/ts-stream/')) {
+        final token = path.substring('/ts-stream/'.length);
+        await _handleHlsStreamRequest(request, token);
+        return;
+      }
 
       // Route: /stream/<token> — remote proxy (direct or sub-resource via ?url=)
       if (path.startsWith('/stream/')) {
@@ -135,6 +165,25 @@ class MediaProxy {
         // Response may already be closed
       }
     }
+  }
+
+  Future<void> _handleHlsStreamRequest(
+    HttpRequest request,
+    String token,
+  ) async {
+    final route = _routes[token];
+    if (route == null || route.type != _RouteType.hlsStream) {
+      request.response.statusCode = HttpStatus.notFound;
+      _addCorsHeaders(request.response);
+      await request.response.close();
+      return;
+    }
+
+    await _hlsStreamHandler!.streamAsTransportStream(
+      route.url,
+      route.headers,
+      request.response,
+    );
   }
 
   Future<void> _handleStreamRequest(HttpRequest request, String token) async {

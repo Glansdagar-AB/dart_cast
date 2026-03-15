@@ -9,6 +9,8 @@ class DlnaServiceType {
   static const avTransport = 'urn:schemas-upnp-org:service:AVTransport:1';
   static const renderingControl =
       'urn:schemas-upnp-org:service:RenderingControl:1';
+  static const connectionManager =
+      'urn:schemas-upnp-org:service:ConnectionManager:1';
 }
 
 /// Builds SOAP XML envelopes for DLNA/UPnP actions.
@@ -16,10 +18,14 @@ class DlnaSoapBuilder {
   DlnaSoapBuilder._();
 
   /// Builds a SetAVTransportURI SOAP envelope with DIDL-Lite metadata.
+  ///
+  /// [protocolInfo] defaults to `http-get:*:video/mp4:*` but can be overridden
+  /// to e.g. `http-get:*:video/mp2t:*` for MPEG-TS streams.
   static String buildSetAVTransportURI(
     String url, {
     String? title,
     String? subtitleUrl,
+    String protocolInfo = 'http-get:*:video/mp4:*',
   }) {
     final escapedUrl = _escapeXml(url);
     final escapedTitle = _escapeXml(title ?? 'Media');
@@ -36,7 +42,7 @@ class DlnaSoapBuilder {
       '<item id="0" parentID="0" restricted="0">'
       '<dc:title>$escapedTitle</dc:title>'
       '<upnp:class>object.item.videoItem</upnp:class>'
-      '<res protocolInfo="http-get:*:video/mp4:*">$escapedUrl</res>'
+      '<res protocolInfo="$protocolInfo">$escapedUrl</res>'
       '$subtitleElement'
       '</item>'
       '</DIDL-Lite>',
@@ -129,6 +135,17 @@ class DlnaSoapBuilder {
     );
   }
 
+  /// Builds a GetProtocolInfo SOAP envelope for ConnectionManager.
+  ///
+  /// Used to query the device's supported media types.
+  static String buildGetProtocolInfo() {
+    return _wrapSoap(
+      DlnaServiceType.connectionManager,
+      'GetProtocolInfo',
+      '',
+    );
+  }
+
   static String _wrapSoap(
     String serviceType,
     String action,
@@ -191,6 +208,20 @@ class DlnaSoapParser {
   static int parseVolume(String xml) {
     final value = _extractElement(xml, 'CurrentVolume') ?? '0';
     return int.tryParse(value) ?? 0;
+  }
+
+  /// Parses a GetProtocolInfo response, returning supported MIME types.
+  ///
+  /// Extracts the `Sink` field from the response, splits by comma,
+  /// and returns the list of protocol info strings.
+  static List<String> parseProtocolInfo(String xml) {
+    final sink = _extractElement(xml, 'Sink') ?? '';
+    if (sink.trim().isEmpty) return [];
+    return sink
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
   }
 
   static String? _extractElement(String xml, String element) {

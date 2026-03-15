@@ -10,6 +10,7 @@ export 'src/core/cast_session.dart';
 export 'src/core/discovery_manager.dart';
 export 'src/core/discovery_provider.dart';
 export 'src/core/hls_parser.dart';
+export 'src/core/hls_stream_proxy.dart';
 export 'src/core/media_proxy.dart';
 
 // Protocols — AirPlay

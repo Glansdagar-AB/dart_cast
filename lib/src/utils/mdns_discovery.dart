@@ -118,9 +118,11 @@ class MdnsDiscovery {
   /// Yields [MdnsServiceInfo] entries as they are found on the local network.
   /// The stream completes after all discovered PTR records have been resolved.
   static Stream<MdnsServiceInfo> discover(String serviceType) async* {
+    CastLogger.info('mDNS: starting discovery for $serviceType');
     final client = MDnsClient();
     try {
       await client.start();
+      CastLogger.debug('mDNS: client started, querying PTR records');
     } catch (e) {
       CastLogger.error('mDNS discovery failed to start: $e');
       return;
@@ -173,6 +175,8 @@ class MdnsDiscovery {
                   // TXT lookup timed out — proceed with empty TXT records
                 }
 
+                CastLogger.info(
+                    'mDNS: found service "${ptr.domainName}" at ${ip.address.address}:${srv.port}');
                 yield MdnsServiceInfo(
                   name: ptr.domainName,
                   host: ip.address.address,

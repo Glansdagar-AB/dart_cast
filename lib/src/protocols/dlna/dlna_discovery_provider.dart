@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../../core/cast_device.dart';
 import '../../core/discovery_provider.dart';
+import '../../utils/logger.dart';
 import 'dlna_device.dart';
 import 'ssdp_discovery.dart';
 
@@ -56,6 +57,7 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
 
   Future<void> _doDiscovery(Duration timeout) async {
     try {
+      CastLogger.info('DLNA: binding UDP socket for SSDP discovery');
       _socket = await _socketFactory(InternetAddress.anyIPv4, 0);
       _socket!.broadcastEnabled = true;
       _socket!.multicastLoopback = false;
@@ -75,6 +77,8 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
       final data = mSearch.codeUnits;
       final address = InternetAddress(SsdpConstants.multicastAddress);
 
+      CastLogger.info(
+          'DLNA: sending M-SEARCH to ${SsdpConstants.multicastAddress}:${SsdpConstants.multicastPort}');
       _socket!.send(data, address, SsdpConstants.multicastPort);
 
       // Send again after a short delay for reliability
@@ -86,9 +90,11 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
 
       // Close after timeout
       Timer(timeout, () {
+        CastLogger.info('DLNA: discovery timeout reached, closing');
         _controller?.close();
       });
     } catch (e) {
+      CastLogger.error('DLNA: discovery failed: $e');
       _controller?.addError(e);
       _controller?.close();
     }
@@ -105,17 +111,23 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
     // Skip if we already have this device
     if (_devices.containsKey(uuid)) return;
 
+    CastLogger.debug(
+        'DLNA: SSDP response from $uuid, fetching description at $location');
+
     try {
       final xml = await _httpFetcher(location);
       final description = DlnaDeviceDescription.parse(xml, location);
       final device = description.toCastDevice();
+      CastLogger.info(
+          'DLNA: found device "${device.name}" at ${device.address.address}:${device.port}');
       _devices[uuid] = device;
 
       if (_controller?.isClosed == false) {
         _controller!.add(_devices.values.toList());
       }
-    } catch (_) {
-      // Skip devices we can't fetch descriptions for
+    } catch (e) {
+      CastLogger.warning(
+          'DLNA: failed to fetch description for $uuid at $location: $e');
     }
   }
 

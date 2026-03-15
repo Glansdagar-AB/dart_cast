@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../core/cast_device.dart';
 import '../../core/discovery_provider.dart';
+import '../../utils/logger.dart';
 import '../../utils/mdns_discovery.dart';
 
 /// Discovers Chromecast devices via mDNS (_googlecast._tcp.local).
@@ -31,11 +32,14 @@ class ChromecastDiscoveryProvider implements DeviceDiscoveryProvider {
     _devices.clear();
     _controller = StreamController<List<CastDevice>>();
 
+    CastLogger.info('Chromecast: starting mDNS discovery');
     final stream = _mdnsLookup(MdnsDiscovery.chromecastServiceType);
     _subscription = stream.listen(
       (info) {
         final device = info.toChromecastDevice();
         if (!_devices.containsKey(device.id)) {
+          CastLogger.info(
+              'Chromecast: found "${device.name}" at ${device.address.address}:${device.port}');
           _devices[device.id] = device;
           if (_controller?.isClosed == false) {
             _controller!.add(_devices.values.toList());
@@ -43,6 +47,7 @@ class ChromecastDiscoveryProvider implements DeviceDiscoveryProvider {
         }
       },
       onError: (Object error) {
+        CastLogger.error('Chromecast: discovery error: $error');
         if (_controller?.isClosed == false) {
           _controller!.addError(error);
         }

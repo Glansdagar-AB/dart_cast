@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../core/cast_device.dart';
 import '../../core/discovery_provider.dart';
+import '../../utils/logger.dart';
 import '../../utils/mdns_discovery.dart';
 
 /// Discovers AirPlay devices via mDNS (_airplay._tcp.local).
@@ -32,15 +33,22 @@ class AirPlayDiscoveryProvider implements DeviceDiscoveryProvider {
     _devices.clear();
     _controller = StreamController<List<CastDevice>>();
 
+    CastLogger.info('AirPlay: starting mDNS discovery');
     final stream = _mdnsLookup(MdnsDiscovery.airplayServiceType);
     _subscription = stream.listen(
       (info) {
         // Filter: only include devices that support video
         final features = info.txtRecords['features'] ?? '';
-        if (!MdnsServiceInfo.supportsVideo(features)) return;
+        if (!MdnsServiceInfo.supportsVideo(features)) {
+          CastLogger.debug(
+              'AirPlay: skipping "${info.friendlyName}" (no video support, features=$features)');
+          return;
+        }
 
         final device = info.toAirplayDevice();
         if (!_devices.containsKey(device.id)) {
+          CastLogger.info(
+              'AirPlay: found "${device.name}" at ${device.address.address}:${device.port}');
           _devices[device.id] = device;
           if (_controller?.isClosed == false) {
             _controller!.add(_devices.values.toList());
@@ -48,6 +56,7 @@ class AirPlayDiscoveryProvider implements DeviceDiscoveryProvider {
         }
       },
       onError: (Object error) {
+        CastLogger.error('AirPlay: discovery error: $error');
         if (_controller?.isClosed == false) {
           _controller!.addError(error);
         }

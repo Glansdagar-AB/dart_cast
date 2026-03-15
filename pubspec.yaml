@@ -1,6 +1,15 @@
 name: dart_cast
-description: A Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
+description: A pure Dart cross-platform casting package supporting Chromecast (CASTV2), AirPlay, and DLNA with built-in HTTP proxy for header injection.
 version: 0.1.0
+repository: https://github.com/abdelaziz-mahdy/dart_cast
+homepage: https://github.com/abdelaziz-mahdy/dart_cast
+issue_tracker: https://github.com/abdelaziz-mahdy/dart_cast/issues
+topics:
+  - cast
+  - chromecast
+  - airplay
+  - dlna
+  - streaming
 
 environment:
   sdk: ^3.0.0

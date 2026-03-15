@@ -40,7 +40,9 @@ void main() {
   });
 
   group('Chromecast integration', () {
-    test('full playback lifecycle: connect -> load -> play -> seek -> pause -> stop -> disconnect', () async {
+    test(
+        'full playback lifecycle: connect -> load -> play -> seek -> pause -> stop -> disconnect',
+        () async {
       // 1. Connect — sends CONNECT, LAUNCH, waits for RECEIVER_STATUS
       await session.connect();
       expect(session.state, SessionState.connected);
@@ -145,8 +147,7 @@ void main() {
 
       final stopMsg = server.sentMessages.firstWhere(
         (m) =>
-            m.namespace == CastMediaChannel.mediaNamespace &&
-            m.type == 'STOP',
+            m.namespace == CastMediaChannel.mediaNamespace && m.type == 'STOP',
       );
       expect(stopMsg, isNotNull);
 
@@ -163,9 +164,8 @@ void main() {
       expect(session.state, SessionState.disconnected);
 
       // Verify CLOSE messages were sent
-      final closeMessages = server.sentMessages
-          .where((m) => m.type == 'CLOSE')
-          .toList();
+      final closeMessages =
+          server.sentMessages.where((m) => m.type == 'CLOSE').toList();
       expect(closeMessages.length, greaterThanOrEqualTo(2));
 
       // CLOSE to transport ID
@@ -297,8 +297,7 @@ void main() {
       final positionFuture = session.positionStream.first;
       await session.seek(const Duration(minutes: 10));
 
-      final position = await positionFuture
-          .timeout(const Duration(seconds: 2));
+      final position = await positionFuture.timeout(const Duration(seconds: 2));
       expect(position.inSeconds, 600);
     });
 
@@ -344,7 +343,8 @@ void main() {
       expect(session.sessionId, isNull);
     });
 
-    test('position updates from MEDIA_STATUS are emitted on positionStream', () async {
+    test('position updates from MEDIA_STATUS are emitted on positionStream',
+        () async {
       await session.connect();
 
       server.currentTime = 42.5;

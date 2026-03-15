@@ -92,7 +92,8 @@ class MediaProxy {
 
   String _generateToken() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    return List.generate(16, (_) => chars[_random.nextInt(chars.length)]).join();
+    return List.generate(16, (_) => chars[_random.nextInt(chars.length)])
+        .join();
   }
 
   Future<void> _handleRequest(HttpRequest request) async {
@@ -277,7 +278,8 @@ class MediaProxy {
 
     // Check content type
     if (contentType != null) {
-      final mimeType = '${contentType.primaryType}/${contentType.subType}'.toLowerCase();
+      final mimeType =
+          '${contentType.primaryType}/${contentType.subType}'.toLowerCase();
       if (mimeType.contains('mpegurl') || mimeType.contains('x-mpegurl')) {
         return true;
       }
@@ -291,7 +293,9 @@ class MediaProxy {
     if (lower.endsWith('.m3u8') || lower.endsWith('.m3u')) {
       return ContentType('application', 'vnd.apple.mpegurl');
     }
-    if (lower.endsWith('.mp4') || lower.endsWith('.m4v') || lower.endsWith('.m4s')) {
+    if (lower.endsWith('.mp4') ||
+        lower.endsWith('.m4v') ||
+        lower.endsWith('.m4s')) {
       return ContentType('video', 'mp4');
     }
     if (lower.endsWith('.ts')) {

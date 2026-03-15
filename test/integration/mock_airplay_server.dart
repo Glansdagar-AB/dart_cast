@@ -99,8 +99,7 @@ class MockAirPlayServer {
     final body = String.fromCharCodes(bodyBytes);
 
     // Extract Content-Location
-    final locationMatch =
-        RegExp(r'Content-Location:\s*(.+)').firstMatch(body);
+    final locationMatch = RegExp(r'Content-Location:\s*(.+)').firstMatch(body);
     if (locationMatch != null) {
       lastMediaUrl = locationMatch.group(1)!.trim();
     }

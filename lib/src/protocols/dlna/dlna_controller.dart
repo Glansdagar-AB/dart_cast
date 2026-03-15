@@ -2,8 +2,7 @@ import 'package:http/http.dart' as http;
 
 /// Service type URNs for DLNA SOAP actions.
 class DlnaServiceType {
-  static const avTransport =
-      'urn:schemas-upnp-org:service:AVTransport:1';
+  static const avTransport = 'urn:schemas-upnp-org:service:AVTransport:1';
   static const renderingControl =
       'urn:schemas-upnp-org:service:RenderingControl:1';
 }
@@ -43,8 +42,8 @@ class DlnaSoapBuilder {
       DlnaServiceType.avTransport,
       'SetAVTransportURI',
       '<InstanceID>0</InstanceID>'
-      '<CurrentURI>$escapedUrl</CurrentURI>'
-      '<CurrentURIMetaData>$didlLite</CurrentURIMetaData>',
+          '<CurrentURI>$escapedUrl</CurrentURI>'
+          '<CurrentURIMetaData>$didlLite</CurrentURIMetaData>',
     );
   }
 
@@ -82,8 +81,8 @@ class DlnaSoapBuilder {
       DlnaServiceType.avTransport,
       'Seek',
       '<InstanceID>0</InstanceID>'
-      '<Unit>REL_TIME</Unit>'
-      '<Target>$formatted</Target>',
+          '<Unit>REL_TIME</Unit>'
+          '<Target>$formatted</Target>',
     );
   }
 
@@ -111,8 +110,8 @@ class DlnaSoapBuilder {
       DlnaServiceType.renderingControl,
       'SetVolume',
       '<InstanceID>0</InstanceID>'
-      '<Channel>Master</Channel>'
-      '<DesiredVolume>$volume</DesiredVolume>',
+          '<Channel>Master</Channel>'
+          '<DesiredVolume>$volume</DesiredVolume>',
     );
   }
 
@@ -122,7 +121,7 @@ class DlnaSoapBuilder {
       DlnaServiceType.renderingControl,
       'GetVolume',
       '<InstanceID>0</InstanceID>'
-      '<Channel>Master</Channel>',
+          '<Channel>Master</Channel>',
     );
   }
 
@@ -178,8 +177,7 @@ class DlnaSoapParser {
   /// Parses a GetPositionInfo response, returning position and duration.
   static PositionInfo parsePositionInfo(String xml) {
     final relTime = _extractElement(xml, 'RelTime') ?? '00:00:00';
-    final trackDuration =
-        _extractElement(xml, 'TrackDuration') ?? '00:00:00';
+    final trackDuration = _extractElement(xml, 'TrackDuration') ?? '00:00:00';
 
     return PositionInfo(
       position: _parseDuration(relTime),

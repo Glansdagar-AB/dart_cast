@@ -26,7 +26,8 @@ class MockDiscoveryProvider implements DeviceDiscoveryProvider {
   });
 
   @override
-  Stream<List<CastDevice>> startDiscovery({Duration timeout = const Duration(seconds: 10)}) {
+  Stream<List<CastDevice>> startDiscovery(
+      {Duration timeout = const Duration(seconds: 10)}) {
     stopped = false;
     final controller = StreamController<List<CastDevice>>();
     () async {
@@ -123,9 +124,11 @@ void main() {
         sessionFactory: (device) => MockCastSession(device),
       );
 
-      final results = await service.startDiscovery(
-        timeout: const Duration(milliseconds: 500),
-      ).toList();
+      final results = await service
+          .startDiscovery(
+            timeout: const Duration(milliseconds: 500),
+          )
+          .toList();
 
       expect(results, isNotEmpty);
       expect(results.last.first.id, equals('d1'));

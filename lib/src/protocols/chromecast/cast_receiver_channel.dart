@@ -37,16 +37,13 @@ class ReceiverStatusInfo {
 /// Builds and parses messages for Chromecast receiver control.
 class CastReceiverChannel {
   /// Connection namespace for virtual connections.
-  static const connectionNamespace =
-      'urn:x-cast:com.google.cast.tp.connection';
+  static const connectionNamespace = 'urn:x-cast:com.google.cast.tp.connection';
 
   /// Heartbeat namespace for keep-alive.
-  static const heartbeatNamespace =
-      'urn:x-cast:com.google.cast.tp.heartbeat';
+  static const heartbeatNamespace = 'urn:x-cast:com.google.cast.tp.heartbeat';
 
   /// Receiver namespace for app/device control.
-  static const receiverNamespace =
-      'urn:x-cast:com.google.cast.receiver';
+  static const receiverNamespace = 'urn:x-cast:com.google.cast.receiver';
 
   /// Default Media Receiver app ID.
   static const defaultMediaReceiverAppId = 'CC1AD845';

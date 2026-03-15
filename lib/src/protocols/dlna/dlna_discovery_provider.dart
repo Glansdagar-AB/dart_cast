@@ -73,8 +73,7 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
       final searchTarget = SsdpConstants.searchTargets[2]; // MediaRenderer
       final mSearch = SsdpMessage.mSearch(searchTarget, 3);
       final data = mSearch.codeUnits;
-      final address =
-          InternetAddress(SsdpConstants.multicastAddress);
+      final address = InternetAddress(SsdpConstants.multicastAddress);
 
       _socket!.send(data, address, SsdpConstants.multicastPort);
 
@@ -142,9 +141,11 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
     try {
       final request = await client.getUrl(Uri.parse(url));
       final response = await request.close();
-      final body = await response.transform(
-        const SystemEncoding().decoder,
-      ).join();
+      final body = await response
+          .transform(
+            const SystemEncoding().decoder,
+          )
+          .join();
       return body;
     } finally {
       client.close();

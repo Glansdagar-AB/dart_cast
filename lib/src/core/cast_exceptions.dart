@@ -12,8 +12,9 @@ class CastException implements Exception {
   CastException(this.message, [this.cause]);
 
   @override
-  String toString() =>
-      cause != null ? 'CastException: $message (cause: $cause)' : 'CastException: $message';
+  String toString() => cause != null
+      ? 'CastException: $message (cause: $cause)'
+      : 'CastException: $message';
 }
 
 /// Thrown when a device cannot be reached on the network.

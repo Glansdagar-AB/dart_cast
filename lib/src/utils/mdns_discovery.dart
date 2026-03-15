@@ -54,7 +54,9 @@ class MdnsServiceInfo {
     try {
       final parts = features.split(',');
       final lower = parts[0].trim();
-      final value = int.parse(lower.replaceFirst('0x', '').replaceFirst('0X', ''), radix: 16);
+      final value = int.parse(
+          lower.replaceFirst('0x', '').replaceFirst('0X', ''),
+          radix: 16);
       return (value & 0x01) != 0;
     } catch (_) {
       return false;

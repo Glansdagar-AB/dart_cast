@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:dart_cast/src/core/media_proxy.dart';
@@ -15,8 +14,7 @@ void main() {
 
       // Create an upstream server to simulate remote content
       upstreamServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      upstreamBaseUrl =
-          'http://127.0.0.1:${upstreamServer.port}';
+      upstreamBaseUrl = 'http://127.0.0.1:${upstreamServer.port}';
       upstreamServer.listen((request) async {
         final path = request.uri.path;
 
@@ -27,8 +25,7 @@ void main() {
             return;
           }
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('video', 'mp4');
+          request.response.headers.contentType = ContentType('video', 'mp4');
           request.response.add([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
           await request.response.close();
         } else if (path == '/master.m3u8') {
@@ -42,15 +39,13 @@ void main() {
           await request.response.close();
         } else if (path == '/segment.ts') {
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('video', 'mp2t');
+          request.response.headers.contentType = ContentType('video', 'mp2t');
           request.response.add([10, 20, 30, 40, 50]);
           await request.response.close();
         } else if (path == '/noheaders.mp4') {
           // This endpoint doesn't require headers
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('video', 'mp4');
+          request.response.headers.contentType = ContentType('video', 'mp4');
           request.response.add([99, 98, 97]);
           await request.response.close();
         } else {
@@ -145,9 +140,11 @@ void main() {
         expect(body, contains('/stream/'));
         expect(body, contains('url='));
         // The original relative URL should be resolved and encoded
-        expect(body, contains(Uri.encodeComponent(
-          '$upstreamBaseUrl/720p/playlist.m3u8',
-        )));
+        expect(
+            body,
+            contains(Uri.encodeComponent(
+              '$upstreamBaseUrl/720p/playlist.m3u8',
+            )));
         // Should still have the EXTM3U and STREAM-INF tags
         expect(body, contains('#EXTM3U'));
         expect(body, contains('#EXT-X-STREAM-INF:'));
@@ -237,7 +234,8 @@ void main() {
     test('supports Range requests for local files', () async {
       await proxy.start();
 
-      final tempDir = await Directory.systemTemp.createTemp('media_proxy_range');
+      final tempDir =
+          await Directory.systemTemp.createTemp('media_proxy_range');
       final tempFile = File('${tempDir.path}/ranged.mp4');
       await tempFile.writeAsBytes(
         List.generate(100, (i) => i), // 0..99

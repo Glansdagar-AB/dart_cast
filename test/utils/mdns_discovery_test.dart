@@ -12,7 +12,11 @@ void main() {
           name: 'Chromecast-abc123._googlecast._tcp.local',
           host: '192.168.1.100',
           port: 8009,
-          txtRecords: {'fn': 'Living Room TV', 'md': 'Chromecast', 'id': 'abc-123'},
+          txtRecords: {
+            'fn': 'Living Room TV',
+            'md': 'Chromecast',
+            'id': 'abc-123'
+          },
         );
 
         expect(info.friendlyName, 'Living Room TV');
@@ -23,7 +27,11 @@ void main() {
           name: 'Chromecast-abc123._googlecast._tcp.local',
           host: '192.168.1.100',
           port: 8009,
-          txtRecords: {'fn': 'Living Room TV', 'md': 'Chromecast', 'id': 'abc-123'},
+          txtRecords: {
+            'fn': 'Living Room TV',
+            'md': 'Chromecast',
+            'id': 'abc-123'
+          },
         );
 
         expect(info.deviceId, 'abc-123');
@@ -34,7 +42,11 @@ void main() {
           name: 'Chromecast-abc123._googlecast._tcp.local',
           host: '192.168.1.100',
           port: 8009,
-          txtRecords: {'fn': 'Living Room TV', 'md': 'Chromecast Ultra', 'id': 'abc-123'},
+          txtRecords: {
+            'fn': 'Living Room TV',
+            'md': 'Chromecast Ultra',
+            'id': 'abc-123'
+          },
         );
 
         expect(info.model, 'Chromecast Ultra');
@@ -47,7 +59,11 @@ void main() {
           name: 'Apple TV._airplay._tcp.local',
           host: '192.168.1.200',
           port: 7000,
-          txtRecords: {'deviceid': 'AA:BB:CC:DD:EE:FF', 'features': '0x5A7FFFF7,0x1E', 'model': 'AppleTV3,2'},
+          txtRecords: {
+            'deviceid': 'AA:BB:CC:DD:EE:FF',
+            'features': '0x5A7FFFF7,0x1E',
+            'model': 'AppleTV3,2'
+          },
         );
 
         expect(info.deviceId, 'AA:BB:CC:DD:EE:FF');
@@ -106,7 +122,11 @@ void main() {
           name: 'Chromecast-abc._googlecast._tcp.local',
           host: '192.168.1.100',
           port: 8009,
-          txtRecords: {'fn': 'Living Room TV', 'md': 'Chromecast', 'id': 'abc-123'},
+          txtRecords: {
+            'fn': 'Living Room TV',
+            'md': 'Chromecast',
+            'id': 'abc-123'
+          },
         );
 
         final device = info.toChromecastDevice();

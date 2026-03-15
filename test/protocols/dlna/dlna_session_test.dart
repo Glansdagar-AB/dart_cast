@@ -53,8 +53,8 @@ class MockDlnaServer {
 
     switch (action) {
       case 'SetAVTransportURI':
-        request.response.write(_soapResponse('SetAVTransportURIResponse',
-            DlnaServiceType.avTransport, ''));
+        request.response.write(_soapResponse(
+            'SetAVTransportURIResponse', DlnaServiceType.avTransport, ''));
         break;
       case 'Play':
         _transportState = 'PLAYING';
@@ -80,8 +80,8 @@ class MockDlnaServer {
           'GetPositionInfoResponse',
           DlnaServiceType.avTransport,
           '<Track>1</Track>'
-          '<TrackDuration>$_trackDuration</TrackDuration>'
-          '<RelTime>$_relTime</RelTime>',
+              '<TrackDuration>$_trackDuration</TrackDuration>'
+              '<RelTime>$_relTime</RelTime>',
         ));
         break;
       case 'GetTransportInfo':
@@ -89,8 +89,8 @@ class MockDlnaServer {
           'GetTransportInfoResponse',
           DlnaServiceType.avTransport,
           '<CurrentTransportState>$_transportState</CurrentTransportState>'
-          '<CurrentTransportStatus>OK</CurrentTransportStatus>'
-          '<CurrentSpeed>1</CurrentSpeed>',
+              '<CurrentTransportStatus>OK</CurrentTransportStatus>'
+              '<CurrentSpeed>1</CurrentSpeed>',
         ));
         break;
       case 'SetVolume':
@@ -207,8 +207,8 @@ void main() {
         // SetAVTransportURI should come before Play
         final setUriIndex = mockServer.capturedActions
             .indexWhere((a) => a.action == 'SetAVTransportURI');
-        final playIndex = mockServer.capturedActions
-            .indexWhere((a) => a.action == 'Play');
+        final playIndex =
+            mockServer.capturedActions.indexWhere((a) => a.action == 'Play');
         expect(setUriIndex, lessThan(playIndex));
       });
 
@@ -345,7 +345,8 @@ void main() {
             .where((a) => a.action == 'SetVolume')
             .toList();
         expect(volumeActions, hasLength(1));
-        expect(volumeActions.first.body, contains('<DesiredVolume>75</DesiredVolume>'));
+        expect(volumeActions.first.body,
+            contains('<DesiredVolume>75</DesiredVolume>'));
       });
 
       test('handles volume 0.0', () async {
@@ -363,7 +364,8 @@ void main() {
         final volumeActions = mockServer.capturedActions
             .where((a) => a.action == 'SetVolume')
             .toList();
-        expect(volumeActions.first.body, contains('<DesiredVolume>0</DesiredVolume>'));
+        expect(volumeActions.first.body,
+            contains('<DesiredVolume>0</DesiredVolume>'));
       });
 
       test('handles volume 1.0', () async {
@@ -381,7 +383,8 @@ void main() {
         final volumeActions = mockServer.capturedActions
             .where((a) => a.action == 'SetVolume')
             .toList();
-        expect(volumeActions.first.body, contains('<DesiredVolume>100</DesiredVolume>'));
+        expect(volumeActions.first.body,
+            contains('<DesiredVolume>100</DesiredVolume>'));
       });
     });
 
@@ -500,8 +503,7 @@ void main() {
         ));
 
         // Wait for polling to start
-        await session.positionStream.first
-            .timeout(const Duration(seconds: 5));
+        await session.positionStream.first.timeout(const Duration(seconds: 5));
 
         await session.disconnect();
 

@@ -48,7 +48,9 @@ void main() {
   }
 
   group('AirPlay integration', () {
-    test('full playback lifecycle: connect -> load -> play -> seek -> pause -> stop -> disconnect', () async {
+    test(
+        'full playback lifecycle: connect -> load -> play -> seek -> pause -> stop -> disconnect',
+        () async {
       // 1. Connect — calls /server-info to verify device
       await session.connect();
       expect(session.state, SessionState.connected);
@@ -194,8 +196,7 @@ void main() {
       final volumeFuture = session.volumeStream.first;
       await session.setVolume(0.5);
 
-      final vol = await volumeFuture
-          .timeout(const Duration(seconds: 2));
+      final vol = await volumeFuture.timeout(const Duration(seconds: 2));
       expect(vol, 0.5);
     });
   });

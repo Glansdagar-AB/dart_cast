@@ -111,13 +111,17 @@ void main() {
         expect(lines[1], startsWith('#EXT-X-STREAM-INF:'));
         // Line 2: rewritten variant URI
         expect(lines[2], startsWith('$proxyBaseUrl/stream/$token?url='));
-        expect(lines[2], contains(Uri.encodeComponent(
-          'https://cdn.example.com/streams/720p/playlist.m3u8',
-        )));
+        expect(
+            lines[2],
+            contains(Uri.encodeComponent(
+              'https://cdn.example.com/streams/720p/playlist.m3u8',
+            )));
         // Line 4: rewritten 1080p variant URI
-        expect(lines[4], contains(Uri.encodeComponent(
-          'https://cdn.example.com/streams/1080p/playlist.m3u8',
-        )));
+        expect(
+            lines[4],
+            contains(Uri.encodeComponent(
+              'https://cdn.example.com/streams/1080p/playlist.m3u8',
+            )));
       });
 
       test('rewrites media playlist segment URIs (Pattern A)', () {
@@ -136,12 +140,16 @@ void main() {
         final lines = result.split('\n');
 
         expect(lines[3], startsWith('$proxyBaseUrl/stream/$token?url='));
-        expect(lines[3], contains(Uri.encodeComponent(
-          'https://cdn.example.com/streams/720p/segment000.ts',
-        )));
-        expect(lines[5], contains(Uri.encodeComponent(
-          'https://cdn.example.com/streams/720p/segment001.ts',
-        )));
+        expect(
+            lines[3],
+            contains(Uri.encodeComponent(
+              'https://cdn.example.com/streams/720p/segment000.ts',
+            )));
+        expect(
+            lines[5],
+            contains(Uri.encodeComponent(
+              'https://cdn.example.com/streams/720p/segment001.ts',
+            )));
       });
 
       test('rewrites #EXT-X-KEY URI attribute (Pattern B)', () {
@@ -156,9 +164,11 @@ void main() {
             HlsParser.rewritePlaylist(content, baseUrl, proxyBaseUrl, token);
 
         expect(result, contains('URI="$proxyBaseUrl/stream/$token?url='));
-        expect(result, contains(Uri.encodeComponent(
-          'https://keys.cdn.com/key1.bin',
-        )));
+        expect(
+            result,
+            contains(Uri.encodeComponent(
+              'https://keys.cdn.com/key1.bin',
+            )));
         // IV should be preserved
         expect(result, contains('IV=0x00000001'));
         expect(result, contains('METHOD=AES-128'));
@@ -178,9 +188,11 @@ void main() {
             content, mediaBaseUrl, proxyBaseUrl, token);
 
         expect(result, contains('URI="$proxyBaseUrl/stream/$token?url='));
-        expect(result, contains(Uri.encodeComponent(
-          'https://cdn.example.com/streams/720p/init.mp4',
-        )));
+        expect(
+            result,
+            contains(Uri.encodeComponent(
+              'https://cdn.example.com/streams/720p/init.mp4',
+            )));
       });
 
       test('rewrites #EXT-X-MEDIA URI attribute (Pattern B)', () {
@@ -193,9 +205,11 @@ void main() {
             HlsParser.rewritePlaylist(content, baseUrl, proxyBaseUrl, token);
 
         expect(result, contains('URI="$proxyBaseUrl/stream/$token?url='));
-        expect(result, contains(Uri.encodeComponent(
-          'https://cdn.example.com/streams/audio/en/playlist.m3u8',
-        )));
+        expect(
+            result,
+            contains(Uri.encodeComponent(
+              'https://cdn.example.com/streams/audio/en/playlist.m3u8',
+            )));
       });
 
       test('rewrites #EXT-X-I-FRAME-STREAM-INF URI attribute', () {
@@ -206,9 +220,11 @@ void main() {
             HlsParser.rewritePlaylist(content, baseUrl, proxyBaseUrl, token);
 
         expect(result, contains('URI="$proxyBaseUrl/stream/$token?url='));
-        expect(result, contains(Uri.encodeComponent(
-          'https://cdn.example.com/streams/720p/iframes.m3u8',
-        )));
+        expect(
+            result,
+            contains(Uri.encodeComponent(
+              'https://cdn.example.com/streams/720p/iframes.m3u8',
+            )));
       });
 
       test('preserves non-URI lines unchanged', () {
@@ -245,9 +261,11 @@ void main() {
         final result =
             HlsParser.rewritePlaylist(content, baseUrl, proxyBaseUrl, token);
 
-        expect(result, contains(Uri.encodeComponent(
-          'https://cdn2.example.com/seg000.ts',
-        )));
+        expect(
+            result,
+            contains(Uri.encodeComponent(
+              'https://cdn2.example.com/seg000.ts',
+            )));
       });
 
       test('handles #EXT-X-BYTERANGE between #EXTINF and segment URI', () {
@@ -280,9 +298,11 @@ void main() {
             HlsParser.rewritePlaylist(content, baseUrl, proxyBaseUrl, token);
 
         // The #EXT-X-MEDIA line without URI should remain unchanged
-        expect(result, contains(
-          '#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID="cc",NAME="English"',
-        ));
+        expect(
+            result,
+            contains(
+              '#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID="cc",NAME="English"',
+            ));
       });
 
       test('rewrites #EXT-X-KEY with relative URI', () {
@@ -298,9 +318,11 @@ void main() {
         final result = HlsParser.rewritePlaylist(
             content, mediaBaseUrl, proxyBaseUrl, token);
 
-        expect(result, contains(Uri.encodeComponent(
-          'https://cdn.example.com/streams/720p/keys/enc.key',
-        )));
+        expect(
+            result,
+            contains(Uri.encodeComponent(
+              'https://cdn.example.com/streams/720p/keys/enc.key',
+            )));
       });
 
       test('handles empty lines gracefully', () {

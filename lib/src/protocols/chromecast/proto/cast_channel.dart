@@ -129,8 +129,7 @@ class CastMessage extends GeneratedMessage {
   set namespace_(String v) => $_setString(3, v);
   bool hasNamespace_() => $_has(3);
 
-  CastMessage_PayloadType get payloadType =>
-      $_getN<CastMessage_PayloadType>(4);
+  CastMessage_PayloadType get payloadType => $_getN<CastMessage_PayloadType>(4);
   set payloadType(CastMessage_PayloadType v) => setField(5, v);
   bool hasPayloadType() => $_has(4);
 

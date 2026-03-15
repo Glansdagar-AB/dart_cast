@@ -4,16 +4,18 @@ import 'package:dart_cast/dart_cast.dart';
 void main() {
   group('SessionState', () {
     test('has all expected values', () {
-      expect(SessionState.values, containsAll([
-        SessionState.connecting,
-        SessionState.connected,
-        SessionState.loading,
-        SessionState.playing,
-        SessionState.paused,
-        SessionState.buffering,
-        SessionState.idle,
-        SessionState.disconnected,
-      ]));
+      expect(
+          SessionState.values,
+          containsAll([
+            SessionState.connecting,
+            SessionState.connected,
+            SessionState.loading,
+            SessionState.playing,
+            SessionState.paused,
+            SessionState.buffering,
+            SessionState.idle,
+            SessionState.disconnected,
+          ]));
     });
   });
 

@@ -39,7 +39,9 @@ void main() {
   });
 
   group('DLNA integration', () {
-    test('full playback lifecycle: connect -> load -> play -> seek -> pause -> stop -> disconnect', () async {
+    test(
+        'full playback lifecycle: connect -> load -> play -> seek -> pause -> stop -> disconnect',
+        () async {
       // 1. Connect
       await session.connect();
       expect(session.state, SessionState.connected);
@@ -78,8 +80,8 @@ void main() {
         isTrue,
       );
       // Verify the seek body contains the correct time
-      final seekAction = server.capturedActions
-          .firstWhere((a) => a.action == 'Seek');
+      final seekAction =
+          server.capturedActions.firstWhere((a) => a.action == 'Seek');
       expect(seekAction.body, contains('00:30:00'));
       expect(server.positionSeconds, 1800.0);
 
@@ -128,7 +130,8 @@ void main() {
       expect(session.state, SessionState.connected);
     });
 
-    test('loadMedia sends SetAVTransportURI with correct URL and title', () async {
+    test('loadMedia sends SetAVTransportURI with correct URL and title',
+        () async {
       await session.connect();
       server.durationSeconds = 7200.0;
 
@@ -173,8 +176,8 @@ void main() {
 
       await session.seek(const Duration(hours: 1, minutes: 15, seconds: 30));
 
-      final seekAction = server.capturedActions
-          .firstWhere((a) => a.action == 'Seek');
+      final seekAction =
+          server.capturedActions.firstWhere((a) => a.action == 'Seek');
       expect(seekAction.body, contains('01:15:30'));
       expect(server.positionSeconds, 4530.0);
     });
@@ -188,8 +191,8 @@ void main() {
 
       await session.setVolume(0.75);
 
-      final volAction = server.capturedActions
-          .firstWhere((a) => a.action == 'SetVolume');
+      final volAction =
+          server.capturedActions.firstWhere((a) => a.action == 'SetVolume');
       expect(volAction.body, contains('<DesiredVolume>75</DesiredVolume>'));
       expect(server.volume, 75);
     });
@@ -204,8 +207,7 @@ void main() {
       ));
 
       // Wait for at least one poll
-      await session.positionStream.first
-          .timeout(const Duration(seconds: 5));
+      await session.positionStream.first.timeout(const Duration(seconds: 5));
 
       await session.stop();
       expect(session.state, SessionState.idle);
@@ -236,7 +238,8 @@ void main() {
       );
     });
 
-    test('position polling reports position and duration from server', () async {
+    test('position polling reports position and duration from server',
+        () async {
       await session.connect();
       server.durationSeconds = 5400.0;
       server.positionSeconds = 300.0;

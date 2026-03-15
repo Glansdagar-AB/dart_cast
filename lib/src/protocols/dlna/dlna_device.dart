@@ -47,9 +47,8 @@ class DlnaDeviceDescription {
 
     // Determine base URL: prefer URLBase, fall back to location origin.
     final urlBase = _extractElement(xml, 'URLBase');
-    final baseUri = urlBase != null
-        ? Uri.parse(urlBase)
-        : _originFromUrl(locationUrl);
+    final baseUri =
+        urlBase != null ? Uri.parse(urlBase) : _originFromUrl(locationUrl);
 
     // Extract service control URLs.
     String? avTransportControlUrl;
@@ -132,8 +131,7 @@ class DlnaDeviceDescription {
 
   /// Resolves a potentially relative [controlUrl] against a [baseUri].
   static String _resolveUrl(Uri baseUri, String controlUrl) {
-    if (controlUrl.startsWith('http://') ||
-        controlUrl.startsWith('https://')) {
+    if (controlUrl.startsWith('http://') || controlUrl.startsWith('https://')) {
       return controlUrl;
     }
     return baseUri.resolve(controlUrl).toString();

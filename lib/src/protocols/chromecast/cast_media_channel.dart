@@ -176,8 +176,7 @@ class CastMediaChannel {
   }
 
   /// Builds a SET_VOLUME command for the media stream.
-  String buildSetVolume(int mediaSessionId,
-      {double? level, bool? muted}) {
+  String buildSetVolume(int mediaSessionId, {double? level, bool? muted}) {
     final volume = <String, dynamic>{};
     if (level != null) volume['level'] = level;
     if (muted != null) volume['muted'] = muted;

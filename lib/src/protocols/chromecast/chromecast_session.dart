@@ -538,18 +538,15 @@ class _MockProxyAdapter implements _ProxyAdapter {
   _MockProxyAdapter(this._mock);
 
   @override
-  Future<void> start() =>
-      (_mock as dynamic).start() as Future<void>;
+  Future<void> start() => (_mock as dynamic).start() as Future<void>;
 
   @override
-  Future<void> stop() =>
-      (_mock as dynamic).stop() as Future<void>;
+  Future<void> stop() => (_mock as dynamic).stop() as Future<void>;
 
   @override
   String registerMedia(String url, {Map<String, String> headers = const {}}) =>
       (_mock as dynamic).registerMedia(url, headers: headers) as String;
 
   @override
-  void cleanupPreviousMedia() =>
-      (_mock as dynamic).cleanupPreviousMedia();
+  void cleanupPreviousMedia() => (_mock as dynamic).cleanupPreviousMedia();
 }

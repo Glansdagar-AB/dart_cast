@@ -12,8 +12,7 @@ import 'dart:convert';
 /// This allows integration tests to verify the complete session lifecycle
 /// without requiring TLS infrastructure.
 class MockChromecastServer {
-  final _incomingController =
-      StreamController<MockCastMessage>.broadcast();
+  final _incomingController = StreamController<MockCastMessage>.broadcast();
 
   /// Messages sent by the session (recorded for verification).
   final List<MockSentMessage> sentMessages = [];

@@ -17,7 +17,6 @@ class AirPlaySession extends CastSession {
   final MediaProxy _proxy = MediaProxy();
   Timer? _pollTimer;
 
-
   /// Creates an [AirPlaySession] for the given AirPlay [device].
   AirPlaySession(super.device);
 
@@ -220,7 +219,8 @@ class AirPlaySession extends CastSession {
 
   void _ensureClient() {
     if (_client == null) {
-      throw StateError('AirPlaySession is not connected. Call connect() first.');
+      throw StateError(
+          'AirPlaySession is not connected. Call connect() first.');
     }
   }
 }

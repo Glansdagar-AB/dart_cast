@@ -210,9 +210,8 @@ class MockDlnaServer {
         ));
       case 'Seek':
         // Parse the target time from the body
-        final targetMatch =
-            RegExp(r'<Target>(\d{2}):(\d{2}):(\d{2})</Target>')
-                .firstMatch(body);
+        final targetMatch = RegExp(r'<Target>(\d{2}):(\d{2}):(\d{2})</Target>')
+            .firstMatch(body);
         if (targetMatch != null) {
           final h = int.parse(targetMatch.group(1)!);
           final m = int.parse(targetMatch.group(2)!);
@@ -229,16 +228,16 @@ class MockDlnaServer {
           'GetPositionInfoResponse',
           DlnaServiceType.avTransport,
           '<Track>1</Track>'
-          '<TrackDuration>${_formatTime(durationSeconds)}</TrackDuration>'
-          '<RelTime>${_formatTime(positionSeconds)}</RelTime>',
+              '<TrackDuration>${_formatTime(durationSeconds)}</TrackDuration>'
+              '<RelTime>${_formatTime(positionSeconds)}</RelTime>',
         ));
       case 'GetTransportInfo':
         request.response.write(_soapResponse(
           'GetTransportInfoResponse',
           DlnaServiceType.avTransport,
           '<CurrentTransportState>$transportState</CurrentTransportState>'
-          '<CurrentTransportStatus>OK</CurrentTransportStatus>'
-          '<CurrentSpeed>1</CurrentSpeed>',
+              '<CurrentTransportStatus>OK</CurrentTransportStatus>'
+              '<CurrentSpeed>1</CurrentSpeed>',
         ));
       case 'SetVolume':
         final volMatch =

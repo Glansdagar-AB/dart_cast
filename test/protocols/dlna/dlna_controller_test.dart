@@ -257,12 +257,14 @@ void main() {
 </s:Envelope>''';
 
         final result = DlnaSoapParser.parsePositionInfo(xml);
-        expect(result.position, equals(const Duration(minutes: 15, seconds: 30)));
+        expect(
+            result.position, equals(const Duration(minutes: 15, seconds: 30)));
         expect(result.duration, equals(const Duration(hours: 1, minutes: 30)));
       });
 
       test('handles zero position', () {
-        const xml = '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+        const xml =
+            '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:GetPositionInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
       <TrackDuration>02:00:00</TrackDuration>
@@ -279,7 +281,8 @@ void main() {
 
     group('parseTransportInfo', () {
       test('extracts PLAYING state', () {
-        const xml = '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+        const xml =
+            '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
       <CurrentTransportState>PLAYING</CurrentTransportState>
@@ -293,7 +296,8 @@ void main() {
       });
 
       test('extracts PAUSED_PLAYBACK state', () {
-        const xml = '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+        const xml =
+            '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
       <CurrentTransportState>PAUSED_PLAYBACK</CurrentTransportState>
@@ -308,7 +312,8 @@ void main() {
       });
 
       test('extracts STOPPED state', () {
-        const xml = '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+        const xml =
+            '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
       <CurrentTransportState>STOPPED</CurrentTransportState>
@@ -320,7 +325,8 @@ void main() {
       });
 
       test('extracts TRANSITIONING state', () {
-        const xml = '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+        const xml =
+            '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
       <CurrentTransportState>TRANSITIONING</CurrentTransportState>
@@ -335,7 +341,8 @@ void main() {
       });
 
       test('extracts NO_MEDIA_PRESENT state', () {
-        const xml = '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+        const xml =
+            '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:GetTransportInfoResponse xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
       <CurrentTransportState>NO_MEDIA_PRESENT</CurrentTransportState>
@@ -352,7 +359,8 @@ void main() {
 
     group('parseVolume', () {
       test('extracts integer volume value', () {
-        const xml = '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+        const xml =
+            '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:GetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
       <CurrentVolume>75</CurrentVolume>
@@ -364,7 +372,8 @@ void main() {
       });
 
       test('handles volume 0', () {
-        const xml = '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+        const xml =
+            '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:GetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
       <CurrentVolume>0</CurrentVolume>
@@ -376,7 +385,8 @@ void main() {
       });
 
       test('handles volume 100', () {
-        const xml = '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+        const xml =
+            '''<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
     <u:GetVolumeResponse xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1">
       <CurrentVolume>100</CurrentVolume>

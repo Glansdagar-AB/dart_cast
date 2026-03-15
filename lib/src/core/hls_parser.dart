@@ -138,7 +138,8 @@ class HlsParser {
     String token,
   ) {
     final match = _uriAttributeRegex.firstMatch(line);
-    if (match == null) return line; // No URI attribute (e.g. #EXT-X-MEDIA without URI)
+    if (match == null)
+      return line; // No URI attribute (e.g. #EXT-X-MEDIA without URI)
 
     final originalUri = match.group(1)!;
     final resolved = resolveUrl(originalUri, baseUrl);

@@ -192,7 +192,8 @@ class DlnaSession extends CastSession {
         'GetTransportInfo',
         DlnaSoapBuilder.buildGetTransportInfo(),
       );
-      final transportState = DlnaSoapParser.parseTransportInfo(transportResponse);
+      final transportState =
+          DlnaSoapParser.parseTransportInfo(transportResponse);
 
       _handleTransportState(transportState);
     } catch (_) {

@@ -104,7 +104,8 @@ void main() {
 
     group('buildSetVolume', () {
       test('produces correct JSON with volume level and muted', () {
-        final json = CastReceiverChannel.buildSetVolume(level: 0.5, muted: false);
+        final json =
+            CastReceiverChannel.buildSetVolume(level: 0.5, muted: false);
         final decoded = jsonDecode(json) as Map<String, dynamic>;
         expect(decoded['type'], 'SET_VOLUME');
         expect(decoded['volume']['level'], 0.5);

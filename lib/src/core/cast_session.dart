@@ -19,7 +19,10 @@ enum SessionState {
 class SessionStateMachine {
   static const Map<SessionState, Set<SessionState>> _validTransitions = {
     SessionState.disconnected: {SessionState.connecting},
-    SessionState.connecting: {SessionState.connected, SessionState.disconnected},
+    SessionState.connecting: {
+      SessionState.connected,
+      SessionState.disconnected
+    },
     SessionState.connected: {SessionState.loading, SessionState.disconnected},
     SessionState.loading: {SessionState.playing, SessionState.disconnected},
     SessionState.playing: {

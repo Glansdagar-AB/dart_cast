@@ -472,8 +472,8 @@ void main() {
 
       test('PAUSED state transitions to paused', () async {
         // State is already PLAYING from setUp's loadMedia.
-        final stateFuture = session.stateStream
-            .firstWhere((s) => s == SessionState.paused);
+        final stateFuture =
+            session.stateStream.firstWhere((s) => s == SessionState.paused);
 
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
@@ -491,8 +491,8 @@ void main() {
 
       test('IDLE with FINISHED transitions to idle', () async {
         // State is already PLAYING from setUp's loadMedia.
-        final stateFuture = session.stateStream
-            .firstWhere((s) => s == SessionState.idle);
+        final stateFuture =
+            session.stateStream.firstWhere((s) => s == SessionState.idle);
 
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,

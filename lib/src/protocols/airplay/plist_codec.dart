@@ -114,7 +114,8 @@ class PlistCodec {
       }
 
       // Self-closing boolean tags
-      final boolMatch = RegExp(r'<(true|false)\s*/>').matchAsPrefix(content, pos);
+      final boolMatch =
+          RegExp(r'<(true|false)\s*/>').matchAsPrefix(content, pos);
       if (boolMatch != null) {
         tokens.add(_Token(boolMatch.group(1)!, null));
         pos = boolMatch.end;

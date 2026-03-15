@@ -95,8 +95,7 @@ void main() {
       final framed = CastV2Channel.frameMessage(msg);
 
       final controller = StreamController<List<int>>();
-      final messages =
-          CastV2Channel.parseMessages(controller.stream).toList();
+      final messages = CastV2Channel.parseMessages(controller.stream).toList();
 
       controller.add(framed);
       await controller.close();
@@ -124,8 +123,7 @@ void main() {
       final chunk2 = framed.sublist(splitPoint);
 
       final controller = StreamController<List<int>>();
-      final messages =
-          CastV2Channel.parseMessages(controller.stream).toList();
+      final messages = CastV2Channel.parseMessages(controller.stream).toList();
 
       controller.add(chunk1);
       controller.add(chunk2);
@@ -160,8 +158,7 @@ void main() {
       final combined = <int>[...framed1, ...framed2];
 
       final controller = StreamController<List<int>>();
-      final messages =
-          CastV2Channel.parseMessages(controller.stream).toList();
+      final messages = CastV2Channel.parseMessages(controller.stream).toList();
 
       controller.add(combined);
       await controller.close();
@@ -188,8 +185,7 @@ void main() {
       final chunk2 = framed.sublist(2); // rest of header + body
 
       final controller = StreamController<List<int>>();
-      final messages =
-          CastV2Channel.parseMessages(controller.stream).toList();
+      final messages = CastV2Channel.parseMessages(controller.stream).toList();
 
       controller.add(chunk1);
       controller.add(chunk2);
@@ -212,8 +208,7 @@ void main() {
       final framed = CastV2Channel.frameMessage(msg);
 
       final controller = StreamController<List<int>>();
-      final messages =
-          CastV2Channel.parseMessages(controller.stream).toList();
+      final messages = CastV2Channel.parseMessages(controller.stream).toList();
 
       // Send one byte at a time
       for (final byte in framed) {

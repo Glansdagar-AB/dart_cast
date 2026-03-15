@@ -85,13 +85,21 @@ void main() {
               name: 'CC1',
               host: '192.168.1.50',
               port: 8009,
-              txtRecords: {'fn': 'Living Room', 'id': 'cc-1', 'md': 'Chromecast'},
+              txtRecords: {
+                'fn': 'Living Room',
+                'id': 'cc-1',
+                'md': 'Chromecast'
+              },
             ),
             const MdnsServiceInfo(
               name: 'CC2',
               host: '192.168.1.51',
               port: 8009,
-              txtRecords: {'fn': 'Bedroom', 'id': 'cc-2', 'md': 'Chromecast Ultra'},
+              txtRecords: {
+                'fn': 'Bedroom',
+                'id': 'cc-2',
+                'md': 'Chromecast Ultra'
+              },
             ),
           ]);
         },

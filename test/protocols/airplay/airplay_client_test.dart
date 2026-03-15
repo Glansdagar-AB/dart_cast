@@ -20,13 +20,15 @@ void main() {
 
   group('AirPlayClient', () {
     group('play()', () {
-      test('sends POST /play with Content-Location and Start-Position', () async {
+      test('sends POST /play with Content-Location and Start-Position',
+          () async {
         await client.play('https://example.com/video.m3u8');
 
         expect(mockServer.lastMethod, equals('POST'));
         expect(mockServer.lastPath, equals('/play'));
         expect(mockServer.lastContentType, contains('text/parameters'));
-        expect(mockServer.lastBody, contains('Content-Location: https://example.com/video.m3u8'));
+        expect(mockServer.lastBody,
+            contains('Content-Location: https://example.com/video.m3u8'));
         expect(mockServer.lastBody, contains('Start-Position: 0.0'));
       });
 

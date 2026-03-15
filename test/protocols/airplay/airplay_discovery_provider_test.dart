@@ -12,6 +12,14 @@ void main() {
       expect(provider.protocol, equals(CastProtocol.airplay));
     });
 
+    test('default constructor uses real mDNS lookup without error', () {
+      // Verifies that constructing with the default (real) mDNS lookup
+      // does not throw. Actual discovery requires network devices.
+      final provider = AirPlayDiscoveryProvider();
+      expect(provider, isA<AirPlayDiscoveryProvider>());
+      provider.dispose();
+    });
+
     test('discovers AirPlay devices with video support', () async {
       final provider = AirPlayDiscoveryProvider(
         mdnsLookup: (serviceType) {

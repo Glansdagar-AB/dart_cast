@@ -82,7 +82,8 @@ class AirPlayDiscoveryProvider implements DeviceDiscoveryProvider {
     stopDiscovery();
   }
 
+  /// Default mDNS lookup using the multicast_dns package.
   static Stream<MdnsServiceInfo> _defaultMdnsLookup(String serviceType) {
-    return const Stream.empty();
+    return MdnsDiscovery.discover(serviceType);
   }
 }

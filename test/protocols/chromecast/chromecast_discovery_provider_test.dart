@@ -12,6 +12,14 @@ void main() {
       expect(provider.protocol, equals(CastProtocol.chromecast));
     });
 
+    test('default constructor uses real mDNS lookup without error', () {
+      // Verifies that constructing with the default (real) mDNS lookup
+      // does not throw. Actual discovery requires network devices.
+      final provider = ChromecastDiscoveryProvider();
+      expect(provider, isA<ChromecastDiscoveryProvider>());
+      provider.dispose();
+    });
+
     test('discovers devices from mDNS responses', () async {
       final provider = ChromecastDiscoveryProvider(
         mdnsLookup: (serviceType) {

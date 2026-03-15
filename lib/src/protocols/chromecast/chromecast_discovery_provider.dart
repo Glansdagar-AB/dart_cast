@@ -78,13 +78,7 @@ class ChromecastDiscoveryProvider implements DeviceDiscoveryProvider {
   }
 
   /// Default mDNS lookup using the multicast_dns package.
-  ///
-  /// This is a placeholder that returns an empty stream — real implementations
-  /// would use `MDnsClient` from the `multicast_dns` package.
   static Stream<MdnsServiceInfo> _defaultMdnsLookup(String serviceType) {
-    // In production, this would use MDnsClient to query the network.
-    // For now, consumers must provide their own lookup or use the
-    // multicast_dns package directly.
-    return const Stream.empty();
+    return MdnsDiscovery.discover(serviceType);
   }
 }

@@ -171,5 +171,12 @@ void main() {
     test('has correct airplay service type', () {
       expect(MdnsDiscovery.airplayServiceType, '_airplay._tcp.local');
     });
+
+    test('discover returns a Stream (does not throw on creation)', () {
+      // Verifies that MdnsDiscovery.discover produces a valid Stream.
+      // Actual device discovery requires a network so we only check the type.
+      final stream = MdnsDiscovery.discover('_test._tcp.local');
+      expect(stream, isA<Stream<MdnsServiceInfo>>());
+    });
   });
 }

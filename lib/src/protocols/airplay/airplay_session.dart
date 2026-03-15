@@ -17,6 +17,7 @@ class AirPlaySession extends CastSession {
   final MediaProxy _proxy = MediaProxy();
   Timer? _pollTimer;
   bool _isPolling = false;
+  CastMedia? _currentMedia;
 
   /// Creates an [AirPlaySession] for the given AirPlay [device].
   AirPlaySession(super.device);
@@ -61,16 +62,28 @@ class AirPlaySession extends CastSession {
       // Start proxy server
       await _proxy.start();
 
+      _currentMedia = media;
+
       // Register the media URL with the proxy
       final proxyUrl = _proxy.registerMedia(
         media.url,
         headers: media.httpHeaders,
       );
 
+      // Determine the final URL to send to the device
+      String playUrl;
+
+      if (media.subtitles.isNotEmpty && media.type == CastMediaType.hls) {
+        // Inject subtitles into HLS playlist via wrapper m3u8
+        playUrl = _buildSubtitleWrapper(proxyUrl, media.subtitles, media.httpHeaders);
+      } else {
+        playUrl = proxyUrl;
+      }
+
       // Start playback on the device
       // AirPlay start position is fractional (0.0-1.0); without knowing
       // total duration we default to 0.0.
-      await _client!.play(proxyUrl, startPosition: 0.0);
+      await _client!.play(playUrl, startPosition: 0.0);
 
       // Start polling for playback state
       _startPolling();
@@ -78,6 +91,33 @@ class AirPlaySession extends CastSession {
       stateMachine.transitionTo(SessionState.disconnected);
       rethrow;
     }
+  }
+
+  /// Builds a wrapper m3u8 that adds subtitle tracks to the original HLS stream.
+  String _buildSubtitleWrapper(
+    String originalProxyUrl,
+    List<CastSubtitle> subtitles,
+    Map<String, String> headers,
+  ) {
+    final subtitleEntries = <({String name, String language, String url})>[];
+
+    for (final sub in subtitles) {
+      // Register each subtitle as an HLS subtitle playlist
+      final subPlaylistUrl = _proxy.registerSubtitlePlaylist(
+        sub.url,
+        headers: headers,
+      );
+      subtitleEntries.add((
+        name: sub.label,
+        language: sub.language,
+        url: subPlaylistUrl,
+      ));
+    }
+
+    return _proxy.registerSubtitleWrapper(
+      originalM3u8ProxyUrl: originalProxyUrl,
+      subtitleEntries: subtitleEntries,
+    );
   }
 
   /// Resumes playback (sends rate=1 to device).
@@ -127,13 +167,43 @@ class AirPlaySession extends CastSession {
 
   /// Sets the active subtitle track.
   ///
-  /// For AirPlay, subtitles need to be embedded in the HLS playlist.
-  /// Re-loading the media with the subtitle injected is required.
+  /// For AirPlay 1, subtitles are delivered by rewriting the HLS playlist.
+  /// This re-loads the media with a modified playlist containing the selected
+  /// subtitle track, or without subtitles if [subtitle] is null.
   @override
   Future<void> setSubtitle(CastSubtitle? subtitle) async {
-    // AirPlay 1 subtitle support requires HLS playlist modification.
-    // A full implementation would re-load media with modified playlist.
-    // For now, this is a no-op placeholder.
+    if (_currentMedia == null || _client == null) return;
+
+    final media = _currentMedia!;
+
+    // Build new media with only the selected subtitle (or none)
+    final newMedia = CastMedia(
+      url: media.url,
+      type: media.type,
+      httpHeaders: media.httpHeaders,
+      title: media.title,
+      imageUrl: media.imageUrl,
+      startPosition: media.startPosition,
+      subtitles: subtitle != null ? [subtitle] : const [],
+    );
+
+    // Clean up old proxy routes and re-register
+    _proxy.cleanupPreviousMedia();
+
+    final proxyUrl = _proxy.registerMedia(
+      newMedia.url,
+      headers: newMedia.httpHeaders,
+    );
+
+    String playUrl;
+    if (newMedia.subtitles.isNotEmpty && newMedia.type == CastMediaType.hls) {
+      playUrl = _buildSubtitleWrapper(
+          proxyUrl, newMedia.subtitles, newMedia.httpHeaders);
+    } else {
+      playUrl = proxyUrl;
+    }
+
+    await _client!.play(playUrl, startPosition: 0.0);
   }
 
   /// Disconnects from the device, stopping playback and cleaning up.

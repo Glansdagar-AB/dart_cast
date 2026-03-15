@@ -9,6 +9,14 @@ import '../utils/network_utils.dart';
 /// Route type for proxy routing.
 enum _RouteType { remote, localFile, hlsStream }
 
+/// Synthetic content served directly by the proxy (e.g., generated playlists).
+class _SyntheticContent {
+  final String content;
+  final ContentType contentType;
+
+  _SyntheticContent({required this.content, required this.contentType});
+}
+
 /// A registered proxy route.
 class _ProxyRoute {
   final _RouteType type;
@@ -32,6 +40,7 @@ class MediaProxy {
   HlsStreamHandler? _hlsStreamHandler;
   String? _baseUrl;
   final Map<String, _ProxyRoute> _routes = {};
+  final Map<String, _SyntheticContent> _syntheticContent = {};
   final Random _random = Random.secure();
 
   /// The base URL of the running proxy server, or null if not started.
@@ -66,6 +75,7 @@ class MediaProxy {
     _hlsStreamHandler = null;
     _baseUrl = null;
     _routes.clear();
+    _syntheticContent.clear();
   }
 
   /// Registers a remote media URL for proxying.
@@ -112,6 +122,70 @@ class MediaProxy {
     return '$_baseUrl/ts-stream/$token';
   }
 
+  /// Registers a VTT subtitle file as an HLS subtitle playlist.
+  ///
+  /// Creates a simple HLS media playlist wrapping the VTT file so it can be
+  /// referenced via `#EXT-X-MEDIA:TYPE=SUBTITLES` in a master playlist.
+  /// Returns a proxy URL pointing to the generated m3u8.
+  String registerSubtitlePlaylist(
+    String vttUrl, {
+    Map<String, String> headers = const {},
+  }) {
+    // First, register the VTT file itself through the proxy
+    final proxiedVttUrl = registerMedia(vttUrl, headers: headers);
+
+    // Create a simple HLS playlist wrapping the VTT
+    final playlistContent = '#EXTM3U\n'
+        '#EXT-X-TARGETDURATION:99999\n'
+        '#EXTINF:99999.0,\n'
+        '$proxiedVttUrl\n'
+        '#EXT-X-ENDLIST\n';
+
+    // Register the playlist content as a synthetic route
+    final token = _generateToken();
+    _syntheticContent[token] = _SyntheticContent(
+      content: playlistContent,
+      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+    );
+    return '$_baseUrl/synthetic/$token';
+  }
+
+  /// Creates a wrapper master playlist that adds subtitle tracks to an
+  /// existing HLS stream.
+  ///
+  /// [originalM3u8ProxyUrl] is the already-proxied URL of the original master
+  /// playlist. [subtitleEntries] is a list of `(name, language, subtitleM3u8Url)`
+  /// tuples, where each URL points to a subtitle HLS playlist (e.g., from
+  /// [registerSubtitlePlaylist]).
+  ///
+  /// Returns a proxy URL for the wrapper master playlist.
+  String registerSubtitleWrapper({
+    required String originalM3u8ProxyUrl,
+    required List<({String name, String language, String url})> subtitleEntries,
+  }) {
+    final buffer = StringBuffer('#EXTM3U\n');
+
+    for (var i = 0; i < subtitleEntries.length; i++) {
+      final entry = subtitleEntries[i];
+      final isDefault = i == 0 ? 'YES' : 'NO';
+      buffer.writeln(
+        '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",'
+        'NAME="${entry.name}",DEFAULT=$isDefault,AUTOSELECT=$isDefault,'
+        'LANGUAGE="${entry.language}",URI="${entry.url}"',
+      );
+    }
+
+    buffer.writeln('#EXT-X-STREAM-INF:BANDWIDTH=1280000,SUBTITLES="subs"');
+    buffer.writeln(originalM3u8ProxyUrl);
+
+    final token = _generateToken();
+    _syntheticContent[token] = _SyntheticContent(
+      content: buffer.toString(),
+      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+    );
+    return '$_baseUrl/synthetic/$token';
+  }
+
   /// Removes all previously registered routes, optionally keeping [excludeToken].
   void cleanupPreviousMedia({String? excludeToken}) {
     if (excludeToken != null) {
@@ -123,6 +197,7 @@ class MediaProxy {
     } else {
       _routes.clear();
     }
+    _syntheticContent.clear();
   }
 
   String _generateToken() {
@@ -149,6 +224,13 @@ class MediaProxy {
         return;
       }
 
+      // Route: /synthetic/<token> — generated content (subtitle playlists, wrappers)
+      if (path.startsWith('/synthetic/')) {
+        final token = path.substring('/synthetic/'.length);
+        await _handleSyntheticRequest(request, token);
+        return;
+      }
+
       // Route: /file/<token> — local file serving
       if (path.startsWith('/file/')) {
         final token = path.substring('/file/'.length);
@@ -166,6 +248,25 @@ class MediaProxy {
         // Response may already be closed
       }
     }
+  }
+
+  Future<void> _handleSyntheticRequest(
+      HttpRequest request, String token) async {
+    final synthetic = _syntheticContent[token];
+    if (synthetic == null) {
+      request.response.statusCode = HttpStatus.notFound;
+      _addCorsHeaders(request.response);
+      await request.response.close();
+      return;
+    }
+
+    final encoded = utf8.encode(synthetic.content);
+    _addCorsHeaders(request.response);
+    request.response.statusCode = HttpStatus.ok;
+    request.response.headers.contentType = synthetic.contentType;
+    request.response.headers.set('Content-Length', encoded.length.toString());
+    request.response.add(encoded);
+    await request.response.close();
   }
 
   Future<void> _handleHlsStreamRequest(

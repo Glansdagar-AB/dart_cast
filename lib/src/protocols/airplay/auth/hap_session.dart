@@ -96,6 +96,9 @@ class HapSession {
   /// Whether the RTSP session has been set up (SETUP + RECORD completed).
   bool _rtspSessionSetUp = false;
 
+  /// The RTSP URI used for all RTSP commands (rtsp://host/session_id).
+  String? _rtspUri;
+
   /// Buffer for incomplete encrypted data received from the device.
   final BytesBuilder _receiveBuffer = BytesBuilder(copy: false);
 
@@ -407,12 +410,16 @@ class HapSession {
   Future<void> setupRtspSession() async {
     if (_rtspSessionSetUp) return;
 
-    CastLogger.info('HAP session: RTSP SETUP');
-    final sessionUuid = _generateUuid().toUpperCase();
+    // Generate a session ID used as the RTSP URI path
+    // pyatv uses: rtsp://host/session_id for all RTSP commands
+    final rtspSessionId = Random.secure().nextInt(0x7FFFFFFF);
+    _rtspUri = 'rtsp://$host/$rtspSessionId';
+
+    CastLogger.info('HAP session: RTSP SETUP (uri=$_rtspUri)');
 
     final setupBodyBytes = BinaryPlistEncoder.encode({
       'deviceID': 'AA:BB:CC:DD:EE:FF',
-      'sessionUUID': sessionUuid,
+      'sessionUUID': _generateUuid().toUpperCase(),
       'timingProtocol': 'None',
       'isMultiSelectAirPlay': true,
       'groupContainsGroupLeader': false,
@@ -427,27 +434,44 @@ class HapSession {
 
     final setupResp = await sendRtspRequest(
       'SETUP',
-      '*',
+      _rtspUri!,
       headers: {'Content-Type': 'application/x-apple-binary-plist'},
       body: setupBodyBytes,
     );
     CastLogger.info(
-        'HAP session: RTSP SETUP response: ${setupResp.statusCode}');
+        'HAP session: RTSP SETUP response: ${setupResp.statusCode} body(${setupResp.body.length}B)');
+
+    // Parse eventPort from response (needed for event channel — we log but skip for now)
+    if (setupResp.body.isNotEmpty) {
+      try {
+        CastLogger.debug(
+            'HAP session: SETUP response body: ${setupResp.bodyText}');
+      } catch (_) {
+        CastLogger.debug(
+            'HAP session: SETUP response body: ${setupResp.body.length} bytes (binary)');
+      }
+    }
 
     // FEEDBACK — pyatv sends POST /feedback between SETUP and RECORD
     CastLogger.info('HAP session: POST /feedback');
-    final feedbackResp =
-        await sendRtspRequest('POST', '/feedback');
+    final feedbackResp = await sendRtspRequest('POST', '/feedback');
     CastLogger.info(
         'HAP session: /feedback response: ${feedbackResp.statusCode}');
 
     // RECORD
     CastLogger.info('HAP session: RTSP RECORD');
-    final recordResp = await sendRtspRequest('RECORD', '*');
+    final recordResp = await sendRtspRequest('RECORD', _rtspUri!);
     CastLogger.info(
         'HAP session: RTSP RECORD response: ${recordResp.statusCode} body: ${recordResp.bodyText}');
 
-    _rtspSessionSetUp = true;
+    if (recordResp.statusCode == 200) {
+      _rtspSessionSetUp = true;
+    } else {
+      CastLogger.warning(
+          'HAP session: RECORD failed (${recordResp.statusCode}), '
+          'proceeding anyway — /play may still work');
+      _rtspSessionSetUp = true;
+    }
   }
 
   /// Reads encrypted frames from the socket until a complete HTTP response

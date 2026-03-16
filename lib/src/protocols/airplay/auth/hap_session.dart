@@ -127,6 +127,9 @@ class HapSession {
   /// The RTSP URI used for all RTSP commands (rtsp://host/session_id).
   String? _rtspUri;
 
+  /// Whether the periodic feedback loop is active.
+  bool _feedbackActive = false;
+
   /// Buffer for incomplete encrypted data received from the device.
   final BytesBuilder _receiveBuffer = BytesBuilder(copy: false);
 
@@ -346,12 +349,10 @@ class HapSession {
       fullPath = '$path?$queryString';
     }
 
-    // Build raw HTTP request
+    // Build raw HTTP request — use AirPlay User-Agent to match pyatv
     final requestHeaders = <String, String>{
-      'User-Agent': 'MediaControl/1.0',
+      'User-Agent': 'AirPlay/550.10',
       'X-Apple-Session-ID': _sessionId,
-      'Host': '$host:$port',
-      'Connection': 'keep-alive',
       ...?headers,
     };
 
@@ -507,7 +508,11 @@ class HapSession {
       }
     }
 
-    // FEEDBACK — pyatv sends POST /feedback between SETUP and RECORD
+    // Start periodic feedback loop BEFORE RECORD (pyatv sends POST /feedback
+    // every 2 seconds starting before RECORD and continuing throughout playback)
+    _startFeedbackLoop();
+
+    // Send one immediate feedback before RECORD
     CastLogger.info('HAP session: POST /feedback');
     final feedbackResp = await sendRtspRequest('POST', '/feedback');
     CastLogger.info(
@@ -627,6 +632,35 @@ class HapSession {
       }
       CastLogger.debug('HAP session: event listener loop exited');
     });
+  }
+
+  /// Starts a periodic POST /feedback loop every 2 seconds.
+  ///
+  /// pyatv sends feedback continuously during playback to keep the session
+  /// alive. The loop runs in the background and is best-effort — errors are
+  /// logged but do not interrupt playback.
+  void _startFeedbackLoop() {
+    if (_feedbackActive) return;
+    _feedbackActive = true;
+
+    Future<void>.microtask(() async {
+      while (_feedbackActive && !_socketDone) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (!_feedbackActive || _socketDone) break;
+        try {
+          await sendRtspRequest('POST', '/feedback');
+          CastLogger.debug('HAP session: periodic feedback sent');
+        } catch (e) {
+          CastLogger.debug('HAP session: feedback failed: $e');
+        }
+      }
+      CastLogger.debug('HAP session: feedback loop exited');
+    });
+  }
+
+  /// Stops the periodic feedback loop.
+  void _stopFeedbackLoop() {
+    _feedbackActive = false;
   }
 
   /// Reads encrypted frames from the socket until a complete HTTP response
@@ -900,6 +934,7 @@ class HapSession {
       '/stop',
     );
     _checkResponse(response, 'stop');
+    _stopFeedbackLoop();
     _sessionId = _generateUuid();
     _rtspSessionSetUp = false;
     _cseq = 0;
@@ -936,6 +971,7 @@ class HapSession {
   /// Closes the underlying socket, event channel, and cancels the persistent
   /// listener.
   Future<void> close() async {
+    _stopFeedbackLoop();
     // Close the event channel first
     if (_eventChannel != null) {
       try {

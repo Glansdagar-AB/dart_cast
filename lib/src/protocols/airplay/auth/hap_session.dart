@@ -37,6 +37,34 @@ Future<({Uint8List outputKey, Uint8List inputKey})> deriveHapSessionKeys(
   );
 }
 
+/// Derives event channel encryption keys from an X25519 shared secret.
+///
+/// Uses different HKDF salts/info than the control channel keys.
+/// The event channel uses `Events-Salt` as the HKDF nonce and
+/// `Events-Write-Encryption-Key` / `Events-Read-Encryption-Key` as the info.
+Future<({Uint8List outputKey, Uint8List inputKey})> deriveEventKeys(
+  Uint8List sharedSecret,
+) async {
+  final hkdf = Hkdf(hmac: Hmac(Sha512()), outputLength: 32);
+
+  final outputKeyObj = await hkdf.deriveKey(
+    secretKey: SecretKey(sharedSecret),
+    nonce: utf8.encode('Events-Salt'),
+    info: utf8.encode('Events-Write-Encryption-Key'),
+  );
+
+  final inputKeyObj = await hkdf.deriveKey(
+    secretKey: SecretKey(sharedSecret),
+    nonce: utf8.encode('Events-Salt'),
+    info: utf8.encode('Events-Read-Encryption-Key'),
+  );
+
+  return (
+    outputKey: Uint8List.fromList(await outputKeyObj.extractBytes()),
+    inputKey: Uint8List.fromList(await inputKeyObj.extractBytes()),
+  );
+}
+
 /// A parsed HTTP response from the HAP encrypted channel.
 class HapHttpResponse {
   /// HTTP status code.
@@ -124,10 +152,19 @@ class HapSession {
   /// Whether the socket has been closed by the remote end.
   bool _socketDone = false;
 
+  /// The X25519 shared secret used for deriving event channel keys.
+  /// Set via constructor parameter.
+  final Uint8List? _sharedSecret;
+
+  /// The event channel HAP session, opened after RTSP SETUP.
+  HapSession? _eventChannel;
+
   /// Creates a [HapSession] wrapping a raw TCP [socket].
   ///
   /// [outputKey] encrypts data sent to the device.
   /// [inputKey] decrypts data received from the device.
+  /// [sharedSecret] is the X25519 shared secret, needed to derive event
+  /// channel encryption keys after RTSP SETUP.
   /// [dataStream] optionally provides an alternative stream to listen on
   /// instead of the socket directly (e.g., a broadcast stream wrapper).
   HapSession({
@@ -137,10 +174,12 @@ class HapSession {
     required this.host,
     required this.port,
     String? sessionId,
+    Uint8List? sharedSecret,
     Stream<Uint8List>? dataStream,
   })  : _socket = socket,
         _outputKey = outputKey,
         _inputKey = inputKey,
+        _sharedSecret = sharedSecret,
         _sessionId = sessionId ?? _generateUuid() {
     _setupSocketListener(dataStream);
   }
@@ -441,14 +480,30 @@ class HapSession {
     CastLogger.info(
         'HAP session: RTSP SETUP response: ${setupResp.statusCode} body(${setupResp.body.length}B)');
 
-    // Parse eventPort from response (needed for event channel — we log but skip for now)
+    // Parse eventPort from the binary plist response body
+    int? eventPort;
     if (setupResp.body.isNotEmpty) {
       try {
+        final setupData = BinaryPlistDecoder.decode(setupResp.body);
+        CastLogger.debug('HAP session: SETUP response plist: $setupData');
+        eventPort = setupData['eventPort'] as int?;
+        if (eventPort != null && eventPort > 0) {
+          CastLogger.info('HAP session: eventPort=$eventPort');
+        }
+      } catch (e) {
         CastLogger.debug(
-            'HAP session: SETUP response body: ${setupResp.bodyText}');
-      } catch (_) {
-        CastLogger.debug(
-            'HAP session: SETUP response body: ${setupResp.body.length} bytes (binary)');
+            'HAP session: SETUP response body: ${setupResp.body.length} bytes '
+            '(could not decode as bplist: $e)');
+      }
+    }
+
+    // Set up the event channel if we have an event port and shared secret
+    if (eventPort != null && eventPort > 0 && _sharedSecret != null) {
+      try {
+        await _setupEventChannel(eventPort);
+      } catch (e) {
+        CastLogger.warning(
+            'HAP session: event channel setup failed: $e — proceeding anyway');
       }
     }
 
@@ -472,6 +527,106 @@ class HapSession {
           'proceeding anyway — /play may still work');
       _rtspSessionSetUp = true;
     }
+  }
+
+  /// Sets up the AirPlay 2 event channel on the given [eventPort].
+  ///
+  /// The event channel is a separate TCP connection to the device that uses
+  /// HAP encryption with event-specific keys derived from the same shared
+  /// secret. The device sends events (like `POST /event`) over this channel
+  /// and expects `HTTP/1.1 200 OK` responses.
+  ///
+  /// pyatv notes that the device may not be ready immediately after SETUP,
+  /// so we retry up to 5 times with a 1-second delay between attempts.
+  Future<void> _setupEventChannel(int eventPort) async {
+    CastLogger.info(
+        'HAP session: setting up event channel on $host:$eventPort');
+
+    // Derive event-specific encryption keys
+    final eventKeys = await deriveEventKeys(_sharedSecret!);
+    CastLogger.debug('HAP session: event encryption keys derived');
+
+    // Try to connect with retries — the device may not be ready immediately
+    Socket? eventSocket;
+    for (int attempt = 1; attempt <= 5; attempt++) {
+      try {
+        CastLogger.debug(
+            'HAP session: event channel connection attempt $attempt/5');
+        eventSocket = await Socket.connect(
+          host,
+          eventPort,
+          timeout: const Duration(seconds: 5),
+        );
+        CastLogger.info(
+            'HAP session: event channel connected on attempt $attempt');
+        break;
+      } on SocketException catch (e) {
+        CastLogger.debug(
+            'HAP session: event channel attempt $attempt failed: $e');
+        if (attempt == 5) {
+          throw HapSessionException(
+              'Failed to connect event channel after 5 attempts: $e');
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    }
+
+    // Create a HAP session on the event socket with event keys
+    _eventChannel = HapSession(
+      socket: eventSocket!,
+      outputKey: eventKeys.outputKey,
+      inputKey: eventKeys.inputKey,
+      host: host,
+      port: eventPort,
+    );
+
+    // Start a background listener that reads events and responds with 200 OK
+    _listenForEvents();
+
+    CastLogger.info('HAP session: event channel established');
+  }
+
+  /// Listens for incoming events on the event channel in the background.
+  ///
+  /// When an event is received (typically `POST /event` with a binary plist
+  /// body), responds with `HTTP/1.1 200 OK` to acknowledge it.
+  void _listenForEvents() {
+    if (_eventChannel == null) return;
+
+    // Run the event listener asynchronously — don't block the RTSP flow
+    Future<void>.microtask(() async {
+      while (_eventChannel != null && !_eventChannel!._socketDone) {
+        try {
+          final data = await _eventChannel!.readDecryptedData(
+            timeout: const Duration(seconds: 120),
+          );
+          if (data.isEmpty) continue;
+
+          final text = utf8.decode(data, allowMalformed: true);
+          CastLogger.debug(
+              'HAP session: event channel received ${data.length} bytes: '
+              '${text.length > 200 ? text.substring(0, 200) : text}');
+
+          // Respond with 200 OK
+          const response = 'HTTP/1.1 200 OK\r\n'
+              'Content-Length: 0\r\n'
+              '\r\n';
+          final responseBytes = Uint8List.fromList(utf8.encode(response));
+          final encrypted = await _eventChannel!.encrypt(responseBytes);
+          _eventChannel!._socket.add(encrypted);
+          await _eventChannel!._socket.flush();
+
+          CastLogger.debug('HAP session: sent 200 OK on event channel');
+        } on HapSessionException catch (e) {
+          CastLogger.debug('HAP session: event channel read ended: $e');
+          break;
+        } catch (e) {
+          CastLogger.debug('HAP session: event channel error: $e');
+          break;
+        }
+      }
+      CastLogger.debug('HAP session: event listener loop exited');
+    });
   }
 
   /// Reads encrypted frames from the socket until a complete HTTP response
@@ -765,8 +920,19 @@ class HapSession {
     }
   }
 
-  /// Closes the underlying socket and cancels the persistent listener.
+  /// Closes the underlying socket, event channel, and cancels the persistent
+  /// listener.
   Future<void> close() async {
+    // Close the event channel first
+    if (_eventChannel != null) {
+      try {
+        await _eventChannel!.close();
+      } catch (_) {
+        // Ignore errors during event channel close
+      }
+      _eventChannel = null;
+    }
+
     try {
       await _socketSubscription.cancel();
     } catch (_) {
@@ -829,6 +995,7 @@ class HapSession {
       host: host,
       port: port,
       sessionId: sessionId,
+      sharedSecret: sharedSecret,
     );
   }
 }

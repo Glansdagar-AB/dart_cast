@@ -139,6 +139,7 @@ class AirPlaySession extends CastSession {
         host: device.address.address,
         port: device.port,
         sessionId: _client!.sessionId,
+        sharedSecret: sharedSecret,
         dataStream: socketBroadcast.stream,
       );
 

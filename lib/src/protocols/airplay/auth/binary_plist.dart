@@ -1,6 +1,253 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+/// Decodes Apple binary plist format (`bplist00`) into Dart objects.
+///
+/// Supports the same types as [BinaryPlistEncoder]: [String], [int], [double],
+/// [bool], `null`, [Map<String, dynamic>] (dict), and [List] (array).
+///
+/// The binary plist format consists of:
+/// 1. Header: `bplist00` (8 bytes)
+/// 2. Object table: serialized objects
+/// 3. Offset table: byte offsets to each object
+/// 4. Trailer: 32 bytes of metadata
+class BinaryPlistDecoder {
+  /// Decodes a binary plist [Uint8List] into a [Map<String, dynamic>].
+  ///
+  /// Throws [ArgumentError] if the data is not a valid `bplist00` binary.
+  static Map<String, dynamic> decode(Uint8List data) {
+    final decoder = BinaryPlistDecoder._(data);
+    final result = decoder._decode();
+    if (result is Map<String, dynamic>) {
+      return result;
+    }
+    throw ArgumentError(
+        'Binary plist root object is not a dict: ${result.runtimeType}');
+  }
+
+  /// Decodes a binary plist [Uint8List] into any supported Dart object.
+  ///
+  /// Unlike [decode], this does not require the root to be a dict.
+  static Object? decodeAny(Uint8List data) {
+    final decoder = BinaryPlistDecoder._(data);
+    return decoder._decode();
+  }
+
+  BinaryPlistDecoder._(this._data);
+
+  final Uint8List _data;
+  late final ByteData _byteData = ByteData.sublistView(_data);
+
+  /// Cached decoded objects by index (to avoid re-decoding shared refs).
+  final Map<int, Object?> _decodedObjects = {};
+
+  late int _offsetSize;
+  late int _objectRefSize;
+  late int _numObjects;
+  late int _topObjectIndex;
+  late int _offsetTableOffset;
+
+  Object? _decode() {
+    // Validate header
+    if (_data.length < 40) {
+      // 8 header + 32 trailer minimum
+      throw ArgumentError('Binary plist too short: ${_data.length} bytes');
+    }
+
+    final header = ascii.decode(_data.sublist(0, 8), allowInvalid: true);
+    if (header != 'bplist00') {
+      throw ArgumentError('Not a binary plist: invalid header "$header"');
+    }
+
+    // Parse trailer (last 32 bytes)
+    final trailerOffset = _data.length - 32;
+    _offsetSize = _data[trailerOffset + 6];
+    _objectRefSize = _data[trailerOffset + 7];
+    _numObjects = _readUint64BE(trailerOffset + 8);
+    _topObjectIndex = _readUint64BE(trailerOffset + 16);
+    _offsetTableOffset = _readUint64BE(trailerOffset + 24);
+
+    if (_numObjects == 0) {
+      throw ArgumentError('Binary plist has no objects');
+    }
+
+    return _readObject(_topObjectIndex);
+  }
+
+  /// Reads the object at the given index in the object table.
+  Object? _readObject(int objectIndex) {
+    if (_decodedObjects.containsKey(objectIndex)) {
+      return _decodedObjects[objectIndex];
+    }
+
+    final offset = _readOffsetTableEntry(objectIndex);
+    final result = _readObjectAtOffset(offset);
+    _decodedObjects[objectIndex] = result;
+    return result;
+  }
+
+  /// Reads the byte offset for the given object index from the offset table.
+  int _readOffsetTableEntry(int objectIndex) {
+    final entryOffset = _offsetTableOffset + objectIndex * _offsetSize;
+    return _readUnsignedInt(entryOffset, _offsetSize);
+  }
+
+  /// Reads and decodes the object at the given byte offset.
+  Object? _readObjectAtOffset(int offset) {
+    final marker = _data[offset];
+    final objectType = (marker >> 4) & 0x0F;
+    final objectInfo = marker & 0x0F;
+
+    switch (objectType) {
+      case 0x0: // null, bool, fill
+        return _readSingleton(objectInfo);
+      case 0x1: // int
+        return _readInt(offset, objectInfo);
+      case 0x2: // real (float)
+        return _readReal(offset, objectInfo);
+      case 0x3: // date (treat as double)
+        return _readDate(offset, objectInfo);
+      case 0x4: // data (raw bytes)
+        return _readData(offset, objectInfo);
+      case 0x5: // ASCII string
+        return _readAsciiString(offset, objectInfo);
+      case 0x6: // Unicode string (UTF-16 BE)
+        return _readUnicodeString(offset, objectInfo);
+      case 0xA: // array
+        return _readArray(offset, objectInfo);
+      case 0xD: // dict
+        return _readDict(offset, objectInfo);
+      default:
+        throw ArgumentError(
+            'Unsupported binary plist object type: 0x${objectType.toRadixString(16)} at offset $offset');
+    }
+  }
+
+  /// Reads a singleton value (null, bool, fill).
+  Object? _readSingleton(int info) {
+    switch (info) {
+      case 0x0:
+        return null; // null
+      case 0x8:
+        return false; // bool false
+      case 0x9:
+        return true; // bool true
+      case 0xF:
+        return null; // fill byte
+      default:
+        return null;
+    }
+  }
+
+  /// Reads an integer. [sizeExponent] is log2 of byte count.
+  int _readInt(int offset, int sizeExponent) {
+    final byteCount = 1 << sizeExponent; // 1, 2, 4, or 8
+    return _readUnsignedInt(offset + 1, byteCount);
+  }
+
+  /// Reads a real (float). [sizeExponent] is log2 of byte count.
+  double _readReal(int offset, int sizeExponent) {
+    final byteCount = 1 << sizeExponent;
+    if (byteCount == 4) {
+      return _byteData.getFloat32(offset + 1, Endian.big);
+    } else if (byteCount == 8) {
+      return _byteData.getFloat64(offset + 1, Endian.big);
+    }
+    throw ArgumentError('Unsupported real size: $byteCount bytes');
+  }
+
+  /// Reads a date (Core Foundation absolute time as float64).
+  double _readDate(int offset, int sizeExponent) {
+    return _byteData.getFloat64(offset + 1, Endian.big);
+  }
+
+  /// Reads raw data bytes.
+  Uint8List _readData(int offset, int sizeInfo) {
+    final (count, dataStart) = _readSizeAndDataStart(offset, sizeInfo);
+    return Uint8List.fromList(_data.sublist(dataStart, dataStart + count));
+  }
+
+  /// Reads an ASCII string.
+  String _readAsciiString(int offset, int sizeInfo) {
+    final (count, dataStart) = _readSizeAndDataStart(offset, sizeInfo);
+    return ascii.decode(_data.sublist(dataStart, dataStart + count),
+        allowInvalid: true);
+  }
+
+  /// Reads a UTF-16 BE string.
+  String _readUnicodeString(int offset, int sizeInfo) {
+    final (count, dataStart) = _readSizeAndDataStart(offset, sizeInfo);
+    final codeUnits = <int>[];
+    for (int i = 0; i < count; i++) {
+      codeUnits.add(_byteData.getUint16(dataStart + i * 2, Endian.big));
+    }
+    return String.fromCharCodes(codeUnits);
+  }
+
+  /// Reads an array.
+  List<Object?> _readArray(int offset, int sizeInfo) {
+    final (count, refsStart) = _readSizeAndDataStart(offset, sizeInfo);
+    final result = <Object?>[];
+    for (int i = 0; i < count; i++) {
+      final ref =
+          _readUnsignedInt(refsStart + i * _objectRefSize, _objectRefSize);
+      result.add(_readObject(ref));
+    }
+    return result;
+  }
+
+  /// Reads a dict.
+  Map<String, dynamic> _readDict(int offset, int sizeInfo) {
+    final (count, refsStart) = _readSizeAndDataStart(offset, sizeInfo);
+    final keyRefsStart = refsStart;
+    final valRefsStart = refsStart + count * _objectRefSize;
+
+    final result = <String, dynamic>{};
+    for (int i = 0; i < count; i++) {
+      final keyRef =
+          _readUnsignedInt(keyRefsStart + i * _objectRefSize, _objectRefSize);
+      final valRef =
+          _readUnsignedInt(valRefsStart + i * _objectRefSize, _objectRefSize);
+      final key = _readObject(keyRef);
+      final value = _readObject(valRef);
+      result[key.toString()] = value;
+    }
+    return result;
+  }
+
+  /// Reads the size from the marker byte, handling the extended size case.
+  ///
+  /// Returns `(count, dataStartOffset)` where [dataStartOffset] is the byte
+  /// offset where the actual object data begins (after the size header).
+  (int count, int dataStart) _readSizeAndDataStart(int offset, int sizeInfo) {
+    if (sizeInfo < 0x0F) {
+      return (sizeInfo, offset + 1);
+    }
+    // Extended size: next byte is an int marker (0x1N) encoding the real size
+    final intMarker = _data[offset + 1];
+    final intSizeExp = intMarker & 0x0F;
+    final intByteCount = 1 << intSizeExp;
+    final count = _readUnsignedInt(offset + 2, intByteCount);
+    return (count, offset + 2 + intByteCount);
+  }
+
+  /// Reads a big-endian unsigned integer of [byteCount] bytes at [offset].
+  int _readUnsignedInt(int offset, int byteCount) {
+    int value = 0;
+    for (int i = 0; i < byteCount; i++) {
+      value = (value << 8) | _data[offset + i];
+    }
+    return value;
+  }
+
+  /// Reads a big-endian uint64 at [offset] using two 32-bit reads.
+  int _readUint64BE(int offset) {
+    final high = _byteData.getUint32(offset, Endian.big);
+    final low = _byteData.getUint32(offset + 4, Endian.big);
+    return (high << 32) | low;
+  }
+}
+
 /// Encodes Dart objects into Apple binary plist format (`bplist00`).
 ///
 /// Supports: [String], [int], [double], [bool], `null`,

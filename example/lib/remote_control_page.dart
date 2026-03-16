@@ -33,7 +33,7 @@ class RemoteControlPage extends StatefulWidget {
 class _RemoteControlPageState extends State<RemoteControlPage> {
   CastMedia? _currentMedia;
   CastSubtitle? _selectedSubtitle;
-  double _volume = 1.0;
+  double _volume = 0.25;
   bool _isSeeking = false;
   double _seekValue = 0;
 
@@ -423,6 +423,34 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   // -- Actions --
 
+  /// Builds and loads a custom media item from the URL text fields.
+  void _playCustomUrl() {
+    final url = _customUrlController.text.trim();
+    if (url.isEmpty) {
+      _showError('Please enter a video URL');
+      return;
+    }
+
+    final subtitles = <CastSubtitle>[];
+    final subUrl = _customSubUrlController.text.trim();
+    if (subUrl.isNotEmpty) {
+      subtitles.add(CastSubtitle(
+        url: subUrl,
+        label: 'Custom',
+        language: 'und',
+        format: subUrl.endsWith('.srt') ? 'srt' : 'vtt',
+      ));
+    }
+
+    final media = CastMedia(
+      url: url,
+      type: _customMediaType,
+      title: 'Custom Video',
+      subtitles: subtitles,
+    );
+    _loadMedia(media);
+  }
+
   /// Loads media onto the cast device using [CastSession.loadMedia].
   Future<void> _loadMedia(CastMedia media) async {
     setState(() {
@@ -431,6 +459,8 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     });
     try {
       await widget.session.loadMedia(media);
+      // Apply default volume to the device after loading.
+      await widget.session.setVolume(_volume);
     } catch (e) {
       _showError('Failed to load media: $e');
     }

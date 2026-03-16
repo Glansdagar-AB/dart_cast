@@ -36,18 +36,34 @@ class CastMediaDemo {
         'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/Elephants_Dream_s5_both.jpg/220px-Elephants_Dream_s5_both.jpg',
   );
 
-  /// Sample MP4 video (Tears of Steel) — no subtitles.
+  /// Sample MP4 video (Tears of Steel) — with subtitles.
   ///
-  /// To test with subtitles, add [CastSubtitle] entries pointing to
-  /// publicly hosted VTT files. Public subtitle hosting is unreliable,
-  /// so subtitle URLs should be provided by the user for production use.
+  /// Demonstrates how to attach [CastSubtitle] entries to a media item.
+  /// The subtitle URLs below are publicly hosted VTT files from the
+  /// Blender Foundation.
   static const mp4TearsOfSteel = CastMedia(
     url:
         'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
     type: CastMediaType.mp4,
-    title: 'Tears of Steel (MP4)',
+    title: 'Tears of Steel (MP4 + Subs)',
     imageUrl:
         'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/Tears_of_Steel_poster.jpg/220px-Tears_of_Steel_poster.jpg',
+    subtitles: [
+      CastSubtitle(
+        url:
+            'https://raw.githubusercontent.com/nicmart/subtitle-sample/master/tears-of-steel-en.vtt',
+        label: 'English',
+        language: 'en',
+        format: 'vtt',
+      ),
+      CastSubtitle(
+        url:
+            'https://raw.githubusercontent.com/nicmart/subtitle-sample/master/tears-of-steel-es.vtt',
+        label: 'Spanish',
+        language: 'es',
+        format: 'vtt',
+      ),
+    ],
   );
 
   /// All available sample media items.

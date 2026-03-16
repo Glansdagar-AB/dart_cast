@@ -121,6 +121,14 @@ class HapSession {
   /// RTSP CSeq counter for RTSP exchanges.
   int _cseq = 0;
 
+  /// DACP-ID header value — random hex string, persistent across session.
+  /// Used by pyatv in all RTSP exchanges.
+  late final String _dacpId =
+      Random.secure().nextInt(0x7FFFFFFF).toRadixString(16).padLeft(16, '0').toUpperCase();
+
+  /// Active-Remote header value — random integer, persistent across session.
+  late final int _activeRemote = Random.secure().nextInt(0x7FFFFFFF);
+
   /// Whether the RTSP session has been set up (SETUP + RECORD completed).
   bool _rtspSessionSetUp = false;
 
@@ -404,6 +412,9 @@ class HapSession {
 
     final requestHeaders = <String, String>{
       'CSeq': '$_cseq',
+      'DACP-ID': _dacpId,
+      'Active-Remote': '$_activeRemote',
+      'Client-Instance': _dacpId,
       'User-Agent': 'AirPlay/550.10',
       'X-Apple-Session-ID': _sessionId,
       ...?headers,
@@ -469,7 +480,9 @@ class HapSession {
       'osBuildVersion': '20F66',
       'osName': 'iPhone OS',
       'osVersion': '16.5',
+      'senderSupportsRelay': false,
       'sourceVersion': '690.7.1',
+      'statsCollectionEnabled': false,
     });
 
     final setupResp = await sendRtspRequest(
@@ -884,7 +897,9 @@ class HapSession {
       'osBuildVersion': '20F66',
     });
 
-    final response = await sendRequest('POST', '/play',
+    // Try RTSP/1.0 first (some devices like Google TV route everything via RTSP),
+    // fall back to HTTP/1.1 if RTSP returns 404.
+    var response = await sendRtspRequest('POST', '/play',
         headers: {
           'Content-Type': 'application/x-apple-binary-plist',
           'X-Apple-ProtocolVersion': '1',
@@ -892,15 +907,29 @@ class HapSession {
         },
         body: playBodyBytes);
     CastLogger.info(
-        'HAP session: /play response: ${response.statusCode} body: ${response.bodyText}');
+        'HAP session: /play (RTSP) response: ${response.statusCode}');
+
+    if (response.statusCode == 404) {
+      // Fall back to HTTP/1.1 (pyatv's default for Apple devices)
+      CastLogger.info('HAP session: /play RTSP 404, trying HTTP/1.1');
+      response = await sendRequest('POST', '/play',
+          headers: {
+            'Content-Type': 'application/x-apple-binary-plist',
+            'X-Apple-ProtocolVersion': '1',
+            'X-Apple-Stream-ID': '1',
+          },
+          body: playBodyBytes);
+      CastLogger.info(
+          'HAP session: /play (HTTP) response: ${response.statusCode}');
+    }
 
     if (response.statusCode >= 400) {
-      _checkResponse(response, 'play');
+      CastLogger.warning(
+          'HAP session: /play failed: ${response.statusCode} ${response.bodyText}');
     }
 
     // Step 3: POST /rate?value=1.0 to start actual playback
-    final rateResponse = await sendRequest('POST', '/rate',
-        queryParameters: {'value': '1.000000'});
+    final rateResponse = await sendRtspRequest('POST', '/rate?value=1.000000');
     CastLogger.info('HAP session: /rate response: ${rateResponse.statusCode}');
   }
 

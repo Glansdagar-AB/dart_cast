@@ -130,12 +130,24 @@ class MdnsDiscovery {
 
     try {
       const nestedTimeout = Duration(seconds: 3);
+      final seenServices = <String>{};
+
+      // Send multiple mDNS queries to catch slow-responding devices.
+      // Each lookup() sends one query — devices may not respond to the first.
+      for (int round = 0; round < 3; round++) {
+        if (round > 0) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          CastLogger.debug('mDNS: re-querying PTR records (round ${round + 1})');
+        }
 
       // Query for PTR records (service instances).
       await for (final PtrResourceRecord ptr
           in client.lookup<PtrResourceRecord>(
         ResourceRecordQuery.serverPointer(serviceType),
       )) {
+        // Skip already-discovered services
+        if (seenServices.contains(ptr.domainName)) continue;
+        seenServices.add(ptr.domainName);
         try {
           // For each PTR result, look up SRV record (host + port).
           await for (final SrvResourceRecord srv in client
@@ -192,6 +204,7 @@ class MdnsDiscovery {
           // SRV lookup timed out — skip this device
         }
       }
+      } // end for round
     } finally {
       client.stop();
     }

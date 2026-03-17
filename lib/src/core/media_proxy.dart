@@ -111,6 +111,7 @@ class MediaProxy {
   String wrapInHlsPlaylist(String mediaProxyUrl) {
     final playlistContent = '#EXTM3U\n'
         '#EXT-X-VERSION:3\n'
+        '#EXT-X-PLAYLIST-TYPE:VOD\n'
         '#EXT-X-TARGETDURATION:99999\n'
         '#EXT-X-MEDIA-SEQUENCE:0\n'
         '#EXTINF:99999.0,\n'
@@ -151,6 +152,17 @@ class MediaProxy {
     if (!file.existsSync()) return wrapInHlsPlaylist(fileProxyUrl);
 
     final fileSize = file.lengthSync();
+
+    // Only byte-range split MPEG-TS files. MP4 files cannot be split at
+    // arbitrary offsets — they need fMP4 with initialization segments.
+    final isMpegTs = filePath.toLowerCase().endsWith('.ts') ||
+        filePath.toLowerCase().endsWith('.mts') ||
+        filePath.toLowerCase().endsWith('.m2ts');
+    if (!isMpegTs) {
+      CastLogger.info('MediaProxy: non-TS file, using single-segment HLS');
+      return wrapInHlsPlaylist(fileProxyUrl);
+    }
+
     final double effectiveDuration;
     if (totalDuration != null && totalDuration > 0) {
       effectiveDuration = totalDuration;
@@ -161,12 +173,19 @@ class MediaProxy {
     }
     final segmentCount =
         (effectiveDuration / segmentSeconds).ceil().clamp(1, 10000);
-    final bytesPerSegment = (fileSize / segmentCount).ceil();
+
+    // Align byte ranges to 188-byte MPEG-TS packet boundaries to avoid
+    // splitting mid-packet (which causes demuxer sync errors).
+    const tsPacketSize = 188;
+    final rawBytesPerSegment = (fileSize / segmentCount).ceil();
+    final bytesPerSegment =
+        ((rawBytesPerSegment + tsPacketSize - 1) ~/ tsPacketSize) * tsPacketSize;
     final actualSegmentDuration = effectiveDuration / segmentCount;
 
     final buffer = StringBuffer();
     buffer.writeln('#EXTM3U');
     buffer.writeln('#EXT-X-VERSION:4'); // Version 4 needed for EXT-X-BYTERANGE
+    buffer.writeln('#EXT-X-PLAYLIST-TYPE:VOD'); // Chromecast needs this for correct duration
     buffer.writeln(
         '#EXT-X-TARGETDURATION:${actualSegmentDuration.ceil()}');
     buffer.writeln('#EXT-X-MEDIA-SEQUENCE:0');

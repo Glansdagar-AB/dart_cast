@@ -38,6 +38,28 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   double _volume = 0.25;
   bool _isSeeking = false;
   double _seekValue = 0;
+  StreamSubscription<SessionState>? _stateSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-pop when the session disconnects (e.g., device-side disconnect)
+    _stateSubscription = widget.session.stateStream.listen((state) {
+      if (state == SessionState.disconnected && mounted) {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _stateSubscription?.cancel();
+    // Stop playback when closing the remote
+    widget.session.stop().catchError((_) {});
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

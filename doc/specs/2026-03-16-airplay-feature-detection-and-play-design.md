@@ -205,8 +205,8 @@ Note: All three formats are sent over the **same encrypted HAP channel** when th
 ### 4. Test Strategy
 
 **`AirPlayFeatures` tests:**
-- Parse single-part features string (`"0x5A7FFFF7"`)
-- Parse two-part features string (`"0x5A7FFFF7,0x1E"`)
+- Parse single-part "../../docs/specs"features string (`"0x5A7FFFF7"`)
+- Parse two-part "../../docs/specs"features string (`"0x5A7FFFF7,0x1E"`)
 - All named flag getters (`supportsVideo`, `supportsVideoV1`, `supportsVideoV2`, `supportsAudio`, `supportsScreen`, `requiresHapPairing`, `isV2Protocol`)
 - Edge cases: empty string, `"0x0"`, malformed input, case insensitivity
 - Real-world examples: Apple TV flags, Google TV flags (from mDNS capture)

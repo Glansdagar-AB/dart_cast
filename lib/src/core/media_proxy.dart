@@ -107,14 +107,19 @@ class MediaProxy {
 
   /// Wraps a media URL in a single-segment HLS playlist.
   ///
+  /// [duration] is the known duration in seconds. When provided, the playlist
+  /// reports the correct total duration so the cast device shows accurate
+  /// progress. When null, falls back to a large placeholder value.
+  ///
   /// Returns a proxy URL pointing to the generated m3u8 playlist.
-  String wrapInHlsPlaylist(String mediaProxyUrl) {
+  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration}) {
+    final dur = duration ?? 99999.0;
     final playlistContent = '#EXTM3U\n'
         '#EXT-X-VERSION:3\n'
         '#EXT-X-PLAYLIST-TYPE:VOD\n'
-        '#EXT-X-TARGETDURATION:99999\n'
+        '#EXT-X-TARGETDURATION:${dur.ceil()}\n'
         '#EXT-X-MEDIA-SEQUENCE:0\n'
-        '#EXTINF:99999.0,\n'
+        '#EXTINF:${dur.toStringAsFixed(3)},\n'
         '$mediaProxyUrl\n'
         '#EXT-X-ENDLIST\n';
 

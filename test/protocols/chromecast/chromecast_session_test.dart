@@ -130,7 +130,7 @@ class MockMediaProxy {
     return '$baseUrl/stream/token123';
   }
 
-  String wrapInHlsPlaylist(String mediaProxyUrl) {
+  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration}) {
     return '$baseUrl/synthetic/hls_wrapper';
   }
 

@@ -177,18 +177,12 @@ class ChromecastSession extends CastSession {
     var effectiveType = media.type;
     if (media.type == CastMediaType.mpegTs) {
       CastLogger.info('Chromecast: wrapping MPEG-TS in HLS playlist');
-      if (media.isLocalFile) {
-        // For local files, create byte-range segmented HLS for correct duration
-        proxyUrl = _proxy.wrapLocalFileAsHls(
-          proxyUrl,
-          media.url,
-          totalDuration: media.duration?.inMilliseconds != null
-              ? media.duration!.inMilliseconds / 1000.0
-              : null,
-        );
-      } else {
-        proxyUrl = _proxy.wrapInHlsPlaylist(proxyUrl);
-      }
+      // Use single-segment HLS with known duration for correct progress.
+      // Byte-range splitting causes buffering issues on Chromecast.
+      final durationSecs = media.duration?.inMilliseconds != null
+          ? media.duration!.inMilliseconds / 1000.0
+          : null;
+      proxyUrl = _proxy.wrapInHlsPlaylist(proxyUrl, duration: durationSecs);
       effectiveType = CastMediaType.hls;
     }
 
@@ -586,7 +580,7 @@ abstract class _ProxyAdapter {
   String registerMedia(String url, {Map<String, String> headers});
   String registerFile(String filePath);
   String registerSubtitle(String urlOrPath, {Map<String, String> headers});
-  String wrapInHlsPlaylist(String mediaProxyUrl);
+  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration});
   String wrapLocalFileAsHls(String fileProxyUrl, String filePath, {double? totalDuration});
   void cleanupPreviousMedia({String? excludeToken});
 }
@@ -646,8 +640,8 @@ class _RealProxyAdapter implements _ProxyAdapter {
       _proxy.registerSubtitle(urlOrPath, headers: headers);
 
   @override
-  String wrapInHlsPlaylist(String mediaProxyUrl) =>
-      _proxy.wrapInHlsPlaylist(mediaProxyUrl);
+  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration}) =>
+      _proxy.wrapInHlsPlaylist(mediaProxyUrl, duration: duration);
 
   @override
   String wrapLocalFileAsHls(String fileProxyUrl, String filePath, {double? totalDuration}) =>
@@ -720,7 +714,7 @@ class _MockProxyAdapter implements _ProxyAdapter {
           as String;
 
   @override
-  String wrapInHlsPlaylist(String mediaProxyUrl) =>
+  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration}) =>
       (_mock as dynamic).wrapInHlsPlaylist(mediaProxyUrl) as String;
 
   @override

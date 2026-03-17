@@ -60,6 +60,16 @@ class CastMedia {
   /// so the cast device reports correct playback progress.
   final Duration? duration;
 
+  /// Whether to use chunked HLS (byte-range segments) for local MPEG-TS files.
+  ///
+  /// When `true` (default), the file is split into ~20s byte-range segments
+  /// aligned to 188-byte TS packet boundaries. This gives better seeking,
+  /// lower memory usage, and correct progress reporting.
+  ///
+  /// When `false`, the entire file is served as a single HLS segment.
+  /// Simpler but may cause buffering issues with large files.
+  final bool useChunkedHls;
+
   /// Subtitle tracks for this media.
   final List<CastSubtitle> subtitles;
 
@@ -72,6 +82,7 @@ class CastMedia {
     this.imageUrl,
     this.startPosition,
     this.duration,
+    this.useChunkedHls = true,
     this.subtitles = const [],
   }) : isLocalFile = false;
 
@@ -87,6 +98,7 @@ class CastMedia {
     this.imageUrl,
     this.startPosition,
     this.duration,
+    this.useChunkedHls = true,
     this.subtitles = const [],
   })  : url = filePath,
         isLocalFile = true,

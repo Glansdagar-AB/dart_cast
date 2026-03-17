@@ -176,13 +176,23 @@ class ChromecastSession extends CastSession {
     // Chromecast doesn't support raw MPEG-TS — wrap in HLS playlist
     var effectiveType = media.type;
     if (media.type == CastMediaType.mpegTs) {
-      CastLogger.info('Chromecast: wrapping MPEG-TS in HLS playlist');
-      // Use single-segment HLS with known duration for correct progress.
-      // Byte-range splitting causes buffering issues on Chromecast.
       final durationSecs = media.duration?.inMilliseconds != null
           ? media.duration!.inMilliseconds / 1000.0
           : null;
-      proxyUrl = _proxy.wrapInHlsPlaylist(proxyUrl, duration: durationSecs);
+
+      if (media.useChunkedHls && media.isLocalFile) {
+        // Chunked: byte-range segments (~20s each) for better seeking/progress
+        CastLogger.info('Chromecast: wrapping MPEG-TS in chunked HLS');
+        proxyUrl = _proxy.wrapLocalFileAsHls(
+          proxyUrl,
+          media.url,
+          totalDuration: durationSecs,
+        );
+      } else {
+        // Single segment: simpler, entire file as one HLS segment
+        CastLogger.info('Chromecast: wrapping MPEG-TS in single-segment HLS');
+        proxyUrl = _proxy.wrapInHlsPlaylist(proxyUrl, duration: durationSecs);
+      }
       effectiveType = CastMediaType.hls;
     }
 

@@ -118,12 +118,22 @@ class DlnaSession extends CastSession {
       protocolInfo = 'http-get:*:video/mp2t:*';
     } else if (media.type == CastMediaType.mpegTs) {
       if (media.isLocalFile) {
-        // Wrap local TS in single-segment HLS, then pipe as continuous stream
         final fileUrl = _proxy.registerFile(media.url);
         final durationSecs = media.duration?.inMilliseconds != null
             ? media.duration!.inMilliseconds / 1000.0
             : null;
-        final hlsUrl = _proxy.wrapInHlsPlaylist(fileUrl, duration: durationSecs);
+        String hlsUrl;
+        if (media.useChunkedHls) {
+          // Chunked: byte-range segments for better seeking/progress
+          hlsUrl = _proxy.wrapLocalFileAsHls(
+            fileUrl,
+            media.url,
+            totalDuration: durationSecs,
+          );
+        } else {
+          // Single segment: entire file as one HLS segment
+          hlsUrl = _proxy.wrapInHlsPlaylist(fileUrl, duration: durationSecs);
+        }
         proxyUrl = _proxy.registerHlsAsStream(hlsUrl);
       } else {
         proxyUrl = _proxy.registerMedia(media.url, headers: media.httpHeaders);

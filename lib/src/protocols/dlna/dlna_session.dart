@@ -117,16 +117,14 @@ class DlnaSession extends CastSession {
       );
       protocolInfo = 'http-get:*:video/mp2t:*';
     } else if (media.type == CastMediaType.mpegTs) {
-      proxyUrl = _proxy.registerMedia(
-        media.url,
-        headers: media.httpHeaders,
-      );
+      proxyUrl = media.isLocalFile
+          ? _proxy.registerFile(media.url)
+          : _proxy.registerMedia(media.url, headers: media.httpHeaders);
       protocolInfo = 'http-get:*:video/mp2t:*';
     } else {
-      proxyUrl = _proxy.registerMedia(
-        media.url,
-        headers: media.httpHeaders,
-      );
+      proxyUrl = media.isLocalFile
+          ? _proxy.registerFile(media.url)
+          : _proxy.registerMedia(media.url, headers: media.httpHeaders);
       protocolInfo = 'http-get:*:video/mp4:*';
     }
 

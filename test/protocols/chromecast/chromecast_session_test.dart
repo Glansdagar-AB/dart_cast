@@ -118,11 +118,24 @@ class MockMediaProxy {
     return '$baseUrl/stream/token123';
   }
 
+  String registerFile(String filePath) {
+    registeredUrl = filePath;
+    return '$baseUrl/file/token123';
+  }
+
   String registerSubtitle(String urlOrPath,
       {Map<String, String> headers = const {}}) {
     registeredUrl = urlOrPath;
     registeredHeaders = headers;
     return '$baseUrl/stream/token123';
+  }
+
+  String wrapInHlsPlaylist(String mediaProxyUrl) {
+    return '$baseUrl/synthetic/hls_wrapper';
+  }
+
+  String wrapLocalFileAsHls(String fileProxyUrl, String filePath, {double? totalDuration}) {
+    return '$baseUrl/synthetic/hls_segmented';
   }
 
   void cleanupPreviousMedia({String? excludeToken}) {}

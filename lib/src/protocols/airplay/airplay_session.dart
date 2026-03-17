@@ -227,10 +227,9 @@ class AirPlaySession extends CastSession {
       _currentMedia = media;
 
       // Register the media URL with the proxy
-      final proxyUrl = _proxy.registerMedia(
-        media.url,
-        headers: media.httpHeaders,
-      );
+      final proxyUrl = media.isLocalFile
+          ? _proxy.registerFile(media.url)
+          : _proxy.registerMedia(media.url, headers: media.httpHeaders);
 
       // Determine the final URL to send to the device
       String playUrl;
@@ -377,10 +376,9 @@ class AirPlaySession extends CastSession {
     // Clean up old proxy routes and re-register
     _proxy.cleanupPreviousMedia();
 
-    final proxyUrl = _proxy.registerMedia(
-      newMedia.url,
-      headers: newMedia.httpHeaders,
-    );
+    final proxyUrl = newMedia.isLocalFile
+        ? _proxy.registerFile(newMedia.url)
+        : _proxy.registerMedia(newMedia.url, headers: newMedia.httpHeaders);
 
     String playUrl;
     if (newMedia.subtitles.isNotEmpty && newMedia.type == CastMediaType.hls) {

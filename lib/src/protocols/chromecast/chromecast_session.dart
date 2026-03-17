@@ -166,16 +166,34 @@ class ChromecastSession extends CastSession {
     // Start proxy and register new media BEFORE cleanup to avoid race condition
     // where the cast device requests the old URL during the gap.
     await _proxy.start();
-    final proxyUrl = _proxy.registerMedia(
-      media.url,
-      headers: media.httpHeaders,
-    );
+    var proxyUrl = media.isLocalFile
+        ? _proxy.registerFile(media.url)
+        : _proxy.registerMedia(media.url, headers: media.httpHeaders);
     // Extract token from the proxy URL to exclude it from cleanup
     final newToken = Uri.parse(proxyUrl).pathSegments.last;
     _proxy.cleanupPreviousMedia(excludeToken: newToken);
 
+    // Chromecast doesn't support raw MPEG-TS — wrap in HLS playlist
+    var effectiveType = media.type;
+    if (media.type == CastMediaType.mpegTs) {
+      CastLogger.info('Chromecast: wrapping MPEG-TS in HLS playlist');
+      if (media.isLocalFile) {
+        // For local files, create byte-range segmented HLS for correct duration
+        proxyUrl = _proxy.wrapLocalFileAsHls(
+          proxyUrl,
+          media.url,
+          totalDuration: media.duration?.inMilliseconds != null
+              ? media.duration!.inMilliseconds / 1000.0
+              : null,
+        );
+      } else {
+        proxyUrl = _proxy.wrapInHlsPlaylist(proxyUrl);
+      }
+      effectiveType = CastMediaType.hls;
+    }
+
     // Determine content type
-    final contentType = _contentTypeForMedia(media.type);
+    final contentType = _contentTypeForMedia(effectiveType);
 
     // Build subtitle tracks — proxy each subtitle URL so the Chromecast can
     // fetch them with CORS headers (Access-Control-Allow-Origin) and any
@@ -566,7 +584,10 @@ abstract class _ProxyAdapter {
   Future<void> start();
   Future<void> stop();
   String registerMedia(String url, {Map<String, String> headers});
+  String registerFile(String filePath);
   String registerSubtitle(String urlOrPath, {Map<String, String> headers});
+  String wrapInHlsPlaylist(String mediaProxyUrl);
+  String wrapLocalFileAsHls(String fileProxyUrl, String filePath, {double? totalDuration});
   void cleanupPreviousMedia({String? excludeToken});
 }
 
@@ -617,9 +638,20 @@ class _RealProxyAdapter implements _ProxyAdapter {
       _proxy.registerMedia(url, headers: headers);
 
   @override
+  String registerFile(String filePath) => _proxy.registerFile(filePath);
+
+  @override
   String registerSubtitle(String urlOrPath,
           {Map<String, String> headers = const {}}) =>
       _proxy.registerSubtitle(urlOrPath, headers: headers);
+
+  @override
+  String wrapInHlsPlaylist(String mediaProxyUrl) =>
+      _proxy.wrapInHlsPlaylist(mediaProxyUrl);
+
+  @override
+  String wrapLocalFileAsHls(String fileProxyUrl, String filePath, {double? totalDuration}) =>
+      _proxy.wrapLocalFileAsHls(fileProxyUrl, filePath, totalDuration: totalDuration);
 
   @override
   void cleanupPreviousMedia({String? excludeToken}) =>
@@ -678,10 +710,22 @@ class _MockProxyAdapter implements _ProxyAdapter {
       (_mock as dynamic).registerMedia(url, headers: headers) as String;
 
   @override
+  String registerFile(String filePath) =>
+      (_mock as dynamic).registerFile(filePath) as String;
+
+  @override
   String registerSubtitle(String urlOrPath,
           {Map<String, String> headers = const {}}) =>
       (_mock as dynamic).registerSubtitle(urlOrPath, headers: headers)
           as String;
+
+  @override
+  String wrapInHlsPlaylist(String mediaProxyUrl) =>
+      (_mock as dynamic).wrapInHlsPlaylist(mediaProxyUrl) as String;
+
+  @override
+  String wrapLocalFileAsHls(String fileProxyUrl, String filePath, {double? totalDuration}) =>
+      (_mock as dynamic).wrapLocalFileAsHls(fileProxyUrl, filePath) as String;
 
   @override
   void cleanupPreviousMedia({String? excludeToken}) =>

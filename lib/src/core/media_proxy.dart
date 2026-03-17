@@ -5,6 +5,7 @@ import 'dart:math';
 import 'hls_parser.dart';
 import 'hls_stream_proxy.dart';
 import 'subtitle_converter.dart';
+import '../utils/logger.dart';
 import '../utils/network_utils.dart';
 
 /// Route type for proxy routing.
@@ -102,6 +103,105 @@ class MediaProxy {
       url: filePath,
     );
     return '$_baseUrl/file/$token';
+  }
+
+  /// Wraps a media URL in a single-segment HLS playlist.
+  ///
+  /// Returns a proxy URL pointing to the generated m3u8 playlist.
+  String wrapInHlsPlaylist(String mediaProxyUrl) {
+    final playlistContent = '#EXTM3U\n'
+        '#EXT-X-VERSION:3\n'
+        '#EXT-X-TARGETDURATION:99999\n'
+        '#EXT-X-MEDIA-SEQUENCE:0\n'
+        '#EXTINF:99999.0,\n'
+        '$mediaProxyUrl\n'
+        '#EXT-X-ENDLIST\n';
+
+    final token = _generateToken();
+    _syntheticContent[token] = _SyntheticContent(
+      content: playlistContent,
+      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+    );
+    return '$_baseUrl/synthetic/$token';
+  }
+
+  /// Creates a fake HLS playlist that splits a local file into virtual
+  /// byte-range segments of approximately [segmentSeconds] seconds each.
+  ///
+  /// The segments are served via `#EXT-X-BYTERANGE` so the proxy serves
+  /// different byte ranges of the same file. This approach:
+  /// - Reports correct playback duration to the TV
+  /// - Reduces memory usage (TV loads one segment at a time)
+  /// - Enables seeking to specific positions
+  ///
+  /// [fileProxyUrl] should be a proxy URL from [registerFile].
+  /// [filePath] is the local file path (used to determine file size).
+  /// [totalDuration] is the known duration in seconds (if available).
+  ///   When provided, segment durations are calculated precisely.
+  ///   When null, duration is estimated from file size and [estimatedBitrateMbps].
+  /// Returns a proxy URL pointing to the generated m3u8 playlist.
+  String wrapLocalFileAsHls(
+    String fileProxyUrl,
+    String filePath, {
+    double segmentSeconds = 20.0,
+    double? totalDuration,
+    double estimatedBitrateMbps = 5.0,
+  }) {
+    final file = File(filePath);
+    if (!file.existsSync()) return wrapInHlsPlaylist(fileProxyUrl);
+
+    final fileSize = file.lengthSync();
+    final double effectiveDuration;
+    if (totalDuration != null && totalDuration > 0) {
+      effectiveDuration = totalDuration;
+    } else {
+      final estimatedBytesPerSecond =
+          (estimatedBitrateMbps * 1000000 / 8).round();
+      effectiveDuration = fileSize / estimatedBytesPerSecond;
+    }
+    final segmentCount =
+        (effectiveDuration / segmentSeconds).ceil().clamp(1, 10000);
+    final bytesPerSegment = (fileSize / segmentCount).ceil();
+    final actualSegmentDuration = effectiveDuration / segmentCount;
+
+    final buffer = StringBuffer();
+    buffer.writeln('#EXTM3U');
+    buffer.writeln('#EXT-X-VERSION:4'); // Version 4 needed for EXT-X-BYTERANGE
+    buffer.writeln(
+        '#EXT-X-TARGETDURATION:${actualSegmentDuration.ceil()}');
+    buffer.writeln('#EXT-X-MEDIA-SEQUENCE:0');
+
+    for (int i = 0; i < segmentCount; i++) {
+      final offset = i * bytesPerSegment;
+      final length = (i == segmentCount - 1)
+          ? fileSize - offset // Last segment gets the remainder
+          : bytesPerSegment;
+
+      // Last segment may be shorter if duration doesn't divide evenly
+      final segDuration = (i == segmentCount - 1)
+          ? effectiveDuration - (i * actualSegmentDuration)
+          : actualSegmentDuration;
+      buffer.writeln('#EXTINF:${segDuration.toStringAsFixed(3)},');
+      buffer.writeln('#EXT-X-BYTERANGE:$length@$offset');
+      buffer.writeln(fileProxyUrl);
+    }
+    buffer.writeln('#EXT-X-ENDLIST');
+
+    final token = _generateToken();
+    _syntheticContent[token] = _SyntheticContent(
+      content: buffer.toString(),
+      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+    );
+
+    CastLogger.info(
+        'MediaProxy: created HLS playlist with $segmentCount segments '
+        '(~${actualSegmentDuration.toStringAsFixed(1)}s each, '
+        '~${effectiveDuration.toStringAsFixed(0)}s total, '
+        '${(fileSize / 1024 / 1024).toStringAsFixed(1)}MB'
+        '${totalDuration != null ? ", known duration" : ", estimated"}'
+        ')');
+
+    return '$_baseUrl/synthetic/$token';
   }
 
   /// Registers a subtitle URL — handles both remote URLs and local file:// paths.

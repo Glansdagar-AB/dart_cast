@@ -7,6 +7,7 @@ import 'hls_stream_proxy.dart';
 import 'subtitle_converter.dart';
 import '../utils/logger.dart';
 import '../utils/network_utils.dart';
+import 'ts_keyframe_scanner.dart';
 
 /// Route type for proxy routing.
 enum _RouteType { remote, localFile, hlsStream }
@@ -168,6 +169,17 @@ class MediaProxy {
       return wrapInHlsPlaylist(fileProxyUrl);
     }
 
+    // Scan for keyframe positions — segments MUST start at keyframes
+    // for the cast device to decode them independently.
+    final keyframeOffsets = TsKeyframeScanner.findKeyframeOffsets(file);
+
+    // If only 1 keyframe (or scan failed), fall back to single segment
+    if (keyframeOffsets.length <= 1) {
+      CastLogger.info('MediaProxy: only ${keyframeOffsets.length} keyframe(s), '
+          'using single-segment HLS');
+      return wrapInHlsPlaylist(fileProxyUrl, duration: totalDuration);
+    }
+
     final double effectiveDuration;
     if (totalDuration != null && totalDuration > 0) {
       effectiveDuration = totalDuration;
@@ -176,35 +188,41 @@ class MediaProxy {
           (estimatedBitrateMbps * 1000000 / 8).round();
       effectiveDuration = fileSize / estimatedBytesPerSecond;
     }
-    final segmentCount =
-        (effectiveDuration / segmentSeconds).ceil().clamp(1, 10000);
 
-    // Align byte ranges to 188-byte MPEG-TS packet boundaries to avoid
-    // splitting mid-packet (which causes demuxer sync errors).
-    const tsPacketSize = 188;
-    final rawBytesPerSegment = (fileSize / segmentCount).ceil();
-    final bytesPerSegment =
-        ((rawBytesPerSegment + tsPacketSize - 1) ~/ tsPacketSize) * tsPacketSize;
-    final actualSegmentDuration = effectiveDuration / segmentCount;
+    // Group keyframes into segments of ~segmentSeconds each.
+    // Each segment starts at a keyframe and ends just before the next
+    // segment's first keyframe.
+    final segmentOffsets = <int>[0]; // First segment always at 0
+    final bytesPerSecond = fileSize / effectiveDuration;
+    final targetBytesPerSegment = (segmentSeconds * bytesPerSecond).round();
+
+    int lastSegmentStart = 0;
+    for (int i = 1; i < keyframeOffsets.length; i++) {
+      final bytesSinceLastSegment = keyframeOffsets[i] - lastSegmentStart;
+      if (bytesSinceLastSegment >= targetBytesPerSegment) {
+        segmentOffsets.add(keyframeOffsets[i]);
+        lastSegmentStart = keyframeOffsets[i];
+      }
+    }
+
+    final segmentCount = segmentOffsets.length;
+    final avgSegmentDuration = effectiveDuration / segmentCount;
 
     final buffer = StringBuffer();
     buffer.writeln('#EXTM3U');
-    buffer.writeln('#EXT-X-VERSION:4'); // Version 4 needed for EXT-X-BYTERANGE
-    buffer.writeln('#EXT-X-PLAYLIST-TYPE:VOD'); // Chromecast needs this for correct duration
-    buffer.writeln(
-        '#EXT-X-TARGETDURATION:${actualSegmentDuration.ceil()}');
+    buffer.writeln('#EXT-X-VERSION:4');
+    buffer.writeln('#EXT-X-PLAYLIST-TYPE:VOD');
+    buffer.writeln('#EXT-X-TARGETDURATION:${(avgSegmentDuration * 1.5).ceil()}');
     buffer.writeln('#EXT-X-MEDIA-SEQUENCE:0');
 
     for (int i = 0; i < segmentCount; i++) {
-      final offset = i * bytesPerSegment;
-      final length = (i == segmentCount - 1)
-          ? fileSize - offset // Last segment gets the remainder
-          : bytesPerSegment;
+      final offset = segmentOffsets[i];
+      final nextOffset =
+          (i + 1 < segmentCount) ? segmentOffsets[i + 1] : fileSize;
+      final length = nextOffset - offset;
 
-      // Last segment may be shorter if duration doesn't divide evenly
-      final segDuration = (i == segmentCount - 1)
-          ? effectiveDuration - (i * actualSegmentDuration)
-          : actualSegmentDuration;
+      // Estimate segment duration proportionally from byte size
+      final segDuration = (length / fileSize) * effectiveDuration;
       buffer.writeln('#EXTINF:${segDuration.toStringAsFixed(3)},');
       buffer.writeln('#EXT-X-BYTERANGE:$length@$offset');
       buffer.writeln(fileProxyUrl);
@@ -218,10 +236,11 @@ class MediaProxy {
     );
 
     CastLogger.info(
-        'MediaProxy: created HLS playlist with $segmentCount segments '
-        '(~${actualSegmentDuration.toStringAsFixed(1)}s each, '
+        'MediaProxy: created HLS playlist with $segmentCount keyframe-aligned segments '
+        '(~${avgSegmentDuration.toStringAsFixed(1)}s avg, '
         '~${effectiveDuration.toStringAsFixed(0)}s total, '
-        '${(fileSize / 1024 / 1024).toStringAsFixed(1)}MB'
+        '${(fileSize / 1024 / 1024).toStringAsFixed(1)}MB, '
+        '${keyframeOffsets.length} keyframes found'
         '${totalDuration != null ? ", known duration" : ", estimated"}'
         ')');
 

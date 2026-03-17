@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dart_cast/src/core/media_proxy.dart';
 import 'package:test/test.dart';
@@ -26,6 +27,70 @@ Future<({Directory dir, File file})> _createTempFile(int size) async {
       await Directory.systemTemp.createTemp('media_proxy_hls_test_');
   final file = File('${dir.path}/test_video.ts');
   await file.writeAsBytes(List.filled(size, 0));
+  return (dir: dir, file: file);
+}
+
+/// Creates a TS packet with random_access_indicator=1 (keyframe marker).
+///
+/// Packet layout:
+///   [0]  = 0x47  sync byte
+///   [1]  = 0x00  (no flags)
+///   [2]  = 0x00  (no flags)
+///   [3]  = 0x20  adaptation_field_control = 0b10 (adaptation field only) → (0x02 << 4) = 0x20
+///   [4]  = 0x01  adaptation field length = 1
+///   [5]  = 0x40  flags: random_access_indicator = bit 6 → 0x40
+///   [6..187] = 0x00 padding
+Uint8List _createTsPacketWithKeyframe() {
+  final packet = Uint8List(188);
+  packet[0] = 0x47; // sync byte
+  packet[3] = 0x20; // adaptation field only (0x02 << 4)
+  packet[4] = 1; // adaptation field length = 1
+  packet[5] = 0x40; // random_access_indicator = 1 (bit 6)
+  return packet;
+}
+
+/// Creates a plain TS packet without any keyframe indicator.
+///
+/// Packet layout:
+///   [0]  = 0x47  sync byte
+///   [1]  = 0x00
+///   [2]  = 0x00
+///   [3]  = 0x10  adaptation_field_control = 0b01 (payload only) → (0x01 << 4) = 0x10
+///   [4..187] = 0x00 padding
+Uint8List _createTsPacket() {
+  final packet = Uint8List(188);
+  packet[0] = 0x47; // sync byte
+  packet[3] = 0x10; // payload only
+  return packet;
+}
+
+/// Creates a temporary .ts file with synthetic keyframe data.
+///
+/// Writes [totalPackets] TS packets where packets at [keyframeIndices] carry
+/// the random_access_indicator. Returns the file inside a fresh temp dir.
+Future<({Directory dir, File file})> _createTsFileWithKeyframes({
+  required int totalPackets,
+  required List<int> keyframeIndices,
+}) async {
+  final dir =
+      await Directory.systemTemp.createTemp('media_proxy_hls_kf_test_');
+  final file = File('${dir.path}/test_keyframes.ts');
+
+  final keyframeSet = keyframeIndices.toSet();
+  final sink = file.openWrite();
+  try {
+    for (int i = 0; i < totalPackets; i++) {
+      if (keyframeSet.contains(i)) {
+        sink.add(_createTsPacketWithKeyframe());
+      } else {
+        sink.add(_createTsPacket());
+      }
+    }
+  } finally {
+    await sink.flush();
+    await sink.close();
+  }
+
   return (dir: dir, file: file);
 }
 
@@ -126,7 +191,11 @@ void main() {
     });
 
     // -------------------------------------------------------------------------
-    // wrapLocalFileAsHls
+    // wrapLocalFileAsHls — dummy .ts files (zero bytes → no keyframes found)
+    //
+    // Because the dummy files contain no valid TS packets (just zero bytes),
+    // TsKeyframeScanner returns only [0], which triggers the fallback to
+    // wrapInHlsPlaylist (single-segment, VERSION:3, no byte-range tags).
     // -------------------------------------------------------------------------
     group('wrapLocalFileAsHls', () {
       test('returns a URL that starts with http://', () async {
@@ -175,7 +244,9 @@ void main() {
         }
       });
 
-      test('playlist contains #EXT-X-VERSION:4 (required for byte-range)',
+      // Dummy file → fallback to single-segment → VERSION:3 (not VERSION:4)
+      test(
+          'playlist does NOT contain #EXT-X-VERSION:4 (no keyframes → fallback)',
           () async {
         final tmp = await _createTempFile(1024 * 1024);
         try {
@@ -186,7 +257,7 @@ void main() {
             totalDuration: 60.0,
           );
           final content = await _fetchString(playlistUrl);
-          expect(content, contains('#EXT-X-VERSION:4'));
+          expect(content, isNot(contains('#EXT-X-VERSION:4')));
         } finally {
           await tmp.dir.delete(recursive: true);
         }
@@ -224,7 +295,10 @@ void main() {
         }
       });
 
-      test('playlist contains #EXT-X-BYTERANGE tags', () async {
+      // Dummy file → fallback → no byte-range segments
+      test(
+          'playlist does NOT contain #EXT-X-BYTERANGE (no keyframes → fallback)',
+          () async {
         final tmp = await _createTempFile(1024 * 1024);
         try {
           final fileProxyUrl = proxy.registerFile(tmp.file.path);
@@ -234,290 +308,49 @@ void main() {
             totalDuration: 60.0,
           );
           final content = await _fetchString(playlistUrl);
-          expect(content, contains('#EXT-X-BYTERANGE:'));
+          expect(content, isNot(contains('#EXT-X-BYTERANGE:')));
         } finally {
           await tmp.dir.delete(recursive: true);
         }
       });
 
-      test('generates correct number of segments for known duration', () async {
-        // 120s / 20s-per-segment = 6 segments
-        final tmp = await _createTempFile(10 * 1024 * 1024); // 10 MB
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: 20.0,
-            totalDuration: 120.0,
-          );
-          final content = await _fetchString(playlistUrl);
-          final extinfCount =
-              '#EXTINF:'.allMatches(content).length;
-          expect(extinfCount, 6);
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('each segment has #EXTINF with ~20s duration', () async {
-        final tmp = await _createTempFile(10 * 1024 * 1024);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: 20.0,
-            totalDuration: 120.0,
-          );
-          final content = await _fetchString(playlistUrl);
-
-          // Extract all EXTINF durations
-          final extinfRegex = RegExp(r'#EXTINF:([\d.]+),');
-          final matches = extinfRegex.allMatches(content).toList();
-
-          expect(matches, hasLength(6));
-          for (final m in matches) {
-            final duration = double.parse(m.group(1)!);
-            // Each segment should be exactly 20s (120 / 6)
-            expect(duration, closeTo(20.0, 0.01));
-          }
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('byte ranges cover the full file — sum equals file size', () async {
-        const fileSize = 10 * 1024 * 1024; // 10 MB
-        final tmp = await _createTempFile(fileSize);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: 20.0,
-            totalDuration: 120.0,
-          );
-          final content = await _fetchString(playlistUrl);
-
-          // Parse all #EXT-X-BYTERANGE:<length>@<offset> lines
-          final byteRangeRegex =
-              RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
-          final matches = byteRangeRegex.allMatches(content).toList();
-
-          expect(matches, isNotEmpty);
-
-          int totalBytes = 0;
-          for (final m in matches) {
-            totalBytes += int.parse(m.group(1)!);
-          }
-          expect(totalBytes, fileSize);
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('byte ranges are contiguous starting at 0', () async {
-        const fileSize = 10 * 1024 * 1024;
-        final tmp = await _createTempFile(fileSize);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: 20.0,
-            totalDuration: 120.0,
-          );
-          final content = await _fetchString(playlistUrl);
-
-          final byteRangeRegex =
-              RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
-          final matches = byteRangeRegex.allMatches(content).toList();
-
-          expect(matches, isNotEmpty);
-          expect(int.parse(matches.first.group(2)!), 0, // first offset = 0
-              reason: 'First segment offset must be 0');
-
-          int expectedOffset = 0;
-          for (final m in matches) {
-            final offset = int.parse(m.group(2)!);
-            final length = int.parse(m.group(1)!);
-            expect(offset, expectedOffset);
-            expectedOffset += length;
-          }
-          expect(expectedOffset, fileSize);
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('last segment gets the remainder bytes', () async {
-        // 10 MB file, 6 segments → segment sizes will not all be equal
-        const fileSize = 10 * 1024 * 1024;
-        final tmp = await _createTempFile(fileSize);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: 20.0,
-            totalDuration: 120.0,
-          );
-          final content = await _fetchString(playlistUrl);
-
-          final byteRangeRegex =
-              RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
-          final matches = byteRangeRegex.allMatches(content).toList();
-
-          // The last offset + last length must equal the file size
-          final last = matches.last;
-          final lastOffset = int.parse(last.group(2)!);
-          final lastLength = int.parse(last.group(1)!);
-          expect(lastOffset + lastLength, fileSize);
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('segments durations sum equals total duration', () async {
-        const totalDuration = 120.0;
-        final tmp = await _createTempFile(10 * 1024 * 1024);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: 20.0,
-            totalDuration: totalDuration,
-          );
-          final content = await _fetchString(playlistUrl);
-
-          final extinfRegex = RegExp(r'#EXTINF:([\d.]+),');
-          final durations = extinfRegex
-              .allMatches(content)
-              .map((m) => double.parse(m.group(1)!))
-              .toList();
-
-          final sum = durations.fold<double>(0.0, (a, b) => a + b);
-          expect(sum, closeTo(totalDuration, 0.01));
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('file proxy URL appears in each segment line', () async {
+      // Single-segment fallback: EXTINF duration comes from totalDuration
+      test('EXTINF uses provided totalDuration in single-segment fallback',
+          () async {
+        const dur = 60.0;
         final tmp = await _createTempFile(1024 * 1024);
         try {
           final fileProxyUrl = proxy.registerFile(tmp.file.path);
           final playlistUrl = proxy.wrapLocalFileAsHls(
             fileProxyUrl,
             tmp.file.path,
-            segmentSeconds: 20.0,
+            totalDuration: dur,
+          );
+          final content = await _fetchString(playlistUrl);
+
+          final extinfRegex = RegExp(r'#EXTINF:([\d.]+),');
+          final match = extinfRegex.firstMatch(content);
+          expect(match, isNotNull);
+          final extinfDur = double.parse(match!.group(1)!);
+          expect(extinfDur, closeTo(dur, 0.01));
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      // Single-segment fallback: file proxy URL appears in the segment line
+      test('file proxy URL appears in segment line (single-segment fallback)',
+          () async {
+        final tmp = await _createTempFile(1024 * 1024);
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
             totalDuration: 60.0,
           );
           final content = await _fetchString(playlistUrl);
-
-          // Segment URL lines (non-tag, non-empty lines)
-          final lines = content
-              .split('\n')
-              .where((l) => l.isNotEmpty && !l.startsWith('#'))
-              .toList();
-
-          expect(lines, isNotEmpty);
-          for (final line in lines) {
-            expect(line.trim(), fileProxyUrl);
-          }
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('estimates duration from bitrate when totalDuration is null',
-          () async {
-        // 5 Mbps (default) → 5_000_000/8 = 625_000 bytes/sec
-        // 2_500_000 bytes / 625_000 = 4.0 s → 1 segment at 20s default
-        const fileSize = 2500000;
-        final tmp = await _createTempFile(fileSize);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            // no totalDuration → uses estimatedBitrateMbps = 5.0
-          );
-          final content = await _fetchString(playlistUrl);
-
-          // Estimated duration ~4s which is < segmentSeconds(20) → 1 segment
-          final extinfCount = '#EXTINF:'.allMatches(content).length;
-          expect(extinfCount, 1);
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('uses custom bitrate estimate when totalDuration is null', () async {
-        // At 1 Mbps → 125_000 bytes/s
-        // 5_000_000 bytes / 125_000 = 40s → ceil(40/20) = 2 segments
-        const fileSize = 5000000;
-        final tmp = await _createTempFile(fileSize);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: 20.0,
-            estimatedBitrateMbps: 1.0,
-          );
-          final content = await _fetchString(playlistUrl);
-
-          final extinfCount = '#EXTINF:'.allMatches(content).length;
-          expect(extinfCount, 2);
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('small file (duration < segmentSeconds) generates single segment',
-          () async {
-        // 100 KB at 5 Mbps → ~0.16s < 20s → 1 segment
-        final tmp = await _createTempFile(100 * 1024);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: 20.0,
-            totalDuration: 5.0, // only 5s
-          );
-          final content = await _fetchString(playlistUrl);
-
-          final extinfCount = '#EXTINF:'.allMatches(content).length;
-          expect(extinfCount, 1);
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('single-segment playlist byte range covers the whole file', () async {
-        const fileSize = 100 * 1024;
-        final tmp = await _createTempFile(fileSize);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: 20.0,
-            totalDuration: 5.0,
-          );
-          final content = await _fetchString(playlistUrl);
-
-          final byteRangeRegex =
-              RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
-          final matches = byteRangeRegex.allMatches(content).toList();
-
-          expect(matches, hasLength(1));
-          expect(int.parse(matches.first.group(1)!), fileSize);
-          expect(int.parse(matches.first.group(2)!), 0);
+          expect(content, contains(fileProxyUrl));
         } finally {
           await tmp.dir.delete(recursive: true);
         }
@@ -583,20 +416,225 @@ void main() {
           await tmp.dir.delete(recursive: true);
         }
       });
+    });
 
-      test('non-round duration produces correct final segment duration',
-          () async {
-        // 100s / 20s = 5 segments, each exactly 20s, last may differ for odd totals
-        // Use 110s / 20s = ceil(5.5) = 6 segments; last segment ~10s
-        const totalDuration = 110.0;
-        const segmentSeconds = 20.0;
-        final tmp = await _createTempFile(10 * 1024 * 1024);
+    // -------------------------------------------------------------------------
+    // wrapLocalFileAsHls — synthetic keyframe data
+    //
+    // Creates a .ts file with 250 packets (47000 bytes) and keyframe markers
+    // at packet indices 0, 50, 100, 150, 200.
+    //
+    // TsKeyframeScanner always includes offset 0. The packet at index 0 has
+    // random_access_indicator=1 but packetOffset == 0, so the scanner skips
+    // it (the `packetOffset > 0` guard). The packets at indices 50, 100, 150,
+    // 200 have packetOffset 9400, 18800, 28200, 37600 respectively and WILL
+    // be recorded. Combined with the implicit 0, offsets = [0, 9400, 18800,
+    // 28200, 37600] — 5 keyframes.
+    //
+    // With totalDuration=50.0 and segmentSeconds=10.0:
+    //   bytesPerSecond  = 47000 / 50 = 940
+    //   targetBytesPerSegment = 10 * 940 = 9400
+    // Each keyframe is exactly 9400 bytes apart, so all 4 keyframe offsets
+    // trigger a new segment → segmentOffsets = [0, 9400, 18800, 28200, 37600]
+    // → 5 segments.
+    // -------------------------------------------------------------------------
+    group('wrapLocalFileAsHls — keyframe-aligned segments', () {
+      // Helper: build the standard synthetic keyframe file used across tests.
+      // 250 packets, keyframes at 0, 50, 100, 150, 200.
+      Future<({Directory dir, File file})> makeKfFile() =>
+          _createTsFileWithKeyframes(
+            totalPackets: 250,
+            keyframeIndices: [0, 50, 100, 150, 200],
+          );
+
+      const totalDuration = 50.0;
+      const segmentSec = 10.0;
+      const fileSize = 250 * 188; // 47000 bytes
+
+      test('creates multiple keyframe-aligned segments', () async {
+        final tmp = await makeKfFile();
         try {
           final fileProxyUrl = proxy.registerFile(tmp.file.path);
           final playlistUrl = proxy.wrapLocalFileAsHls(
             fileProxyUrl,
             tmp.file.path,
-            segmentSeconds: segmentSeconds,
+            segmentSeconds: segmentSec,
+            totalDuration: totalDuration,
+          );
+          final content = await _fetchString(playlistUrl);
+
+          final extinfCount = '#EXTINF:'.allMatches(content).length;
+          // Expect 5 segments (one per keyframe boundary at 0, 9400, 18800, 28200, 37600)
+          expect(extinfCount, greaterThan(1),
+              reason: 'keyframe file should produce multiple segments');
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      test('playlist contains #EXT-X-VERSION:4 (byte-range mode)', () async {
+        final tmp = await makeKfFile();
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
+            segmentSeconds: segmentSec,
+            totalDuration: totalDuration,
+          );
+          final content = await _fetchString(playlistUrl);
+          expect(content, contains('#EXT-X-VERSION:4'));
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      test('playlist contains #EXT-X-BYTERANGE tags', () async {
+        final tmp = await makeKfFile();
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
+            segmentSeconds: segmentSec,
+            totalDuration: totalDuration,
+          );
+          final content = await _fetchString(playlistUrl);
+          expect(content, contains('#EXT-X-BYTERANGE:'));
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      test('playlist contains #EXT-X-PLAYLIST-TYPE:VOD', () async {
+        final tmp = await makeKfFile();
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
+            segmentSeconds: segmentSec,
+            totalDuration: totalDuration,
+          );
+          final content = await _fetchString(playlistUrl);
+          expect(content, contains('#EXT-X-PLAYLIST-TYPE:VOD'));
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      test('playlist contains #EXT-X-ENDLIST', () async {
+        final tmp = await makeKfFile();
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
+            segmentSeconds: segmentSec,
+            totalDuration: totalDuration,
+          );
+          final content = await _fetchString(playlistUrl);
+          expect(content, contains('#EXT-X-ENDLIST'));
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      test('segment byte ranges are contiguous starting at 0', () async {
+        final tmp = await makeKfFile();
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
+            segmentSeconds: segmentSec,
+            totalDuration: totalDuration,
+          );
+          final content = await _fetchString(playlistUrl);
+
+          final byteRangeRegex = RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
+          final matches = byteRangeRegex.allMatches(content).toList();
+
+          expect(matches, isNotEmpty);
+          expect(int.parse(matches.first.group(2)!), 0,
+              reason: 'First segment offset must be 0');
+
+          int expectedOffset = 0;
+          for (final m in matches) {
+            final offset = int.parse(m.group(2)!);
+            final length = int.parse(m.group(1)!);
+            expect(offset, expectedOffset,
+                reason: 'Segments must be contiguous');
+            expectedOffset += length;
+          }
+          expect(expectedOffset, fileSize,
+              reason: 'All byte ranges must cover the full file');
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      test('byte ranges cover the full file — sum equals file size', () async {
+        final tmp = await makeKfFile();
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
+            segmentSeconds: segmentSec,
+            totalDuration: totalDuration,
+          );
+          final content = await _fetchString(playlistUrl);
+
+          final byteRangeRegex = RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
+          final matches = byteRangeRegex.allMatches(content).toList();
+
+          int totalBytes = 0;
+          for (final m in matches) {
+            totalBytes += int.parse(m.group(1)!);
+          }
+          expect(totalBytes, fileSize);
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      test('segment boundaries align to keyframe offsets', () async {
+        // Keyframe packets are at indices 50, 100, 150, 200
+        // → offsets 9400, 18800, 28200, 37600 (plus implicit 0)
+        const expectedOffsets = [0, 9400, 18800, 28200, 37600];
+        final tmp = await makeKfFile();
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
+            segmentSeconds: segmentSec,
+            totalDuration: totalDuration,
+          );
+          final content = await _fetchString(playlistUrl);
+
+          final byteRangeRegex = RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
+          final offsets = byteRangeRegex
+              .allMatches(content)
+              .map((m) => int.parse(m.group(2)!))
+              .toList();
+
+          expect(offsets, expectedOffsets,
+              reason: 'Segment start offsets must match keyframe byte offsets');
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      test('segment durations sum equals total duration', () async {
+        final tmp = await makeKfFile();
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
+            segmentSeconds: segmentSec,
             totalDuration: totalDuration,
           );
           final content = await _fetchString(playlistUrl);
@@ -607,11 +645,35 @@ void main() {
               .map((m) => double.parse(m.group(1)!))
               .toList();
 
-          expect(durations, hasLength(6)); // ceil(110/20) = 6
-          // First five segments ~20s each (actualSegmentDuration = 110/6 ≈ 18.333)
-          // All durations sum to 110
           final sum = durations.fold<double>(0.0, (a, b) => a + b);
           expect(sum, closeTo(totalDuration, 0.01));
+        } finally {
+          await tmp.dir.delete(recursive: true);
+        }
+      });
+
+      test('file proxy URL appears in each segment line', () async {
+        final tmp = await makeKfFile();
+        try {
+          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+          final playlistUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tmp.file.path,
+            segmentSeconds: segmentSec,
+            totalDuration: totalDuration,
+          );
+          final content = await _fetchString(playlistUrl);
+
+          // Segment URL lines (non-tag, non-empty lines)
+          final lines = content
+              .split('\n')
+              .where((l) => l.isNotEmpty && !l.startsWith('#'))
+              .toList();
+
+          expect(lines, isNotEmpty);
+          for (final line in lines) {
+            expect(line.trim(), fileProxyUrl);
+          }
         } finally {
           await tmp.dir.delete(recursive: true);
         }

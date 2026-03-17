@@ -50,6 +50,17 @@ class NeedsPairingException extends CastException {
   NeedsPairingException([super.message = 'Device requires HAP pairing (PIN)']);
 }
 
+/// Thrown when a device does not support the requested feature.
+class UnsupportedFeatureException extends CastException {
+  UnsupportedFeatureException(super.message);
+}
+
+/// Thrown when playback fails after trying all available formats.
+class PlaybackException extends CastException {
+  final int? statusCode;
+  PlaybackException(super.message, {this.statusCode});
+}
+
 /// Thrown when a protocol-specific error occurs.
 class ProtocolException extends CastException {
   /// The protocol that encountered the error.

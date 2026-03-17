@@ -7,7 +7,6 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 
 import '../../../utils/logger.dart';
-import '../plist_codec.dart';
 import 'binary_plist.dart';
 
 /// Derives the HAP session encryption keys from an X25519 shared secret.
@@ -123,8 +122,11 @@ class HapSession {
 
   /// DACP-ID header value — random hex string, persistent across session.
   /// Used by pyatv in all RTSP exchanges.
-  late final String _dacpId =
-      Random.secure().nextInt(0x7FFFFFFF).toRadixString(16).padLeft(16, '0').toUpperCase();
+  late final String _dacpId = Random.secure()
+      .nextInt(0x7FFFFFFF)
+      .toRadixString(16)
+      .padLeft(16, '0')
+      .toUpperCase();
 
   /// Active-Remote header value — random integer, persistent across session.
   late final int _activeRemote = Random.secure().nextInt(0x7FFFFFFF);
@@ -863,138 +865,13 @@ class HapSession {
     );
   }
 
-  // -- AirPlay media command convenience methods --
-
-  /// Starts playback of a video URL on the AirPlay device.
-  ///
-  /// AirPlay 2 requires an RTSP session (SETUP + RECORD) before accepting
-  /// `/play`. This method automatically sets up the RTSP session if it hasn't
-  /// been done yet, then sends the play command with the extended AirPlay 2
-  /// plist body, and finally sets the rate to 1.0 to begin playback.
-  Future<void> play(String url, {double startPosition = 0.0}) async {
-    CastLogger.info('HAP session: sending /play to device');
-
-    // Step 1: Set up the RTSP session if not already done
-    await setupRtspSession();
-
-    // Step 2: POST /play with AirPlay 2 binary plist body
-    // pyatv sends /play as HTTP/1.1 POST (not RTSP/1.0) with extra headers
-    final playUuid = _generateUuid();
-    final playBodyBytes = BinaryPlistEncoder.encode({
-      'Content-Location': url,
-      'Start-Position-Seconds': startPosition,
-      'uuid': playUuid,
-      'streamType': 1,
-      'mediaType': 'file',
-      'mightSupportStorePastisKeyRequests': true,
-      'playbackRestrictions': 0,
-      'volume': 1.0,
-      'rate': 1.0,
-      'SenderMACAddress': 'AA:BB:CC:DD:EE:FF',
-      'model': 'iPhone14,3',
-      'clientBundleID': 'dev.dartcast',
-      'clientProcName': 'dart_cast',
-      'osBuildVersion': '20F66',
-    });
-
-    // Try RTSP/1.0 first (some devices like Google TV route everything via RTSP),
-    // fall back to HTTP/1.1 if RTSP returns 404.
-    var response = await sendRtspRequest('POST', '/play',
-        headers: {
-          'Content-Type': 'application/x-apple-binary-plist',
-          'X-Apple-ProtocolVersion': '1',
-          'X-Apple-Stream-ID': '1',
-        },
-        body: playBodyBytes);
-    CastLogger.info(
-        'HAP session: /play (RTSP) response: ${response.statusCode}');
-
-    if (response.statusCode == 404) {
-      // Fall back to HTTP/1.1 (pyatv's default for Apple devices)
-      CastLogger.info('HAP session: /play RTSP 404, trying HTTP/1.1');
-      response = await sendRequest('POST', '/play',
-          headers: {
-            'Content-Type': 'application/x-apple-binary-plist',
-            'X-Apple-ProtocolVersion': '1',
-            'X-Apple-Stream-ID': '1',
-          },
-          body: playBodyBytes);
-      CastLogger.info(
-          'HAP session: /play (HTTP) response: ${response.statusCode}');
-    }
-
-    if (response.statusCode >= 400) {
-      CastLogger.warning(
-          'HAP session: /play failed: ${response.statusCode} ${response.bodyText}');
-    }
-
-    // Step 3: POST /rate?value=1.0 to start actual playback
-    final rateResponse = await sendRtspRequest('POST', '/rate?value=1.000000');
-    CastLogger.info('HAP session: /rate response: ${rateResponse.statusCode}');
-  }
-
-  /// Seeks to an absolute position in seconds.
-  Future<void> scrub(double positionSeconds) async {
-    final response = await sendRequest(
-      'POST',
-      '/scrub',
-      queryParameters: {'position': '$positionSeconds'},
-    );
-    _checkResponse(response, 'scrub');
-  }
-
-  /// Sets the playback rate (0 = pause, 1 = play).
-  Future<void> rate(num value) async {
-    final response = await sendRequest(
-      'POST',
-      '/rate',
-      queryParameters: {'value': '${value.toDouble()}'},
-    );
-    _checkResponse(response, 'rate');
-  }
-
-  /// Stops playback and generates a new session ID.
-  ///
-  /// Also resets the RTSP session state so that a new SETUP + RECORD
-  /// sequence will be performed on the next [play] call.
-  Future<void> stop() async {
-    final response = await sendRequest(
-      'POST',
-      '/stop',
-    );
-    _checkResponse(response, 'stop');
+  /// Resets the RTSP session state so a new SETUP + RECORD can be performed.
+  /// Does NOT send any network request — only resets local state.
+  void resetRtspSession() {
     _stopFeedbackLoop();
     _sessionId = _generateUuid();
     _rtspSessionSetUp = false;
     _cseq = 0;
-  }
-
-  /// Gets detailed playback state as a [PlaybackInfo].
-  Future<PlaybackInfo> getPlaybackInfo() async {
-    final response = await sendRequest(
-      'GET',
-      '/playback-info',
-    );
-    _checkResponse(response, 'playback-info');
-    return PlistCodec.parsePlaybackInfo(response.bodyText);
-  }
-
-  /// Gets device information as a [ServerInfo].
-  Future<ServerInfo> getServerInfo() async {
-    final response = await sendRequest(
-      'GET',
-      '/server-info',
-    );
-    _checkResponse(response, 'server-info');
-    return PlistCodec.parseServerInfo(response.bodyText);
-  }
-
-  void _checkResponse(HapHttpResponse response, String endpoint) {
-    if (response.statusCode != 200) {
-      throw HapSessionException(
-        'AirPlay $endpoint failed with status ${response.statusCode}',
-      );
-    }
   }
 
   /// Closes the underlying socket, event channel, and cancels the persistent

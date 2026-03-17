@@ -978,7 +978,7 @@ void main() {
     });
   });
 
-  group('stop resets session state', () {
+  group('resetRtspSession resets session state', () {
     late ServerSocket server;
     late HapSession clientSession;
 
@@ -1014,7 +1014,7 @@ void main() {
       );
     }
 
-    test('stop resets sessionId and CSeq counter', () async {
+    test('resetRtspSession resets sessionId and CSeq counter', () async {
       final pair = await _createPair();
       server = pair.server;
       clientSession = pair.client;
@@ -1048,27 +1048,25 @@ void main() {
       await clientSession.sendRtspRequest('OPTIONS', '*');
       await clientSession.sendRtspRequest('OPTIONS', '*');
 
-      // Now stop
-      await clientSession.stop();
+      // Now reset — no network request
+      clientSession.resetRtspSession();
 
-      // After stop, sessionId should be different
+      // After reset, sessionId should be different
       expect(clientSession.sessionId, isNot(equals(originalSessionId)));
 
       // The next request should have CSeq: 1 (reset from 0, then incremented)
-      String? nextRequest;
       // We need to capture the next request — the server is already listening
       // and will receive it. Let's just send and check the response works.
       // We verify CSeq reset by checking that the next RTSP request works
-      // (stop set _cseq=0, next sendRtspRequest will set it to 1).
+      // (resetRtspSession set _cseq=0, next sendRtspRequest will set it to 1).
 
-      // Send another request after stop — CSeq should restart at 1
-      final receivedRequests = <String>[];
+      // Send another request after reset — CSeq should restart at 1
       // The server is already listening, so just send
       await clientSession.sendRtspRequest('OPTIONS', '*');
 
       // We can verify the CSeq reset indirectly: if it weren't reset,
-      // CSeq would be 4 (was at 3 after stop). Since stop resets to 0,
-      // the next call increments to 1.
+      // CSeq would be 4 (was at 3 after reset). Since resetRtspSession resets
+      // to 0, the next call increments to 1.
       // We already tested CSeq increment above, so we trust the
       // implementation here. The key assertion is:
       expect(clientSession.sessionId, isNot(equals(originalSessionId)));
@@ -1077,7 +1075,8 @@ void main() {
       await server.close();
     });
 
-    test('stop causes next setupRtspSession to re-run SETUP+RECORD', () async {
+    test('resetRtspSession causes next setupRtspSession to re-run SETUP+RECORD',
+        () async {
       final pair = await _createPair();
       server = pair.server;
       clientSession = pair.client;
@@ -1112,13 +1111,13 @@ void main() {
       await clientSession.setupRtspSession();
       expect(requestCount, equals(3));
 
-      // stop() resets _rtspSessionSetUp and CSeq, and sends POST /stop
-      await clientSession.stop();
-      expect(requestCount, equals(4)); // +1 for /stop
+      // resetRtspSession() resets _rtspSessionSetUp and CSeq — no network request
+      clientSession.resetRtspSession();
+      expect(requestCount, equals(3)); // no /stop sent
 
       // Now setupRtspSession must run again (3 more requests)
       await clientSession.setupRtspSession();
-      expect(requestCount, equals(7)); // +3 for SETUP + feedback + RECORD
+      expect(requestCount, equals(6)); // +3 for SETUP + feedback + RECORD
 
       await clientSession.close();
       await server.close();

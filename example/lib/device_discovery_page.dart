@@ -28,6 +28,11 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
   final _isDiscovering = ValueNotifier<bool>(false);
   StreamSubscription<List<CastDevice>>? _discoverySub;
 
+  // Custom media input state.
+  final _customUrlController = TextEditingController();
+  final _customSubUrlController = TextEditingController();
+  final List<CastMedia> _customMedia = [];
+
   @override
   void initState() {
     super.initState();
@@ -73,9 +78,63 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
   @override
   void dispose() {
     _discoverySub?.cancel();
+    _customUrlController.dispose();
+    _customSubUrlController.dispose();
     // Always dispose the CastService to release network resources.
     _castService.dispose();
     super.dispose();
+  }
+
+  /// Auto-detects media type from a URL.
+  CastMediaType _detectMediaType(String url) {
+    final lower = url.toLowerCase();
+    if (lower.contains('.m3u8') || lower.contains('hls')) {
+      return CastMediaType.hls;
+    }
+    if (lower.contains('.ts')) {
+      return CastMediaType.mpegTs;
+    }
+    return CastMediaType.mp4;
+  }
+
+  /// Adds a custom media item from the URL text fields.
+  void _addCustomMedia() {
+    final url = _customUrlController.text.trim();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a video URL')),
+      );
+      return;
+    }
+
+    final type = _detectMediaType(url);
+
+    final subtitles = <CastSubtitle>[];
+    final subUrl = _customSubUrlController.text.trim();
+    if (subUrl.isNotEmpty) {
+      subtitles.add(CastSubtitle(
+        url: subUrl,
+        label: 'Custom',
+        language: 'und',
+        format: subUrl.endsWith('.srt') ? 'srt' : 'vtt',
+      ));
+    }
+
+    setState(() {
+      _customMedia.add(CastMedia(
+        url: url,
+        type: type,
+        title: 'Custom Video (${type.name.toUpperCase()})',
+        subtitles: subtitles,
+      ));
+    });
+
+    _customUrlController.clear();
+    _customSubUrlController.clear();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Added to media list')),
+    );
   }
 
   /// Starts device discovery and shows results in a bottom sheet.
@@ -218,6 +277,7 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
               session: session,
               device: device,
               castService: _castService,
+              customMedia: _customMedia,
             ),
           ),
         );
@@ -338,40 +398,114 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
           ),
         ],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.cast,
-                size: 80,
-                color: Theme.of(context).colorScheme.primary,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // -- Hero section --
+            Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.cast,
+                    size: 80,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'dart_cast Demo',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Tap the cast icon above to discover\n'
+                    'Chromecast, AirPlay, and DLNA devices\n'
+                    'on your local network.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(height: 32),
+                  FilledButton.icon(
+                    onPressed: _startDiscovery,
+                    icon: const Icon(Icons.search),
+                    label: const Text('Start Discovery'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
-              Text(
-                'dart_cast Demo',
-                style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 32),
+            const Divider(),
+            const SizedBox(height: 16),
+            // -- Custom video section --
+            Text(
+              'Play Custom Video',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Add a custom video URL to the media list. '
+              'The format is auto-detected from the URL.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _customUrlController,
+              decoration: const InputDecoration(
+                labelText: 'Video URL',
+                hintText: 'https://example.com/video.mp4',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.link),
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Tap the cast icon above to discover\n'
-                'Chromecast, AirPlay, and DLNA devices\n'
-                'on your local network.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _customSubUrlController,
+              decoration: const InputDecoration(
+                labelText: 'Subtitle URL (optional)',
+                hintText: 'https://example.com/subs.vtt',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.subtitles),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _addCustomMedia,
+              icon: const Icon(Icons.add),
+              label: const Text('Add to Media List'),
+            ),
+            // Show added custom media items.
+            if (_customMedia.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              ..._customMedia.map((media) {
+                return Card(
+                  child: ListTile(
+                    leading: Icon(
+                      media.type == CastMediaType.hls
+                          ? Icons.live_tv
+                          : Icons.movie,
                     ),
-              ),
-              const SizedBox(height: 32),
-              FilledButton.icon(
-                onPressed: _startDiscovery,
-                icon: const Icon(Icons.search),
-                label: const Text('Start Discovery'),
-              ),
+                    title: Text(media.title ?? 'Custom Video'),
+                    subtitle: Text(
+                      '${media.type.name.toUpperCase()}'
+                      '${media.subtitles.isNotEmpty ? ' - ${media.subtitles.length} subtitle(s)' : ''}',
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () {
+                        setState(() => _customMedia.remove(media));
+                      },
+                    ),
+                  ),
+                );
+              }),
             ],
-          ),
+          ],
         ),
       ),
     );

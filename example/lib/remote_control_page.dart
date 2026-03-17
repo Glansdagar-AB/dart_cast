@@ -18,12 +18,14 @@ class RemoteControlPage extends StatefulWidget {
   final CastSession session;
   final CastDevice device;
   final CastService castService;
+  final List<CastMedia> customMedia;
 
   const RemoteControlPage({
     super.key,
     required this.session,
     required this.device,
     required this.castService,
+    this.customMedia = const [],
   });
 
   @override
@@ -168,8 +170,8 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
-        // List of sample media items from CastMediaDemo.
-        ...CastMediaDemo.allMedia.map((media) {
+        // List of sample media items + any custom media from the home page.
+        ...[...CastMediaDemo.allMedia, ...widget.customMedia].map((media) {
           final isSelected = _currentMedia?.url == media.url;
           return Card(
             color: isSelected
@@ -422,34 +424,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   }
 
   // -- Actions --
-
-  /// Builds and loads a custom media item from the URL text fields.
-  void _playCustomUrl() {
-    final url = _customUrlController.text.trim();
-    if (url.isEmpty) {
-      _showError('Please enter a video URL');
-      return;
-    }
-
-    final subtitles = <CastSubtitle>[];
-    final subUrl = _customSubUrlController.text.trim();
-    if (subUrl.isNotEmpty) {
-      subtitles.add(CastSubtitle(
-        url: subUrl,
-        label: 'Custom',
-        language: 'und',
-        format: subUrl.endsWith('.srt') ? 'srt' : 'vtt',
-      ));
-    }
-
-    final media = CastMedia(
-      url: url,
-      type: _customMediaType,
-      title: 'Custom Video',
-      subtitles: subtitles,
-    );
-    _loadMedia(media);
-  }
 
   /// Loads media onto the cast device using [CastSession.loadMedia].
   Future<void> _loadMedia(CastMedia media) async {

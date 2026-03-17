@@ -117,9 +117,20 @@ class DlnaSession extends CastSession {
       );
       protocolInfo = 'http-get:*:video/mp2t:*';
     } else if (media.type == CastMediaType.mpegTs) {
-      proxyUrl = media.isLocalFile
-          ? _proxy.registerFile(media.url)
-          : _proxy.registerMedia(media.url, headers: media.httpHeaders);
+      if (media.isLocalFile) {
+        // Wrap local TS in HLS, then pipe as continuous TS stream for DLNA
+        final fileUrl = _proxy.registerFile(media.url);
+        final hlsUrl = _proxy.wrapLocalFileAsHls(
+          fileUrl,
+          media.url,
+          totalDuration: media.duration?.inMilliseconds != null
+              ? media.duration!.inMilliseconds / 1000.0
+              : null,
+        );
+        proxyUrl = _proxy.registerHlsAsStream(hlsUrl);
+      } else {
+        proxyUrl = _proxy.registerMedia(media.url, headers: media.httpHeaders);
+      }
       protocolInfo = 'http-get:*:video/mp2t:*';
     } else {
       proxyUrl = media.isLocalFile

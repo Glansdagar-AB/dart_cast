@@ -17,6 +17,7 @@ export 'src/core/subtitle_converter.dart';
 // Protocols — AirPlay
 export 'src/protocols/airplay/airplay_client.dart';
 export 'src/protocols/airplay/airplay_discovery_provider.dart';
+export 'src/protocols/airplay/airplay_features.dart';
 export 'src/protocols/airplay/airplay_session.dart';
 export 'src/protocols/airplay/auth/airplay_auth.dart';
 export 'src/protocols/airplay/auth/hap_credentials.dart';

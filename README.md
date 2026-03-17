@@ -231,17 +231,67 @@ final service = CastService(
 );
 ```
 
+## AirPlay Capabilities
+
+### Feature Flag Detection
+
+AirPlay devices advertise their capabilities as a bitmask in the `features` (or `ft`) TXT record of their mDNS advertisement. dart_cast parses this automatically during discovery and exposes it via `AirPlayFeatures`:
+
+```dart
+final features = AirPlayFeatures.parse('0x5A7FFFF7,0x1E');
+
+features.supportsVideo    // true if bit 0 (V1) or bit 49 (V2) is set
+features.supportsScreen   // true if bit 7 is set (screen mirroring)
+features.supportsAudio    // true if bit 9 is set (RAOP audio)
+features.requiresHapPairing // true if bit 46 or 48 is set
+features.isV2Protocol     // true if bit 38 or 48 is set
+```
+
+### AirPlay Modes and Current Support
+
+| Mode | Feature Bits | Status |
+|------|-------------|--------|
+| Video URL casting (V1) | Bit 0 | Supported |
+| Video URL casting (V2) | Bit 49 | Supported |
+| Screen mirroring | Bit 7 | Not yet implemented (see [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md)) |
+| Audio streaming (RAOP) | Bit 9 | Not yet implemented (see [docs/FUTURE_WORK.md](docs/FUTURE_WORK.md)) |
+
+### V1/V2 Auto-Negotiation
+
+`AirPlayMediaController.play()` automatically selects the best `/play` format for the target device:
+
+1. **V1 binary plist** (`application/x-apple-binary-plist`) — tried first
+2. **V1 text/parameters** — fallback if V1 plist returns 404 or 415
+3. **V2 with RTSP SETUP** — fallback if V1 text also returns 404 or 415
+
+This negotiation handles the wide variation in third-party AirPlay receiver implementations (Apple TV, smart TVs, audio receivers) without any manual configuration.
+
+### Devices Without Video Support
+
+If a device advertises neither video bit (0 nor 49), `play()` immediately throws `UnsupportedFeatureException` rather than attempting connection. This applies to many Google TV / Android TV devices that implement only screen mirroring but not video URL casting.
+
+```dart
+try {
+  await airPlaySession.loadMedia(media);
+} on UnsupportedFeatureException catch (e) {
+  // Device supports screen mirroring only — video URL cast not available
+  print(e.message);
+}
+```
+
 ## Error Handling
 
-| Exception                    | When                                                      |
-|------------------------------|-----------------------------------------------------------|
-| `CastException`             | Base class for all casting errors                         |
-| `DeviceUnreachableException` | Device found but connection failed (offline, refused)     |
-| `ConnectionLostException`    | Connection dropped (network change, device sleep)         |
-| `MediaLoadFailedException`   | Device rejected the media (unsupported format, bad URL)   |
-| `ProxyUpstreamException`     | Proxy failed to fetch upstream content (403, timeout)     |
-| `DiscoveryException`         | Discovery failed (permissions denied, no network)         |
-| `ProtocolException`          | Protocol-specific error (bad SOAP response, protobuf err) |
+| Exception                      | When                                                         |
+|--------------------------------|--------------------------------------------------------------|
+| `CastException`               | Base class for all casting errors                            |
+| `DeviceUnreachableException`   | Device found but connection failed (offline, refused)        |
+| `ConnectionLostException`      | Connection dropped (network change, device sleep)            |
+| `MediaLoadFailedException`     | Device rejected the media (unsupported format, bad URL)      |
+| `ProxyUpstreamException`       | Proxy failed to fetch upstream content (403, timeout)        |
+| `DiscoveryException`           | Discovery failed (permissions denied, no network)            |
+| `ProtocolException`            | Protocol-specific error (bad SOAP response, protobuf err)    |
+| `UnsupportedFeatureException`  | AirPlay device lacks the required feature (e.g. video bits)  |
+| `PlaybackException`            | AirPlay device rejected /play after all format attempts      |
 
 All exceptions carry a `message` and optional `cause`.
 

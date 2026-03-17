@@ -265,15 +265,15 @@ class ChromecastSession extends CastSession {
   @override
   Future<void> setVolume(double volume) async {
     _requireMediaSession();
-    // Device-level volume uses receiver namespace to receiver-0
+    // Device-level volume uses receiver namespace to receiver-0.
+    // The device responds with RECEIVER_STATUS containing the actual volume,
+    // which is handled in _handleMessage() to update the volume stream.
     _channel.sendMessage(
       namespace: CastReceiverChannel.receiverNamespace,
       sourceId: _senderId,
       destinationId: _receiverId,
       payload: _receiverChannel.buildSetVolumeWithId(level: volume),
     );
-    // Immediately update local volume state
-    updateVolume(volume);
   }
 
   @override
@@ -408,15 +408,20 @@ class ChromecastSession extends CastSession {
     final payload = _getPayload(msg);
     if (payload == null) return;
 
-    // Handle RECEIVER_STATUS during connect
+    // Handle RECEIVER_STATUS — extract volume and session info
     if (namespace == CastReceiverChannel.receiverNamespace &&
-        payload['type'] == 'RECEIVER_STATUS' &&
-        !connectCompleter.isCompleted) {
+        payload['type'] == 'RECEIVER_STATUS') {
       final status = CastReceiverChannel.parseReceiverStatus(payload);
       if (status != null) {
-        _transportId = status.transportId;
-        _sessionId = status.sessionId;
-        connectCompleter.complete();
+        // Always update volume from device state
+        updateVolume(status.volumeLevel);
+
+        // Complete connection if still connecting
+        if (!connectCompleter.isCompleted) {
+          _transportId = status.transportId;
+          _sessionId = status.sessionId;
+          connectCompleter.complete();
+        }
       }
     }
 

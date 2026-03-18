@@ -135,7 +135,7 @@ class MediaProxy {
     final token = _generateToken();
     _syntheticContent[token] = _SyntheticContent(
       content: playlistContent,
-      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+      contentType: ContentType('application', 'x-mpegURL'),
     );
     return '$_baseUrl/synthetic/$token';
   }
@@ -229,9 +229,13 @@ class MediaProxy {
     final maxSegDuration = segmentDurations.reduce(
         (a, b) => a > b ? a : b);
 
+    // Use virtual segment URLs instead of EXT-X-BYTERANGE — the Chromecast
+    // Default Media Receiver's MPL does not support byte-range segments.
+    // Each segment URL includes start/end query params; the proxy serves
+    // the corresponding byte range as a complete HTTP response.
     final buffer = StringBuffer();
     buffer.writeln('#EXTM3U');
-    buffer.writeln('#EXT-X-VERSION:4');
+    buffer.writeln('#EXT-X-VERSION:3');
     buffer.writeln('#EXT-X-PLAYLIST-TYPE:VOD');
     buffer.writeln('#EXT-X-TARGETDURATION:${maxSegDuration.ceil()}');
     buffer.writeln('#EXT-X-MEDIA-SEQUENCE:0');
@@ -240,11 +244,9 @@ class MediaProxy {
       final offset = segmentOffsets[i];
       final nextOffset =
           (i + 1 < segmentCount) ? segmentOffsets[i + 1] : fileSize;
-      final length = nextOffset - offset;
 
       buffer.writeln('#EXTINF:${segmentDurations[i].toStringAsFixed(3)},');
-      buffer.writeln('#EXT-X-BYTERANGE:$length@$offset');
-      buffer.writeln(fileProxyUrl);
+      buffer.writeln('$fileProxyUrl?start=$offset&end=${nextOffset - 1}');
     }
     buffer.writeln('#EXT-X-ENDLIST');
 
@@ -254,7 +256,7 @@ class MediaProxy {
     final token = _generateToken();
     _syntheticContent[token] = _SyntheticContent(
       content: playlistContent,
-      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+      contentType: ContentType('application', 'x-mpegURL'),
     );
 
     CastLogger.info(
@@ -326,7 +328,7 @@ class MediaProxy {
     final token = _generateToken();
     _syntheticContent[token] = _SyntheticContent(
       content: playlistContent,
-      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+      contentType: ContentType('application', 'x-mpegURL'),
     );
     return '$_baseUrl/synthetic/$token';
   }
@@ -362,7 +364,7 @@ class MediaProxy {
     final token = _generateToken();
     _syntheticContent[token] = _SyntheticContent(
       content: buffer.toString(),
-      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+      contentType: ContentType('application', 'x-mpegURL'),
     );
     return '$_baseUrl/synthetic/$token';
   }
@@ -580,7 +582,7 @@ class MediaProxy {
         // Override content type and length for rewritten playlist
         final encoded = utf8.encode(rewritten);
         request.response.headers.contentType =
-            ContentType('application', 'vnd.apple.mpegurl');
+            ContentType('application', 'x-mpegURL');
         request.response.headers.set(
           'Content-Length',
           encoded.length.toString(),
@@ -641,6 +643,34 @@ class MediaProxy {
     request.response.headers.contentType = contentType;
     request.response.headers.set('Accept-Ranges', 'bytes');
     request.response.headers.set('transferMode.dlna.org', 'Streaming');
+
+    // Handle virtual segment requests (?start=X&end=Y) from HLS playlists.
+    // These serve a byte range as a normal 200 response (not 206), which is
+    // how HLS segment requests work — each segment is a complete resource.
+    final startParam = request.uri.queryParameters['start'];
+    final endParam = request.uri.queryParameters['end'];
+    if (startParam != null && endParam != null) {
+      final start = int.parse(startParam);
+      final end = int.parse(endParam);
+      final length = end - start + 1;
+
+      CastLogger.info(
+          'MediaProxy: serving virtual segment bytes $start-$end ($length bytes)');
+
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.set('Content-Length', length.toString());
+
+      final raf = await file.open();
+      try {
+        await raf.setPosition(start);
+        final bytes = await raf.read(length);
+        request.response.add(bytes);
+      } finally {
+        await raf.close();
+      }
+      await request.response.close();
+      return;
+    }
 
     // Handle Range requests
     final rangeHeader = request.headers.value('Range');
@@ -725,7 +755,7 @@ class MediaProxy {
   ContentType _contentTypeForPath(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.m3u8') || lower.endsWith('.m3u')) {
-      return ContentType('application', 'vnd.apple.mpegurl');
+      return ContentType('application', 'x-mpegURL');
     }
     if (lower.endsWith('.mp4') ||
         lower.endsWith('.m4v') ||

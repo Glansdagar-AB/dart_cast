@@ -71,18 +71,13 @@ class TsHlsMediaTransformer extends DefaultMediaTransformer {
         ? media.duration!.inMilliseconds / 1000.0
         : null;
 
-    // ignore: deprecated_member_use_from_same_package
-    final String proxyUrl;
-    // ignore: deprecated_member_use_from_same_package
-    if (media.useChunkedHls) {
-      proxyUrl = proxy.wrapLocalFileAsHls(
-        fileProxyUrl,
-        media.url,
-        totalDuration: durationSecs,
-      );
-    } else {
-      proxyUrl = proxy.wrapInHlsPlaylist(fileProxyUrl, duration: durationSecs);
-    }
+    // Always use chunked HLS with keyframe-aligned segments.
+    // Falls back to single-segment if the file has ≤1 keyframe.
+    final proxyUrl = proxy.wrapLocalFileAsHls(
+      fileProxyUrl,
+      media.url,
+      totalDuration: durationSecs,
+    );
 
     return TransformedMedia(
       proxyUrl: proxyUrl,

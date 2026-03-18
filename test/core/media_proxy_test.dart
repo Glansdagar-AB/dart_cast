@@ -231,6 +231,66 @@ void main() {
       }
     });
 
+    test(
+        'cleanupPreviousMedia with synthetic excludeToken preserves HLS and file routes',
+        () async {
+      await proxy.start();
+
+      // Create a temp .ts file with keyframe data so wrapLocalFileAsHls
+      // produces a multi-segment playlist referencing the file route.
+      final tempDir =
+          await Directory.systemTemp.createTemp('media_proxy_cleanup_');
+      final tempFile = File('${tempDir.path}/video.ts');
+      // Write enough data to avoid single-segment fallback
+      await tempFile.writeAsBytes(List.filled(1024 * 100, 0));
+
+      try {
+        // Step 1: Register local file (creates a /file/ route)
+        final fileProxyUrl = proxy.registerFile(tempFile.path);
+
+        // Step 2: Wrap in HLS playlist (creates /synthetic/ content
+        // that references the /file/ route)
+        final hlsUrl = proxy.wrapLocalFileAsHls(
+          fileProxyUrl,
+          tempFile.path,
+          totalDuration: 60.0,
+        );
+
+        // Step 3: Simulate what ChromecastSession does — extract token
+        // from the HLS URL and call cleanupPreviousMedia with it.
+        final syntheticToken = Uri.parse(hlsUrl).pathSegments.last;
+        proxy.cleanupPreviousMedia(excludeToken: syntheticToken);
+
+        // Step 4: Verify the HLS playlist (synthetic content) is still
+        // accessible — this is what Chromecast fetches first.
+        final client = HttpClient();
+        try {
+          var request = await client.getUrl(Uri.parse(hlsUrl));
+          var response = await request.close();
+          final playlistBody = await response
+              .fold<List<int>>(<int>[], (prev, chunk) => prev..addAll(chunk));
+          final playlist = String.fromCharCodes(playlistBody);
+
+          expect(response.statusCode, HttpStatus.ok,
+              reason: 'HLS playlist must survive cleanup');
+          expect(playlist, contains('#EXTM3U'),
+              reason: 'Response must be valid HLS');
+
+          // Step 5: Verify the file route is still accessible — this is
+          // what Chromecast fetches for each segment.
+          request = await client.getUrl(Uri.parse(fileProxyUrl));
+          response = await request.close();
+          await response.drain<void>();
+          expect(response.statusCode, HttpStatus.ok,
+              reason: 'File route must survive cleanup');
+        } finally {
+          client.close();
+        }
+      } finally {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
     test('supports Range requests for local files', () async {
       await proxy.start();
 
@@ -307,7 +367,7 @@ void main() {
 
         expect(
           response.headers.contentType.toString(),
-          contains('mpegurl'),
+          contains('mpegURL'),
         );
       } finally {
         client.close();

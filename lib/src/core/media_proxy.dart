@@ -369,18 +369,42 @@ class MediaProxy {
     return '$_baseUrl/synthetic/$token';
   }
 
-  /// Removes all previously registered routes, optionally keeping [excludeToken].
+  /// Removes all previously registered routes and synthetic content,
+  /// optionally keeping [excludeToken] and anything it depends on.
+  ///
+  /// The token can be either a route key or a synthetic content key.
+  /// If it's synthetic content (e.g. an HLS playlist), any /file/ routes
+  /// referenced in that content are also preserved so segment URLs keep working.
   void cleanupPreviousMedia({String? excludeToken}) {
     if (excludeToken != null) {
-      final kept = _routes[excludeToken];
+      final keptRoute = _routes[excludeToken];
+      final keptSynthetic = _syntheticContent[excludeToken];
+
+      // If the excluded token is synthetic content (e.g. HLS playlist),
+      // preserve any file routes it references as segment URLs.
+      final referencedRoutes = <String, _ProxyRoute>{};
+      if (keptSynthetic != null) {
+        for (final entry in _routes.entries) {
+          if (keptSynthetic.content.contains('/file/${entry.key}')) {
+            referencedRoutes[entry.key] = entry.value;
+          }
+        }
+      }
+
       _routes.clear();
-      if (kept != null) {
-        _routes[excludeToken] = kept;
+      if (keptRoute != null) {
+        _routes[excludeToken] = keptRoute;
+      }
+      _routes.addAll(referencedRoutes);
+
+      _syntheticContent.clear();
+      if (keptSynthetic != null) {
+        _syntheticContent[excludeToken] = keptSynthetic;
       }
     } else {
       _routes.clear();
+      _syntheticContent.clear();
     }
-    _syntheticContent.clear();
   }
 
   String _generateToken() {

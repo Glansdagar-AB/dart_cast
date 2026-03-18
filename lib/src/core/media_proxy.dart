@@ -572,26 +572,39 @@ class MediaProxy {
       request.response.headers.set('Content-Length', contentLength);
     }
 
-    // Auto-convert SRT subtitle responses to VTT
+    // Auto-convert SRT subtitle responses to VTT and strip X-TIMESTAMP-MAP
     if (_isSubtitleResponse(targetUrl, upstreamContentType) &&
         upstreamResponse.statusCode == HttpStatus.ok) {
       final body = await upstreamResponse
           .fold<List<int>>(<int>[], (prev, chunk) => prev..addAll(chunk));
-      final content = utf8.decode(body);
+      var content = utf8.decode(body);
+
+      CastLogger.info(
+          'MediaProxy: subtitle response (${content.length} chars, '
+          'isSrt=${SubtitleConverter.isSrt(content)}, '
+          'hasTimestampMap=${content.contains('X-TIMESTAMP-MAP')})');
+      CastLogger.debug(
+          'MediaProxy: subtitle content (first 500 chars):\n'
+          '${content.substring(0, content.length > 500 ? 500 : content.length)}');
 
       if (SubtitleConverter.isSrt(content)) {
-        final vttContent = SubtitleConverter.srtToVtt(content);
-        final encoded = utf8.encode(vttContent);
-        request.response.headers.contentType = ContentType('text', 'vtt');
-        request.response.headers
-            .set('Content-Length', encoded.length.toString());
-        request.response.add(encoded);
-        await request.response.close();
-        return;
+        content = SubtitleConverter.srtToVtt(content);
+        CastLogger.info('MediaProxy: converted SRT → VTT');
       }
 
-      // Not SRT — send as-is
-      request.response.add(body);
+      // Strip X-TIMESTAMP-MAP from VTT — this header is for HLS subtitle
+      // segments and causes cast devices to apply an incorrect PTS offset
+      // when the VTT is served as a sidecar track.
+      if (content.contains('X-TIMESTAMP-MAP')) {
+        CastLogger.info('MediaProxy: stripping X-TIMESTAMP-MAP from VTT');
+        content = SubtitleConverter.stripTimestampMap(content);
+      }
+
+      final encoded = utf8.encode(content);
+      request.response.headers.contentType = ContentType('text', 'vtt');
+      request.response.headers
+          .set('Content-Length', encoded.length.toString());
+      request.response.add(encoded);
       await request.response.close();
       return;
     }
@@ -655,12 +668,31 @@ class MediaProxy {
       return;
     }
 
-    // Auto-convert SRT subtitle files to VTT
+    // Auto-convert SRT subtitle files to VTT and strip X-TIMESTAMP-MAP
     if (_isSubtitleFile(route.url)) {
-      final content = await file.readAsString();
+      var content = await file.readAsString();
+
+      CastLogger.info(
+          'MediaProxy: local subtitle file (${content.length} chars, '
+          'isSrt=${SubtitleConverter.isSrt(content)}, '
+          'hasTimestampMap=${content.contains('X-TIMESTAMP-MAP')})');
+
+      bool converted = false;
       if (SubtitleConverter.isSrt(content)) {
-        final vttContent = SubtitleConverter.srtToVtt(content);
-        final encoded = utf8.encode(vttContent);
+        content = SubtitleConverter.srtToVtt(content);
+        CastLogger.info('MediaProxy: converted local SRT → VTT');
+        converted = true;
+      }
+
+      if (content.contains('X-TIMESTAMP-MAP')) {
+        CastLogger.info(
+            'MediaProxy: stripping X-TIMESTAMP-MAP from local VTT');
+        content = SubtitleConverter.stripTimestampMap(content);
+        converted = true;
+      }
+
+      if (converted || content.trimLeft().startsWith('WEBVTT')) {
+        final encoded = utf8.encode(content);
         _addCorsHeaders(request.response);
         request.response.statusCode = HttpStatus.ok;
         request.response.headers.contentType = ContentType('text', 'vtt');

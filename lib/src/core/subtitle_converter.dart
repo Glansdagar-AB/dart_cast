@@ -42,4 +42,18 @@ class SubtitleConverter {
     return !trimmed.startsWith('WEBVTT') &&
         RegExp(r'^\d+\s*\n').hasMatch(trimmed);
   }
+
+  /// Strips `X-TIMESTAMP-MAP` from VTT content.
+  ///
+  /// HLS subtitle segments use this header to map MPEG-TS PTS timestamps
+  /// to local VTT timestamps. When serving VTT as a sidecar track (not
+  /// as HLS segments), this header causes cast devices like Chromecast
+  /// (Shaka Player) to apply an incorrect offset, making subtitles out
+  /// of sync. Removing it ensures timestamps are used as-is.
+  static String stripTimestampMap(String vtt) {
+    return vtt.replaceAll(
+      RegExp(r'X-TIMESTAMP-MAP[^\n]*\n?', caseSensitive: false),
+      '',
+    );
+  }
 }

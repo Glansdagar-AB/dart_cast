@@ -68,6 +68,8 @@ class CastMedia {
   ///
   /// When `false` (default), the entire file is served as a single HLS
   /// segment with the known duration. Simpler, more reliable playback.
+  @Deprecated('Chunked HLS is now always used by TsHlsMediaTransformer. '
+      'This field will be removed in a future release.')
   final bool useChunkedHls;
 
   /// Subtitle tracks for this media.

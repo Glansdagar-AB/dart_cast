@@ -368,6 +368,9 @@ class MediaProxy {
   Future<void> _handleRequest(HttpRequest request) async {
     try {
       final path = request.uri.path;
+      final rangeHeader = request.headers.value('Range');
+      CastLogger.debug(
+          'MediaProxy: ${request.method} $path${rangeHeader != null ? ' Range: $rangeHeader' : ''}');
 
       // Route: /ts-stream/<token> — HLS-to-MPEG-TS streaming
       if (path.startsWith('/ts-stream/')) {
@@ -638,6 +641,9 @@ class MediaProxy {
           .set('Content-Range', 'bytes $start-$end/$fileLength');
       request.response.headers.set('Content-Length', length.toString());
 
+      CastLogger.debug(
+          'MediaProxy: serving bytes $start-$end/$fileLength (${length} bytes)');
+
       final raf = await file.open();
       try {
         await raf.setPosition(start);
@@ -651,6 +657,8 @@ class MediaProxy {
     }
 
     // Full file
+    CastLogger.debug(
+        'MediaProxy: serving full file ($fileLength bytes)');
     request.response.headers.set('Content-Length', fileLength.toString());
     await file.openRead().pipe(request.response);
   }

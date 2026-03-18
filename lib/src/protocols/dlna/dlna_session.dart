@@ -116,7 +116,7 @@ class DlnaSession extends CastSession {
     String proxyUrl = transformed.proxyUrl;
     final String protocolInfo;
 
-    if (media.type == CastMediaType.hls && !media.isLocalFile) {
+    if (media.type == CastMediaType.hls) {
       // Remote HLS → pipe as continuous MPEG-TS stream for DLNA
       proxyUrl = _proxy.registerHlsAsStream(
         media.url,
@@ -124,7 +124,7 @@ class DlnaSession extends CastSession {
       );
       protocolInfo = 'http-get:*:video/mp2t:*';
     } else if (transformed.effectiveType == CastMediaType.hls) {
-      // Transformer wrapped media in HLS (e.g., local TS) → pipe as TS stream
+      // Transformer wrapped media in HLS → pipe as TS stream for DLNA
       proxyUrl = _proxy.registerHlsAsStream(proxyUrl);
       protocolInfo = 'http-get:*:video/mp2t:*';
     } else if (transformed.effectiveType == CastMediaType.mpegTs) {
@@ -162,6 +162,12 @@ class DlnaSession extends CastSession {
         protocolInfo: protocolInfo,
       ),
     );
+
+    // Set known duration immediately if available (the TV may report 0
+    // for piped streams since it doesn't know the total size upfront)
+    if (media.duration != null) {
+      updateDuration(media.duration!);
+    }
 
     // Send Play
     await _sendAvTransport('Play', DlnaSoapBuilder.buildPlay());
@@ -338,7 +344,11 @@ class DlnaSession extends CastSession {
       );
       final posInfo = DlnaSoapParser.parsePositionInfo(positionResponse);
       updatePosition(posInfo.position);
-      updateDuration(posInfo.duration);
+      // Only update duration from device if it reports a non-zero value.
+      // Piped TS streams may report 0 — keep the known duration instead.
+      if (posInfo.duration > Duration.zero) {
+        updateDuration(posInfo.duration);
+      }
 
       // Get transport info for state detection
       final transportResponse = await _sendAvTransport(

@@ -62,12 +62,12 @@ class CastMedia {
 
   /// Whether to use chunked HLS (byte-range segments) for local MPEG-TS files.
   ///
-  /// When `true` (default), the file is split into ~20s byte-range segments
-  /// aligned to 188-byte TS packet boundaries. This gives better seeking,
-  /// lower memory usage, and correct progress reporting.
+  /// When `true`, the file is split into ~20s keyframe-aligned byte-range
+  /// segments. This enables segment-based seeking but may cause buffering
+  /// issues on some devices.
   ///
-  /// When `false`, the entire file is served as a single HLS segment.
-  /// Simpler but may cause buffering issues with large files.
+  /// When `false` (default), the entire file is served as a single HLS
+  /// segment with the known duration. Simpler, more reliable playback.
   final bool useChunkedHls;
 
   /// Subtitle tracks for this media.

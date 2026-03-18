@@ -73,11 +73,11 @@ class DefaultMediaTransformer implements MediaTransformer {
 
     var effectiveType = media.type;
 
-    // Wrap MPEG-TS in HLS for devices that don't support raw TS.
-    // By default, only wraps local files. Set [wrapRemoteTs] to also wrap
-    // remote TS URLs (needed for Chromecast which can't play raw TS at all).
-    if (media.type == CastMediaType.mpegTs &&
-        (media.isLocalFile || wrapRemoteTs)) {
+    // Wrap MPEG-TS in HLS for devices that need it (like Chromecast).
+    // Only wraps when wrapRemoteTs is true (Chromecast) or for local files
+    // when useChunkedHls is requested. DLNA serves local TS files directly
+    // with Content-Length so the TV knows the total duration.
+    if (media.type == CastMediaType.mpegTs && wrapRemoteTs) {
       final durationSecs = media.duration?.inMilliseconds != null
           ? media.duration!.inMilliseconds / 1000.0
           : null;

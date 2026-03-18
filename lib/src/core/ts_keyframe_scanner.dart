@@ -386,6 +386,101 @@ class TsKeyframeScanner {
 
     return null;
   }
+
+  /// Extracts PAT and PMT packets from the beginning of [file].
+  ///
+  /// In MPEG-TS, PAT (PID 0x0000) lists which PIDs carry PMTs, and PMT
+  /// describes the streams (video, audio, subtitles). HLS requires each
+  /// segment to be independently decodable, so PAT+PMT must appear at
+  /// the start of every segment. When we split a file into virtual
+  /// byte-range segments, only the first segment has the original PAT/PMT.
+  ///
+  /// Returns the concatenated PAT+PMT packets (typically 376 bytes for
+  /// one PAT + one PMT), or null if not found. These bytes should be
+  /// prepended to every virtual segment response.
+  static Uint8List? extractPatPmt(File file) {
+    final fileLength = file.lengthSync();
+    if (fileLength < 188) return null;
+
+    final raf = file.openSync();
+    try {
+      // Read first 64KB — PAT/PMT are always near the start
+      const readSize = 188 * 340; // ~64KB
+      final toRead = fileLength < readSize ? fileLength : readSize;
+      final buf = Uint8List(toRead);
+      raf.readIntoSync(buf, 0, toRead);
+
+      Uint8List? patPacket;
+      Uint8List? pmtPacket;
+      int? pmtPid;
+
+      for (int pos = 0; pos + 188 <= toRead; pos += 188) {
+        if (buf[pos] != 0x47) continue;
+
+        final pid = ((buf[pos + 1] & 0x1F) << 8) | buf[pos + 2];
+
+        // PAT is always PID 0
+        if (pid == 0 && patPacket == null) {
+          patPacket = Uint8List.fromList(buf.sublist(pos, pos + 188));
+
+          // Parse PAT to find PMT PID: skip 4-byte TS header + adaptation
+          // field + 1-byte pointer field, then the PAT table.
+          final adaptCtrl = (buf[pos + 3] >> 4) & 0x03;
+          int payloadStart = pos + 4;
+          if (adaptCtrl == 3) {
+            payloadStart += 1 + buf[pos + 4];
+          }
+          // Skip pointer field
+          payloadStart += 1 + buf[payloadStart];
+          // PAT header: table_id(1) + flags(2) + transport_stream_id(2)
+          // + version/flags(1) + section_number(1) + last_section(1)
+          // Then program entries: program_number(2) + PMT_PID(2)
+          if (payloadStart + 12 < pos + 188) {
+            final sectionLength =
+                ((buf[payloadStart + 1] & 0x0F) << 8) | buf[payloadStart + 2];
+            // Skip 8 bytes of PAT header to reach program entries
+            final entriesStart = payloadStart + 8;
+            final entriesEnd =
+                payloadStart + 3 + sectionLength - 4; // minus CRC
+            if (entriesEnd <= pos + 188) {
+              for (int e = entriesStart; e + 4 <= entriesEnd; e += 4) {
+                final progNum = (buf[e] << 8) | buf[e + 1];
+                if (progNum != 0) {
+                  // Non-NIT program — this is the PMT PID
+                  pmtPid = ((buf[e + 2] & 0x1F) << 8) | buf[e + 3];
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        // PMT
+        if (pmtPid != null && pid == pmtPid && pmtPacket == null) {
+          pmtPacket = Uint8List.fromList(buf.sublist(pos, pos + 188));
+        }
+
+        if (patPacket != null && pmtPacket != null) break;
+      }
+
+      if (patPacket == null) return null;
+
+      // Concatenate PAT + PMT (PMT may be null for single-stream files)
+      if (pmtPacket != null) {
+        final result = Uint8List(376);
+        result.setRange(0, 188, patPacket);
+        result.setRange(188, 376, pmtPacket);
+        CastLogger.info(
+            'TsKeyframeScanner: extracted PAT+PMT (376 bytes, PMT PID=$pmtPid)');
+        return result;
+      } else {
+        CastLogger.info('TsKeyframeScanner: extracted PAT only (188 bytes)');
+        return patPacket;
+      }
+    } finally {
+      raf.closeSync();
+    }
+  }
 }
 
 /// A keyframe position with its associated PTS value.

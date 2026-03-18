@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'hls_parser.dart';
 import 'hls_stream_proxy.dart';
@@ -47,8 +48,12 @@ class MediaProxy {
   final Random _random = Random.secure();
 
   /// First video PTS from the most recently scanned TS file (90kHz clock).
-  /// Used to inject X-TIMESTAMP-MAP into subtitle VTT files for PTS alignment.
   int? _tsFirstPts;
+
+  /// Cached PAT+PMT packets from the TS file header.
+  /// Prepended to every virtual HLS segment so the Chromecast's demuxer
+  /// can initialize independently for each segment.
+  Uint8List? _tsPatPmt;
 
   /// The base URL of the running proxy server, or null if not started.
   String? get baseUrl => _baseUrl;
@@ -185,6 +190,11 @@ class MediaProxy {
     // which affects the Chromecast's HLS timeline and subtitle sync.
     final firstPts = TsKeyframeScanner.readFirstVideoPts(file);
     final ptsOffsetSeconds = firstPts != null ? firstPts / 90000.0 : 0.0;
+
+    // Extract PAT+PMT packets to prepend to each virtual segment.
+    // Without these, the Chromecast's demuxer can't initialize for
+    // segments after the first one, causing infinite buffering.
+    _tsPatPmt = TsKeyframeScanner.extractPatPmt(file);
 
     // Try to get keyframes with PTS values for accurate segment durations.
     // PTS-based durations prevent subtitle desync caused by VBR content
@@ -791,23 +801,38 @@ class MediaProxy {
     // Handle virtual segment requests (?start=X&end=Y) from HLS playlists.
     // These serve a byte range as a normal 200 response (not 206), which is
     // how HLS segment requests work — each segment is a complete resource.
+    //
+    // Each segment is prepended with cached PAT+PMT packets so the
+    // Chromecast's TS demuxer can initialize independently per segment.
     final startParam = request.uri.queryParameters['start'];
     final endParam = request.uri.queryParameters['end'];
     if (startParam != null && endParam != null) {
       final start = int.parse(startParam);
       final end = int.parse(endParam);
-      final length = end - start + 1;
+      final segmentLength = end - start + 1;
+
+      // Prepend PAT+PMT for segments that don't start at file offset 0
+      // (the first segment already contains the original PAT/PMT).
+      final patPmt = (start > 0) ? _tsPatPmt : null;
+      final patPmtLength = patPmt?.length ?? 0;
+      final totalLength = segmentLength + patPmtLength;
 
       CastLogger.info(
-          'MediaProxy: serving virtual segment bytes $start-$end ($length bytes)');
+          'MediaProxy: serving virtual segment bytes $start-$end '
+          '($segmentLength bytes${patPmtLength > 0 ? ' + ${patPmtLength}B PAT/PMT' : ''})');
 
       request.response.statusCode = HttpStatus.ok;
-      request.response.headers.set('Content-Length', length.toString());
+      request.response.headers.set('Content-Length', totalLength.toString());
+
+      // Write PAT+PMT first so the demuxer knows the stream layout
+      if (patPmt != null) {
+        request.response.add(patPmt);
+      }
 
       final raf = await file.open();
       try {
         await raf.setPosition(start);
-        final bytes = await raf.read(length);
+        final bytes = await raf.read(segmentLength);
         request.response.add(bytes);
       } finally {
         await raf.close();

@@ -588,6 +588,9 @@ class MediaProxy {
           token,
         );
 
+        CastLogger.info(
+            'MediaProxy: rewritten HLS playlist:\n$rewritten');
+
         // Override content type and length for rewritten playlist
         final encoded = utf8.encode(rewritten);
         request.response.headers.contentType =

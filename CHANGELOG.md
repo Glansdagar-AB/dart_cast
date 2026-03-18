@@ -1,25 +1,48 @@
 ## 0.2.1
 
-- Fixed Chromecast local file casting — HLS playlists and file routes were being destroyed before the device could fetch them
-- Fixed media proxy cleanup to preserve synthetic content and referenced routes when switching media
-- CORS preflight (OPTIONS) handler for Chromecast HLS segment requests
-- RFC 8216-compliant TARGETDURATION calculation for generated HLS playlists
-- Virtual segment URLs replace EXT-X-BYTERANGE for broader Chromecast compatibility
-- DLNA duration metadata via DIDL-Lite `<res duration="HH:MM:SS">` attribute
-- DLNA-specific HTTP headers (`transferMode.dlna.org`, `DLNA.ORG_OP=01` flags)
+### AirPlay 2
+- AirPlay feature flag detection via mDNS TXT records (`AirPlayFeatures` class)
+- `AirPlayMediaController` with V1/V2 `/play` format auto-negotiation
+- `UnsupportedFeatureException` when device lacks video support
+- `PlaybackException` when all `/play` formats are rejected
+- AirPlay 2 event channel and RTSP session setup
+- HAP encrypted session for authenticated media commands
+- Apple binary plist encoder/decoder
+- AirPlay PIN pairing dialog in example app
+- Breaking: `HapSession` no longer has `play`, `stop`, `scrub`, or `rate` — use `AirPlayMediaController`
+
+### Local file casting
+- Local file support with `CastMedia.file()` constructor
 - `MediaTransformer` interface for extensible media format preparation
 - `TsKeyframeScanner` for keyframe-aligned HLS segment boundaries
+- Virtual segment URLs for Chromecast compatibility (replaces EXT-X-BYTERANGE)
+- `useChunkedHls` flag for chunked vs single-segment HLS
+- Local subtitle support with automatic SRT-to-VTT conversion
+
+### Chromecast fixes
+- Fixed local file casting — HLS playlists and file routes were being destroyed by cleanup before the device could fetch them
+- CORS preflight (OPTIONS) handler for HLS segment requests
+- RFC 8216-compliant TARGETDURATION calculation
+- Consistent `application/x-mpegURL` content type across all HLS responses
 - File extension on proxy URLs for HLS player format detection
+- Volume updates via RECEIVER_STATUS instead of optimistic update
+
+### DLNA improvements
+- Duration metadata via DIDL-Lite `<res duration="HH:MM:SS">` attribute
+- DLNA-specific HTTP headers (`transferMode.dlna.org`, `DLNA.ORG_OP=01` flags)
+- Serve local TS files directly (not piped through HLS)
+
+### Other
+- Retry mDNS queries 3 times for slow-responding devices
+- Comprehensive logging for all discovery providers and sessions
+- Subtitle proxy for Chromecast (CORS + SRT conversion)
+- Log viewer and custom media input in example app
+- Protocol references and future work documentation
 
 ## 0.2.0
 
-- AirPlay feature flag detection via mDNS TXT records (`AirPlayFeatures` class parses `features`/`ft` bitmask)
-- `AirPlayMediaController` with V1/V2 `/play` format auto-negotiation (V1 binary plist → V1 text/parameters → V2 with RTSP SETUP)
-- `UnsupportedFeatureException` thrown immediately when a device lacks video support bits (0 and 49)
-- `PlaybackException` thrown when all `/play` format attempts are rejected by the device
-- Breaking: `HapSession` no longer has `play`, `stop`, `scrub`, or `rate` methods — use `AirPlayMediaController` instead
-- Added `docs/PROTOCOL_REFERENCES.md` with links to AirPlay, Chromecast, and DLNA specs
-- Added `docs/FUTURE_WORK.md` documenting AirPlay screen mirroring and RAOP audio streaming roadmap
+- Platform permissions for example app (macOS, iOS, Android)
+- Code formatting and cleanup
 
 ## 0.1.0
 

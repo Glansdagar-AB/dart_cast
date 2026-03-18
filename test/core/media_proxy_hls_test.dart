@@ -173,7 +173,7 @@ void main() {
           await response.drain<void>();
           expect(
             response.headers.contentType.toString(),
-            contains('mpegurl'),
+            contains('mpegURL'),
           );
         } finally {
           client.close();
@@ -406,7 +406,7 @@ void main() {
             await response.drain<void>();
             expect(
               response.headers.contentType.toString(),
-              contains('mpegurl'),
+              contains('mpegURL'),
             );
           } finally {
             client.close();
@@ -471,7 +471,8 @@ void main() {
         }
       });
 
-      test('playlist contains #EXT-X-VERSION:4 (byte-range mode)', () async {
+      test('playlist contains #EXT-X-VERSION:3 (virtual segment URLs)',
+          () async {
         final tmp = await makeKfFile();
         try {
           final fileProxyUrl = proxy.registerFile(tmp.file.path);
@@ -482,13 +483,14 @@ void main() {
             totalDuration: totalDuration,
           );
           final content = await _fetchString(playlistUrl);
-          expect(content, contains('#EXT-X-VERSION:4'));
+          expect(content, contains('#EXT-X-VERSION:3'));
         } finally {
           await tmp.dir.delete(recursive: true);
         }
       });
 
-      test('playlist contains #EXT-X-BYTERANGE tags', () async {
+      test('playlist contains virtual segment URLs with ?start=&end= params',
+          () async {
         final tmp = await makeKfFile();
         try {
           final fileProxyUrl = proxy.registerFile(tmp.file.path);
@@ -499,7 +501,10 @@ void main() {
             totalDuration: totalDuration,
           );
           final content = await _fetchString(playlistUrl);
-          expect(content, contains('#EXT-X-BYTERANGE:'));
+          expect(content, contains('?start='));
+          expect(content, contains('&end='));
+          // Should NOT use EXT-X-BYTERANGE (Chromecast doesn't support it)
+          expect(content, isNot(contains('#EXT-X-BYTERANGE:')));
         } finally {
           await tmp.dir.delete(recursive: true);
         }
@@ -539,7 +544,7 @@ void main() {
         }
       });
 
-      test('segment byte ranges are contiguous starting at 0', () async {
+      test('virtual segments are contiguous starting at 0', () async {
         final tmp = await makeKfFile();
         try {
           final fileProxyUrl = proxy.registerFile(tmp.file.path);
@@ -551,29 +556,31 @@ void main() {
           );
           final content = await _fetchString(playlistUrl);
 
-          final byteRangeRegex = RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
-          final matches = byteRangeRegex.allMatches(content).toList();
+          final segRegex = RegExp(r'\?start=(\d+)&end=(\d+)');
+          final matches = segRegex.allMatches(content).toList();
 
           expect(matches, isNotEmpty);
-          expect(int.parse(matches.first.group(2)!), 0,
-              reason: 'First segment offset must be 0');
+          expect(int.parse(matches.first.group(1)!), 0,
+              reason: 'First segment must start at 0');
 
-          int expectedOffset = 0;
-          for (final m in matches) {
-            final offset = int.parse(m.group(2)!);
-            final length = int.parse(m.group(1)!);
-            expect(offset, expectedOffset,
+          // Each segment's start must be the previous segment's end + 1
+          for (int i = 1; i < matches.length; i++) {
+            final prevEnd = int.parse(matches[i - 1].group(2)!);
+            final curStart = int.parse(matches[i].group(1)!);
+            expect(curStart, prevEnd + 1,
                 reason: 'Segments must be contiguous');
-            expectedOffset += length;
           }
-          expect(expectedOffset, fileSize,
-              reason: 'All byte ranges must cover the full file');
+
+          // Last segment must end at file size - 1
+          final lastEnd = int.parse(matches.last.group(2)!);
+          expect(lastEnd, fileSize - 1,
+              reason: 'Last segment must reach end of file');
         } finally {
           await tmp.dir.delete(recursive: true);
         }
       });
 
-      test('byte ranges cover the full file — sum equals file size', () async {
+      test('virtual segments cover the full file', () async {
         final tmp = await makeKfFile();
         try {
           final fileProxyUrl = proxy.registerFile(tmp.file.path);
@@ -585,12 +592,14 @@ void main() {
           );
           final content = await _fetchString(playlistUrl);
 
-          final byteRangeRegex = RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
-          final matches = byteRangeRegex.allMatches(content).toList();
+          final segRegex = RegExp(r'\?start=(\d+)&end=(\d+)');
+          final matches = segRegex.allMatches(content).toList();
 
           int totalBytes = 0;
           for (final m in matches) {
-            totalBytes += int.parse(m.group(1)!);
+            final start = int.parse(m.group(1)!);
+            final end = int.parse(m.group(2)!);
+            totalBytes += end - start + 1;
           }
           expect(totalBytes, fileSize);
         } finally {
@@ -613,10 +622,10 @@ void main() {
           );
           final content = await _fetchString(playlistUrl);
 
-          final byteRangeRegex = RegExp(r'#EXT-X-BYTERANGE:(\d+)@(\d+)');
-          final offsets = byteRangeRegex
+          final segRegex = RegExp(r'\?start=(\d+)&end=(\d+)');
+          final offsets = segRegex
               .allMatches(content)
-              .map((m) => int.parse(m.group(2)!))
+              .map((m) => int.parse(m.group(1)!))
               .toList();
 
           expect(offsets, expectedOffsets,
@@ -671,7 +680,10 @@ void main() {
 
           expect(lines, isNotEmpty);
           for (final line in lines) {
-            expect(line.trim(), fileProxyUrl);
+            expect(line.trim(), startsWith(fileProxyUrl),
+                reason: 'Each segment must use the file proxy URL');
+            expect(line.trim(), contains('?start='),
+                reason: 'Each segment must have start query param');
           }
         } finally {
           await tmp.dir.delete(recursive: true);

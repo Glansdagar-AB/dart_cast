@@ -254,7 +254,7 @@ void main() {
 
         expect(
           response.headers.contentType.toString(),
-          contains('mpegurl'),
+          contains('mpegURL'),
         );
       } finally {
         client.close();

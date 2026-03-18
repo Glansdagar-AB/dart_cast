@@ -1,3 +1,16 @@
+## 0.2.1
+
+- Fixed Chromecast local file casting — HLS playlists and file routes were being destroyed before the device could fetch them
+- Fixed media proxy cleanup to preserve synthetic content and referenced routes when switching media
+- CORS preflight (OPTIONS) handler for Chromecast HLS segment requests
+- RFC 8216-compliant TARGETDURATION calculation for generated HLS playlists
+- Virtual segment URLs replace EXT-X-BYTERANGE for broader Chromecast compatibility
+- DLNA duration metadata via DIDL-Lite `<res duration="HH:MM:SS">` attribute
+- DLNA-specific HTTP headers (`transferMode.dlna.org`, `DLNA.ORG_OP=01` flags)
+- `MediaTransformer` interface for extensible media format preparation
+- `TsKeyframeScanner` for keyframe-aligned HLS segment boundaries
+- File extension on proxy URLs for HLS player format detection
+
 ## 0.2.0
 
 - AirPlay feature flag detection via mDNS TXT records (`AirPlayFeatures` class parses `features`/`ft` bitmask)

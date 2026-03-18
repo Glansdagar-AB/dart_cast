@@ -7,6 +7,7 @@ import '../../core/cast_exceptions.dart';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
+import '../../core/media_transformer.dart';
 import '../../utils/logger.dart';
 import 'airplay_client.dart';
 import 'airplay_features.dart';
@@ -28,6 +29,7 @@ class AirPlaySession extends CastSession {
   HapSession? _hapSession;
   AirPlayMediaController? _mediaController;
   final MediaProxy _proxy = MediaProxy();
+  final MediaTransformer _mediaTransformer;
   Timer? _pollTimer;
   bool _isPolling = false;
   CastMedia? _currentMedia;
@@ -37,7 +39,10 @@ class AirPlaySession extends CastSession {
   HapCredentials? credentials;
 
   /// Creates an [AirPlaySession] for the given AirPlay [device].
-  AirPlaySession(super.device, {this.credentials});
+  ///
+  /// An optional [mediaTransformer] can customize media preparation.
+  AirPlaySession(super.device, {this.credentials, MediaTransformer? mediaTransformer})
+      : _mediaTransformer = mediaTransformer ?? const DefaultMediaTransformer();
 
   /// The underlying AirPlay HTTP client (available after [connect]).
   AirPlayClient? get client => _client;
@@ -226,10 +231,9 @@ class AirPlaySession extends CastSession {
 
       _currentMedia = media;
 
-      // Register the media URL with the proxy
-      final proxyUrl = media.isLocalFile
-          ? _proxy.registerFile(media.url)
-          : _proxy.registerMedia(media.url, headers: media.httpHeaders);
+      // Transform and register media with the proxy
+      final transformed = await _mediaTransformer.transform(media, _proxy);
+      final proxyUrl = transformed.proxyUrl;
 
       // Determine the final URL to send to the device
       String playUrl;
@@ -376,9 +380,8 @@ class AirPlaySession extends CastSession {
     // Clean up old proxy routes and re-register
     _proxy.cleanupPreviousMedia();
 
-    final proxyUrl = newMedia.isLocalFile
-        ? _proxy.registerFile(newMedia.url)
-        : _proxy.registerMedia(newMedia.url, headers: newMedia.httpHeaders);
+    final newTransformed = await _mediaTransformer.transform(newMedia, _proxy);
+    final proxyUrl = newTransformed.proxyUrl;
 
     String playUrl;
     if (newMedia.subtitles.isNotEmpty && newMedia.type == CastMediaType.hls) {

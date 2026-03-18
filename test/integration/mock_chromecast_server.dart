@@ -248,37 +248,6 @@ class MockChromecastServer {
   }
 }
 
-/// A mock proxy that returns predictable URLs.
-class MockMediaProxy {
-  bool isStarted = false;
-  bool isStopped = false;
-  String? registeredUrl;
-  Map<String, String> registeredHeaders = {};
-
-  Future<void> start() async {
-    isStarted = true;
-  }
-
-  Future<void> stop() async {
-    isStopped = true;
-  }
-
-  String registerMedia(String url, {Map<String, String> headers = const {}}) {
-    registeredUrl = url;
-    registeredHeaders = headers;
-    return 'http://192.168.1.10:8080/stream/proxy-token';
-  }
-
-  String registerSubtitle(String urlOrPath,
-      {Map<String, String> headers = const {}}) {
-    registeredUrl = urlOrPath;
-    registeredHeaders = headers;
-    return 'http://192.168.1.10:8080/stream/proxy-token';
-  }
-
-  void cleanupPreviousMedia({String? excludeToken}) {}
-}
-
 /// A message sent by the session to the mock server.
 class MockSentMessage {
   final String namespace;

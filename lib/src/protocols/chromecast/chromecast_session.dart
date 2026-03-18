@@ -11,6 +11,7 @@ import '../../core/cast_device.dart';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
+import '../../core/media_transformer.dart';
 import '../../utils/logger.dart';
 import 'cast_media_channel.dart';
 import 'cast_receiver_channel.dart';
@@ -33,7 +34,8 @@ class ChromecastSession extends CastSession {
   // ---------------------------------------------------------------------------
 
   final _ChannelAdapter _channel;
-  final _ProxyAdapter _proxy;
+  final MediaProxy _proxy;
+  final MediaTransformer _mediaTransformer;
 
   // ---------------------------------------------------------------------------
   // Session state
@@ -72,18 +74,36 @@ class ChromecastSession extends CastSession {
   // ---------------------------------------------------------------------------
 
   /// Creates a [ChromecastSession] for the given [device].
-  ChromecastSession({required CastDevice device})
-      : _channel = _RealChannelAdapter(),
-        _proxy = _RealProxyAdapter(),
+  ///
+  /// An optional [mediaTransformer] can be provided to customize how media
+  /// is prepared before casting (e.g., custom segmentation, transcoding).
+  /// Defaults to [DefaultMediaTransformer] which wraps TS in HLS.
+  ChromecastSession({
+    required CastDevice device,
+    MediaTransformer? mediaTransformer,
+  })  : _channel = _RealChannelAdapter(),
+        _proxy = MediaProxy(),
+        _mediaTransformer = mediaTransformer ??
+            const DefaultMediaTransformer(wrapRemoteTs: true),
         super(device);
 
   /// Creates a [ChromecastSession] with mock dependencies for testing.
+  ///
+  /// [channel] is a mock for the TLS channel (required for unit/integration
+  /// tests that avoid real TLS connections).
+  /// [proxy] is an optional [MediaProxy] instance; a real [MediaProxy] is
+  /// created if not provided.
+  /// [mediaTransformer] is an optional transformer; defaults to
+  /// [DefaultMediaTransformer].
   ChromecastSession.withMocks({
     required CastDevice device,
     required dynamic channel,
-    required dynamic proxy,
+    MediaProxy? proxy,
+    MediaTransformer? mediaTransformer,
   })  : _channel = _MockChannelAdapter(channel),
-        _proxy = _MockProxyAdapter(proxy),
+        _proxy = proxy ?? MediaProxy(),
+        _mediaTransformer = mediaTransformer ??
+            const DefaultMediaTransformer(wrapRemoteTs: true),
         super(device);
 
   // ---------------------------------------------------------------------------
@@ -163,41 +183,17 @@ class ChromecastSession extends CastSession {
 
     stateMachine.transitionTo(SessionState.loading);
 
-    // Start proxy and register new media BEFORE cleanup to avoid race condition
-    // where the cast device requests the old URL during the gap.
+    // Start proxy and transform media for Chromecast
     await _proxy.start();
-    var proxyUrl = media.isLocalFile
-        ? _proxy.registerFile(media.url)
-        : _proxy.registerMedia(media.url, headers: media.httpHeaders);
+    final transformed = await _mediaTransformer.transform(media, _proxy);
+    var proxyUrl = transformed.proxyUrl;
+
     // Extract token from the proxy URL to exclude it from cleanup
     final newToken = Uri.parse(proxyUrl).pathSegments.last;
     _proxy.cleanupPreviousMedia(excludeToken: newToken);
 
-    // Chromecast doesn't support raw MPEG-TS — wrap in HLS playlist
-    var effectiveType = media.type;
-    if (media.type == CastMediaType.mpegTs) {
-      final durationSecs = media.duration?.inMilliseconds != null
-          ? media.duration!.inMilliseconds / 1000.0
-          : null;
-
-      if (media.useChunkedHls && media.isLocalFile) {
-        // Chunked: byte-range segments (~20s each) for better seeking/progress
-        CastLogger.info('Chromecast: wrapping MPEG-TS in chunked HLS');
-        proxyUrl = _proxy.wrapLocalFileAsHls(
-          proxyUrl,
-          media.url,
-          totalDuration: durationSecs,
-        );
-      } else {
-        // Single segment: simpler, entire file as one HLS segment
-        CastLogger.info('Chromecast: wrapping MPEG-TS in single-segment HLS');
-        proxyUrl = _proxy.wrapInHlsPlaylist(proxyUrl, duration: durationSecs);
-      }
-      effectiveType = CastMediaType.hls;
-    }
-
-    // Determine content type
-    final contentType = _contentTypeForMedia(effectiveType);
+    // Determine content type from the (possibly transformed) media type
+    final contentType = _contentTypeForMedia(transformed.effectiveType);
 
     // Build subtitle tracks — proxy each subtitle URL so the Chromecast can
     // fetch them with CORS headers (Access-Control-Allow-Origin) and any
@@ -583,18 +579,6 @@ abstract class _ChannelAdapter {
   Future<void> close();
 }
 
-/// Adapter over MediaProxy or a mock.
-abstract class _ProxyAdapter {
-  Future<void> start();
-  Future<void> stop();
-  String registerMedia(String url, {Map<String, String> headers});
-  String registerFile(String filePath);
-  String registerSubtitle(String urlOrPath, {Map<String, String> headers});
-  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration});
-  String wrapLocalFileAsHls(String fileProxyUrl, String filePath, {double? totalDuration});
-  void cleanupPreviousMedia({String? excludeToken});
-}
-
 // ---------------------------------------------------------------------------
 // Real adapters (wrap actual implementations)
 // ---------------------------------------------------------------------------
@@ -626,40 +610,6 @@ class _RealChannelAdapter implements _ChannelAdapter {
 
   @override
   Future<void> close() => _channel.close();
-}
-
-class _RealProxyAdapter implements _ProxyAdapter {
-  final MediaProxy _proxy = MediaProxy();
-
-  @override
-  Future<void> start() => _proxy.start();
-
-  @override
-  Future<void> stop() => _proxy.stop();
-
-  @override
-  String registerMedia(String url, {Map<String, String> headers = const {}}) =>
-      _proxy.registerMedia(url, headers: headers);
-
-  @override
-  String registerFile(String filePath) => _proxy.registerFile(filePath);
-
-  @override
-  String registerSubtitle(String urlOrPath,
-          {Map<String, String> headers = const {}}) =>
-      _proxy.registerSubtitle(urlOrPath, headers: headers);
-
-  @override
-  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration}) =>
-      _proxy.wrapInHlsPlaylist(mediaProxyUrl, duration: duration);
-
-  @override
-  String wrapLocalFileAsHls(String fileProxyUrl, String filePath, {double? totalDuration}) =>
-      _proxy.wrapLocalFileAsHls(fileProxyUrl, filePath, totalDuration: totalDuration);
-
-  @override
-  void cleanupPreviousMedia({String? excludeToken}) =>
-      _proxy.cleanupPreviousMedia(excludeToken: excludeToken);
 }
 
 // ---------------------------------------------------------------------------
@@ -696,42 +646,4 @@ class _MockChannelAdapter implements _ChannelAdapter {
 
   @override
   Future<void> close() => (_mock as dynamic).close() as Future<void>;
-}
-
-class _MockProxyAdapter implements _ProxyAdapter {
-  final dynamic _mock;
-
-  _MockProxyAdapter(this._mock);
-
-  @override
-  Future<void> start() => (_mock as dynamic).start() as Future<void>;
-
-  @override
-  Future<void> stop() => (_mock as dynamic).stop() as Future<void>;
-
-  @override
-  String registerMedia(String url, {Map<String, String> headers = const {}}) =>
-      (_mock as dynamic).registerMedia(url, headers: headers) as String;
-
-  @override
-  String registerFile(String filePath) =>
-      (_mock as dynamic).registerFile(filePath) as String;
-
-  @override
-  String registerSubtitle(String urlOrPath,
-          {Map<String, String> headers = const {}}) =>
-      (_mock as dynamic).registerSubtitle(urlOrPath, headers: headers)
-          as String;
-
-  @override
-  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration}) =>
-      (_mock as dynamic).wrapInHlsPlaylist(mediaProxyUrl) as String;
-
-  @override
-  String wrapLocalFileAsHls(String fileProxyUrl, String filePath, {double? totalDuration}) =>
-      (_mock as dynamic).wrapLocalFileAsHls(fileProxyUrl, filePath) as String;
-
-  @override
-  void cleanupPreviousMedia({String? excludeToken}) =>
-      (_mock as dynamic).cleanupPreviousMedia(excludeToken: excludeToken);
 }

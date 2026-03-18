@@ -4,6 +4,7 @@ import '../../core/cast_device.dart';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
+import '../../core/media_transformer.dart';
 import '../../utils/logger.dart';
 import 'dlna_controller.dart';
 import 'dlna_device.dart';
@@ -17,6 +18,7 @@ class DlnaSession extends CastSession {
 
   final DlnaHttpClient _httpClient;
   final MediaProxy _proxy;
+  final MediaTransformer _mediaTransformer;
   Timer? _pollTimer;
   bool _isPolling = false;
   CastMedia? _currentMedia;
@@ -30,13 +32,17 @@ class DlnaSession extends CastSession {
   ///
   /// Prefer using [DlnaSession.fromDevice] which automatically extracts
   /// the device description from the metadata set by [DlnaDiscoveryProvider].
+  /// An optional [mediaTransformer] can customize how media is prepared
+  /// before casting (e.g., custom segmentation, transcoding).
   DlnaSession({
     required CastDevice device,
     required this.description,
     DlnaHttpClient? httpClient,
     MediaProxy? proxy,
+    MediaTransformer? mediaTransformer,
   })  : _httpClient = httpClient ?? DlnaHttpClient(),
         _proxy = proxy ?? MediaProxy(),
+        _mediaTransformer = mediaTransformer ?? const DefaultMediaTransformer(),
         super(device);
 
   /// Creates a [DlnaSession] from a [CastDevice] discovered by
@@ -102,47 +108,28 @@ class DlnaSession extends CastSession {
     stateMachine.transitionTo(SessionState.loading);
     _currentMedia = media;
 
-    // Start proxy and register media URL with headers
+    // Start proxy and transform media
     await _proxy.start();
 
-    // Determine proxy URL and protocolInfo based on media type
-    final String proxyUrl;
+    // Use transformer for media preparation (register, wrap TS in HLS, etc.)
+    final transformed = await _mediaTransformer.transform(media, _proxy);
+    String proxyUrl = transformed.proxyUrl;
     final String protocolInfo;
 
-    if (media.type == CastMediaType.hls) {
-      // For HLS, serve as continuous MPEG-TS stream for DLNA compatibility
+    if (media.type == CastMediaType.hls && !media.isLocalFile) {
+      // Remote HLS → pipe as continuous MPEG-TS stream for DLNA
       proxyUrl = _proxy.registerHlsAsStream(
         media.url,
         headers: media.httpHeaders,
       );
       protocolInfo = 'http-get:*:video/mp2t:*';
-    } else if (media.type == CastMediaType.mpegTs) {
-      if (media.isLocalFile) {
-        final fileUrl = _proxy.registerFile(media.url);
-        final durationSecs = media.duration?.inMilliseconds != null
-            ? media.duration!.inMilliseconds / 1000.0
-            : null;
-        String hlsUrl;
-        if (media.useChunkedHls) {
-          // Chunked: byte-range segments for better seeking/progress
-          hlsUrl = _proxy.wrapLocalFileAsHls(
-            fileUrl,
-            media.url,
-            totalDuration: durationSecs,
-          );
-        } else {
-          // Single segment: entire file as one HLS segment
-          hlsUrl = _proxy.wrapInHlsPlaylist(fileUrl, duration: durationSecs);
-        }
-        proxyUrl = _proxy.registerHlsAsStream(hlsUrl);
-      } else {
-        proxyUrl = _proxy.registerMedia(media.url, headers: media.httpHeaders);
-      }
+    } else if (transformed.effectiveType == CastMediaType.hls) {
+      // Transformer wrapped media in HLS (e.g., local TS) → pipe as TS stream
+      proxyUrl = _proxy.registerHlsAsStream(proxyUrl);
+      protocolInfo = 'http-get:*:video/mp2t:*';
+    } else if (transformed.effectiveType == CastMediaType.mpegTs) {
       protocolInfo = 'http-get:*:video/mp2t:*';
     } else {
-      proxyUrl = media.isLocalFile
-          ? _proxy.registerFile(media.url)
-          : _proxy.registerMedia(media.url, headers: media.httpHeaders);
       protocolInfo = 'http-get:*:video/mp4:*';
     }
 

@@ -56,4 +56,20 @@ class SubtitleConverter {
       '',
     );
   }
+
+  /// Injects `X-TIMESTAMP-MAP` into VTT content to align subtitle
+  /// timestamps with an MPEG-TS PTS timeline.
+  ///
+  /// [mpegTsPts] is the first video PTS value (90kHz clock). This tells
+  /// the cast device's HLS player that VTT timestamp 00:00:00.000
+  /// corresponds to MPEG-TS PTS [mpegTsPts], aligning subtitles with
+  /// the video stream.
+  static String injectTimestampMap(String vtt, int mpegTsPts) {
+    final header = 'X-TIMESTAMP-MAP=MPEGTS:$mpegTsPts,LOCAL:00:00:00.000';
+    // Insert after WEBVTT header line
+    return vtt.replaceFirst(
+      RegExp(r'(WEBVTT[^\n]*\n)'),
+      '\$1$header\n',
+    );
+  }
 }

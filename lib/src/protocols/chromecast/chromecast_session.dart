@@ -280,6 +280,8 @@ class ChromecastSession extends CastSession {
   Future<void> seek(Duration position) async {
     _requireMediaSession();
     final seconds = position.inMilliseconds / 1000.0;
+    CastLogger.info('Chromecast: SEEK to ${seconds.toStringAsFixed(1)}s '
+        '(${position.inMinutes}:${(position.inSeconds % 60).toString().padLeft(2, '0')})');
     _sendMediaCommand(_mediaChannel.buildSeek(_mediaSessionId!, seconds));
   }
 

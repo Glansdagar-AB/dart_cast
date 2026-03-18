@@ -128,4 +128,74 @@ class TsKeyframeScanner {
 
     return unique;
   }
+
+  /// Reads the first video PTS (Presentation Time Stamp) from [file].
+  ///
+  /// Returns the PTS value in the 90kHz clock used by MPEG-TS, or null
+  /// if no video PTS is found in the first ~192KB of the file.
+  ///
+  /// This is needed because TS files from stream recordings often have
+  /// a non-zero starting PTS. When serving TS segments via HLS to
+  /// Chromecast, the player uses this PTS for its timeline, causing
+  /// subtitle desync and wrong segment selection if not accounted for.
+  static int? readFirstVideoPts(File file) {
+    final fileLength = file.lengthSync();
+    if (fileLength < 188) return null;
+
+    final raf = file.openSync();
+    try {
+      const chunkSize = 188 * 1024;
+      final chunk = Uint8List(chunkSize);
+      final toRead = fileLength < chunkSize ? fileLength : chunkSize;
+      final bytesRead = raf.readIntoSync(chunk, 0, toRead);
+
+      for (int pos = 0; pos + 188 <= bytesRead; pos += 188) {
+        if (chunk[pos] != 0x47) continue;
+
+        final adaptCtrl = (chunk[pos + 3] >> 4) & 0x03;
+        if (adaptCtrl != 1 && adaptCtrl != 3) continue;
+
+        final pusi = (chunk[pos + 1] >> 6) & 0x01;
+        if (pusi != 1) continue;
+
+        int payloadStart = pos + 4;
+        if (adaptCtrl == 3) {
+          payloadStart += 1 + chunk[pos + 4];
+        }
+
+        if (payloadStart + 14 >= pos + 188) continue;
+
+        // Check for PES header: 0x00 0x00 0x01
+        if (chunk[payloadStart] != 0x00 ||
+            chunk[payloadStart + 1] != 0x00 ||
+            chunk[payloadStart + 2] != 0x01) continue;
+
+        final streamId = chunk[payloadStart + 3];
+        // Video stream IDs: 0xE0-0xEF
+        if (streamId < 0xE0 || streamId > 0xEF) continue;
+
+        // PES header flags byte 2: PTS/DTS flags in bits 7-6
+        final ptsDtsFlags = (chunk[payloadStart + 7] >> 6) & 0x03;
+        if (ptsDtsFlags < 2) continue; // No PTS present
+
+        // Parse 33-bit PTS from 5 bytes
+        final ptsOffset = payloadStart + 9;
+        if (ptsOffset + 5 > pos + 188) continue;
+
+        final pts = ((chunk[ptsOffset] >> 1) & 0x07).toUnsigned(64) << 30 |
+            (chunk[ptsOffset + 1]).toUnsigned(64) << 22 |
+            ((chunk[ptsOffset + 2] >> 1) & 0x7F).toUnsigned(64) << 15 |
+            (chunk[ptsOffset + 3]).toUnsigned(64) << 7 |
+            ((chunk[ptsOffset + 4] >> 1) & 0x7F).toUnsigned(64);
+
+        CastLogger.info('TsKeyframeScanner: first video PTS = $pts '
+            '(${(pts / 90000).toStringAsFixed(3)}s)');
+        return pts;
+      }
+    } finally {
+      raf.closeSync();
+    }
+
+    return null;
+  }
 }

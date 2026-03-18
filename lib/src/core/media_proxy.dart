@@ -46,6 +46,10 @@ class MediaProxy {
   final Map<String, _SyntheticContent> _syntheticContent = {};
   final Random _random = Random.secure();
 
+  /// First video PTS from the most recently scanned TS file (90kHz clock).
+  /// Used to inject X-TIMESTAMP-MAP into subtitle VTT files for PTS alignment.
+  int? _tsFirstPts;
+
   /// The base URL of the running proxy server, or null if not started.
   String? get baseUrl => _baseUrl;
 
@@ -177,6 +181,11 @@ class MediaProxy {
       return wrapInHlsPlaylist(fileProxyUrl);
     }
 
+    // Read the first video PTS — TS files often start at a non-zero PTS
+    // which affects the Chromecast's HLS timeline and subtitle sync.
+    final firstPts = TsKeyframeScanner.readFirstVideoPts(file);
+    final ptsOffsetSeconds = firstPts != null ? firstPts / 90000.0 : 0.0;
+
     // Scan for keyframe positions — segments MUST start at keyframes
     // for the cast device to decode them independently.
     final keyframeOffsets = TsKeyframeScanner.findKeyframeOffsets(file);
@@ -259,6 +268,12 @@ class MediaProxy {
       contentType: ContentType('application', 'x-mpegURL'),
     );
 
+    // Store the PTS offset so subtitle serving can inject X-TIMESTAMP-MAP
+    // to align VTT timestamps with the TS PTS timeline.
+    if (firstPts != null && firstPts > 0) {
+      _tsFirstPts = firstPts;
+    }
+
     CastLogger.info(
         'MediaProxy: created HLS playlist with $segmentCount keyframe-aligned segments '
         '(~${avgSegmentDuration.toStringAsFixed(1)}s avg, '
@@ -266,6 +281,7 @@ class MediaProxy {
         '${(fileSize / 1024 / 1024).toStringAsFixed(1)}MB, '
         '${keyframeOffsets.length} keyframes found'
         '${totalDuration != null ? ", known duration" : ", estimated"}'
+        '${firstPts != null ? ", PTS offset=${ptsOffsetSeconds.toStringAsFixed(3)}s" : ""}'
         ')');
 
     return '$_baseUrl/synthetic/$token';
@@ -686,8 +702,17 @@ class MediaProxy {
 
       if (content.contains('X-TIMESTAMP-MAP')) {
         CastLogger.info(
-            'MediaProxy: stripping X-TIMESTAMP-MAP from local VTT');
+            'MediaProxy: stripping existing X-TIMESTAMP-MAP from local VTT');
         content = SubtitleConverter.stripTimestampMap(content);
+        converted = true;
+      }
+
+      // If we know the TS file's PTS offset, inject X-TIMESTAMP-MAP so the
+      // Chromecast aligns subtitle timing with the video's PTS timeline.
+      if (_tsFirstPts != null && _tsFirstPts! > 0) {
+        CastLogger.info(
+            'MediaProxy: injecting X-TIMESTAMP-MAP=MPEGTS:$_tsFirstPts for PTS alignment');
+        content = SubtitleConverter.injectTimestampMap(content, _tsFirstPts!);
         converted = true;
       }
 

@@ -99,11 +99,17 @@ class MediaProxy {
   /// Returns a proxy URL that can be given to a cast device.
   String registerFile(String filePath) {
     final token = _generateToken();
-    _routes[token] = _ProxyRoute(
+    // Add file extension to the proxy URL so HLS players can detect format
+    final ext = filePath.toLowerCase().endsWith('.ts')
+        ? '.ts'
+        : filePath.toLowerCase().endsWith('.mp4')
+            ? '.mp4'
+            : '';
+    _routes['$token$ext'] = _ProxyRoute(
       type: _RouteType.localFile,
       url: filePath,
     );
-    return '$_baseUrl/file/$token';
+    return '$_baseUrl/file/$token$ext';
   }
 
   /// Wraps a media URL in a single-segment HLS playlist.

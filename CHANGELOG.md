@@ -1,16 +1,5 @@
 ## 0.2.1
 
-### AirPlay 2
-- AirPlay feature flag detection via mDNS TXT records (`AirPlayFeatures` class)
-- `AirPlayMediaController` with V1/V2 `/play` format auto-negotiation
-- `UnsupportedFeatureException` when device lacks video support
-- `PlaybackException` when all `/play` formats are rejected
-- AirPlay 2 event channel and RTSP session setup
-- HAP encrypted session for authenticated media commands
-- Apple binary plist encoder/decoder
-- AirPlay PIN pairing dialog in example app
-- Breaking: `HapSession` no longer has `play`, `stop`, `scrub`, or `rate` — use `AirPlayMediaController`
-
 ### Local file casting
 - Local file support with `CastMedia.file()` constructor
 - `MediaTransformer` interface for extensible media format preparation
@@ -20,7 +9,7 @@
 - Local subtitle support with automatic SRT-to-VTT conversion
 
 ### Chromecast fixes
-- Fixed local file casting — HLS playlists and file routes were being destroyed by cleanup before the device could fetch them
+- Fixed local file casting — HLS playlists and file routes were destroyed by cleanup before the device could fetch them
 - CORS preflight (OPTIONS) handler for HLS segment requests
 - RFC 8216-compliant TARGETDURATION calculation
 - Consistent `application/x-mpegURL` content type across all HLS responses
@@ -37,12 +26,16 @@
 - Comprehensive logging for all discovery providers and sessions
 - Subtitle proxy for Chromecast (CORS + SRT conversion)
 - Log viewer and custom media input in example app
-- Protocol references and future work documentation
 
 ## 0.2.0
 
-- Platform permissions for example app (macOS, iOS, Android)
-- Code formatting and cleanup
+- AirPlay feature flag detection via mDNS TXT records (`AirPlayFeatures` class parses `features`/`ft` bitmask)
+- `AirPlayMediaController` with V1/V2 `/play` format auto-negotiation (V1 binary plist → V1 text/parameters → V2 with RTSP SETUP)
+- `UnsupportedFeatureException` thrown immediately when a device lacks video support bits (0 and 49)
+- `PlaybackException` thrown when all `/play` format attempts are rejected by the device
+- Breaking: `HapSession` no longer has `play`, `stop`, `scrub`, or `rate` methods — use `AirPlayMediaController` instead
+- Added `docs/PROTOCOL_REFERENCES.md` with links to AirPlay, Chromecast, and DLNA specs
+- Added `docs/FUTURE_WORK.md` documenting AirPlay screen mirroring and RAOP audio streaming roadmap
 
 ## 0.1.0
 

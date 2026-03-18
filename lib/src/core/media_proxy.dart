@@ -186,9 +186,17 @@ class MediaProxy {
     final firstPts = TsKeyframeScanner.readFirstVideoPts(file);
     final ptsOffsetSeconds = firstPts != null ? firstPts / 90000.0 : 0.0;
 
+    // Try to get keyframes with PTS values for accurate segment durations.
+    // PTS-based durations prevent subtitle desync caused by VBR content
+    // where byte proportions don't match time proportions.
+    final keyframesWithPts = TsKeyframeScanner.findKeyframeOffsetsWithPts(file);
+    final bool usePtsDurations = keyframesWithPts != null && keyframesWithPts.length > 1;
+
     // Scan for keyframe positions — segments MUST start at keyframes
     // for the cast device to decode them independently.
-    final keyframeOffsets = TsKeyframeScanner.findKeyframeOffsets(file);
+    final keyframeOffsets = usePtsDurations
+        ? keyframesWithPts!.map((kf) => kf.offset).toList()
+        : TsKeyframeScanner.findKeyframeOffsets(file);
 
     // If only 1 keyframe (or scan failed), fall back to single segment
     if (keyframeOffsets.length <= 1) {
@@ -210,15 +218,38 @@ class MediaProxy {
     // Each segment starts at a keyframe and ends just before the next
     // segment's first keyframe.
     final segmentOffsets = <int>[0]; // First segment always at 0
-    final bytesPerSecond = fileSize / effectiveDuration;
-    final targetBytesPerSegment = (segmentSeconds * bytesPerSecond).round();
+    final segmentPtsValues = <int?>[]; // PTS at each segment start (if available)
 
-    int lastSegmentStart = 0;
-    for (int i = 1; i < keyframeOffsets.length; i++) {
-      final bytesSinceLastSegment = keyframeOffsets[i] - lastSegmentStart;
-      if (bytesSinceLastSegment >= targetBytesPerSegment) {
-        segmentOffsets.add(keyframeOffsets[i]);
-        lastSegmentStart = keyframeOffsets[i];
+    if (usePtsDurations) {
+      segmentPtsValues.add(keyframesWithPts!.first.pts);
+      // Build a map from offset to PTS for quick lookup
+      final offsetToPts = <int, int>{};
+      for (final kf in keyframesWithPts) {
+        offsetToPts[kf.offset] = kf.pts;
+      }
+
+      // Use PTS-based target duration for grouping
+      final targetPtsDelta = (segmentSeconds * 90000).round();
+      int lastSegmentPts = keyframesWithPts.first.pts;
+      for (int i = 1; i < keyframesWithPts.length; i++) {
+        final ptsDelta = keyframesWithPts[i].pts - lastSegmentPts;
+        if (ptsDelta >= targetPtsDelta) {
+          segmentOffsets.add(keyframesWithPts[i].offset);
+          segmentPtsValues.add(keyframesWithPts[i].pts);
+          lastSegmentPts = keyframesWithPts[i].pts;
+        }
+      }
+    } else {
+      final bytesPerSecond = fileSize / effectiveDuration;
+      final targetBytesPerSegment = (segmentSeconds * bytesPerSecond).round();
+
+      int lastSegmentStart = 0;
+      for (int i = 1; i < keyframeOffsets.length; i++) {
+        final bytesSinceLastSegment = keyframeOffsets[i] - lastSegmentStart;
+        if (bytesSinceLastSegment >= targetBytesPerSegment) {
+          segmentOffsets.add(keyframeOffsets[i]);
+          lastSegmentStart = keyframeOffsets[i];
+        }
       }
     }
 
@@ -228,12 +259,36 @@ class MediaProxy {
     // Pre-compute all segment durations to find the max for TARGETDURATION.
     // RFC 8216: each segment's rounded EXTINF MUST be ≤ TARGETDURATION.
     final segmentDurations = <double>[];
-    for (int i = 0; i < segmentCount; i++) {
-      final offset = segmentOffsets[i];
-      final nextOffset =
-          (i + 1 < segmentCount) ? segmentOffsets[i + 1] : fileSize;
-      final length = nextOffset - offset;
-      segmentDurations.add((length / fileSize) * effectiveDuration);
+    if (usePtsDurations && segmentPtsValues.length == segmentCount) {
+      // Use actual PTS differences for accurate durations
+      for (int i = 0; i < segmentCount; i++) {
+        if (i + 1 < segmentCount) {
+          final ptsDelta = segmentPtsValues[i + 1]! - segmentPtsValues[i]!;
+          segmentDurations.add(ptsDelta / 90000.0);
+        } else {
+          // Last segment: use totalDuration or estimate from PTS
+          if (totalDuration != null && totalDuration > 0) {
+            // Total elapsed PTS so far
+            final elapsedPts =
+                (segmentPtsValues[i]! - segmentPtsValues[0]!) / 90000.0;
+            segmentDurations.add(totalDuration - elapsedPts);
+          } else {
+            // Estimate last segment from byte proportion as fallback
+            final offset = segmentOffsets[i];
+            final length = fileSize - offset;
+            segmentDurations.add((length / fileSize) * effectiveDuration);
+          }
+        }
+      }
+    } else {
+      // Fallback: byte-proportion estimate
+      for (int i = 0; i < segmentCount; i++) {
+        final offset = segmentOffsets[i];
+        final nextOffset =
+            (i + 1 < segmentCount) ? segmentOffsets[i + 1] : fileSize;
+        final length = nextOffset - offset;
+        segmentDurations.add((length / fileSize) * effectiveDuration);
+      }
     }
     final maxSegDuration = segmentDurations.reduce(
         (a, b) => a > b ? a : b);
@@ -280,6 +335,7 @@ class MediaProxy {
         '~${effectiveDuration.toStringAsFixed(0)}s total, '
         '${(fileSize / 1024 / 1024).toStringAsFixed(1)}MB, '
         '${keyframeOffsets.length} keyframes found'
+        '${usePtsDurations ? ", PTS-based durations" : ", byte-estimated durations"}'
         '${totalDuration != null ? ", known duration" : ", estimated"}'
         '${firstPts != null ? ", PTS offset=${ptsOffsetSeconds.toStringAsFixed(3)}s" : ""}'
         ')');
@@ -707,14 +763,9 @@ class MediaProxy {
         converted = true;
       }
 
-      // If we know the TS file's PTS offset, inject X-TIMESTAMP-MAP so the
-      // Chromecast aligns subtitle timing with the video's PTS timeline.
-      if (_tsFirstPts != null && _tsFirstPts! > 0) {
-        CastLogger.info(
-            'MediaProxy: injecting X-TIMESTAMP-MAP=MPEGTS:$_tsFirstPts for PTS alignment');
-        content = SubtitleConverter.injectTimestampMap(content, _tsFirstPts!);
-        converted = true;
-      }
+      // Note: X-TIMESTAMP-MAP injection was removed — Chromecast's Shaka Player
+      // doesn't support it in sidecar VTT tracks (only HLS subtitle segments).
+      // PTS-based EXTINF durations handle timeline alignment instead.
 
       if (converted || content.trimLeft().startsWith('WEBVTT')) {
         final encoded = utf8.encode(content);

@@ -12,6 +12,7 @@ import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
 import '../../core/media_transformer.dart';
+import '../../core/ts_hls_media_transformer.dart';
 import '../../utils/logger.dart';
 import 'cast_media_channel.dart';
 import 'cast_receiver_channel.dart';
@@ -77,14 +78,14 @@ class ChromecastSession extends CastSession {
   ///
   /// An optional [mediaTransformer] can be provided to customize how media
   /// is prepared before casting (e.g., custom segmentation, transcoding).
-  /// Defaults to [DefaultMediaTransformer] which wraps TS in HLS.
+  /// Defaults to [TsHlsMediaTransformer] which wraps TS in HLS.
   ChromecastSession({
     required CastDevice device,
     MediaTransformer? mediaTransformer,
   })  : _channel = _RealChannelAdapter(),
         _proxy = MediaProxy(),
         _mediaTransformer = mediaTransformer ??
-            const DefaultMediaTransformer(wrapRemoteTs: true),
+            const TsHlsMediaTransformer(wrapRemoteTs: true),
         super(device);
 
   /// Creates a [ChromecastSession] with mock dependencies for testing.
@@ -94,7 +95,7 @@ class ChromecastSession extends CastSession {
   /// [proxy] is an optional [MediaProxy] instance; a real [MediaProxy] is
   /// created if not provided.
   /// [mediaTransformer] is an optional transformer; defaults to
-  /// [DefaultMediaTransformer].
+  /// [TsHlsMediaTransformer].
   ChromecastSession.withMocks({
     required CastDevice device,
     required dynamic channel,
@@ -103,7 +104,7 @@ class ChromecastSession extends CastSession {
   })  : _channel = _MockChannelAdapter(channel),
         _proxy = proxy ?? MediaProxy(),
         _mediaTransformer = mediaTransformer ??
-            const DefaultMediaTransformer(wrapRemoteTs: true),
+            const TsHlsMediaTransformer(wrapRemoteTs: true),
         super(device);
 
   // ---------------------------------------------------------------------------

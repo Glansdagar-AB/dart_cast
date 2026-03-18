@@ -58,6 +58,22 @@ class MediaProxy {
   /// The base URL of the running proxy server, or null if not started.
   String? get baseUrl => _baseUrl;
 
+  /// Sets the cached PAT+PMT packets to prepend to virtual HLS segments.
+  ///
+  /// Called by [TsHlsMediaTransformer] after scanning the TS file header,
+  /// before calling [wrapLocalFileAsHls].
+  void setPatPmt(Uint8List patPmt) {
+    _tsPatPmt = patPmt;
+  }
+
+  /// Sets the first video PTS value (90kHz clock) from the TS file.
+  ///
+  /// Called by [TsHlsMediaTransformer] after scanning the TS file,
+  /// before calling [wrapLocalFileAsHls]. Used for subtitle PTS alignment.
+  void setFirstPts(int pts) {
+    _tsFirstPts = pts;
+  }
+
   /// Starts the proxy server bound to the local WiFi IP.
   ///
   /// An optional [port] can be provided; otherwise binds to port 0 to let the
@@ -185,16 +201,6 @@ class MediaProxy {
       CastLogger.info('MediaProxy: non-TS file, using single-segment HLS');
       return wrapInHlsPlaylist(fileProxyUrl);
     }
-
-    // Read the first video PTS — TS files often start at a non-zero PTS
-    // which affects the Chromecast's HLS timeline and subtitle sync.
-    final firstPts = TsKeyframeScanner.readFirstVideoPts(file);
-    final ptsOffsetSeconds = firstPts != null ? firstPts / 90000.0 : 0.0;
-
-    // Extract PAT+PMT packets to prepend to each virtual segment.
-    // Without these, the Chromecast's demuxer can't initialize for
-    // segments after the first one, causing infinite buffering.
-    _tsPatPmt = TsKeyframeScanner.extractPatPmt(file);
 
     // Try to get keyframes with PTS values for accurate segment durations.
     // PTS-based durations prevent subtitle desync caused by VBR content
@@ -333,12 +339,6 @@ class MediaProxy {
       contentType: ContentType('application', 'x-mpegURL'),
     );
 
-    // Store the PTS offset so subtitle serving can inject X-TIMESTAMP-MAP
-    // to align VTT timestamps with the TS PTS timeline.
-    if (firstPts != null && firstPts > 0) {
-      _tsFirstPts = firstPts;
-    }
-
     CastLogger.info(
         'MediaProxy: created HLS playlist with $segmentCount keyframe-aligned segments '
         '(~${avgSegmentDuration.toStringAsFixed(1)}s avg, '
@@ -347,7 +347,6 @@ class MediaProxy {
         '${keyframeOffsets.length} keyframes found'
         '${usePtsDurations ? ", PTS-based durations" : ", byte-estimated durations"}'
         '${totalDuration != null ? ", known duration" : ", estimated"}'
-        '${firstPts != null ? ", PTS offset=${ptsOffsetSeconds.toStringAsFixed(3)}s" : ""}'
         ')');
 
     return '$_baseUrl/synthetic/$token';
@@ -564,7 +563,7 @@ class MediaProxy {
     CastLogger.info('MediaProxy: serving synthetic content token=$token '
         'contentType=${synthetic.contentType} '
         'size=${synthetic.content.length} chars');
-    CastLogger.info('MediaProxy: synthetic content:\n${synthetic.content}');
+    CastLogger.debug('MediaProxy: synthetic content:\n${synthetic.content}');
 
     final encoded = utf8.encode(synthetic.content);
     _addCorsHeaders(request.response);

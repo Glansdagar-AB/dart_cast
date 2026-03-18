@@ -1,3 +1,44 @@
+## 0.3.0
+
+### Breaking changes
+- `DefaultMediaTransformer` no longer wraps local TS files in HLS — it
+  serves them directly via the proxy. Use `TsHlsMediaTransformer` or
+  `FfmpegMediaTransformer` for Chromecast-compatible local TS casting.
+- `CastMedia.useChunkedHls` is deprecated and will be removed in a future
+  release. `TsHlsMediaTransformer` always uses chunked HLS.
+- `ChromecastSession` now defaults to `TsHlsMediaTransformer` instead of
+  `DefaultMediaTransformer`.
+
+### New
+- `TsHlsMediaTransformer` — wraps local TS files in keyframe-aligned HLS
+  playlists for Chromecast compatibility
+- `MediaProxy.setPatPmt()` / `MediaProxy.setFirstPts()` — enable correct
+  PAT/PMT prepending and PTS offset for virtual HLS segments
+- `FfmpegMediaTransformer` reference implementation in example app — remuxes
+  TS→MP4 via ffmpeg with progress callbacks and mobile platform support
+- `doc/LOCAL_FILE_CASTING.md` — comprehensive guide covering remux, HLS
+  wrapping, and transcode approaches with tradeoffs
+
+### Migration guide
+
+Replace direct `DefaultMediaTransformer` usage for local TS files:
+
+```dart
+// Before (0.2.x) — DefaultMediaTransformer handled local TS→HLS internally
+final session = await device.connect();
+
+// After (0.3.0) — choose your transformer explicitly
+// Option A: FFmpeg remux (recommended)
+final session = await device.connect(
+  mediaTransformer: FfmpegMediaTransformer(),
+);
+
+// Option B: Built-in HLS wrapping (no external tools)
+final session = await device.connect(
+  mediaTransformer: TsHlsMediaTransformer(),
+);
+```
+
 ## 0.2.1
 
 ### Local file casting

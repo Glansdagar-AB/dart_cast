@@ -471,8 +471,9 @@ class ChromecastSession extends CastSession {
       ));
     }
 
-    // Update volume from device
-    updateVolume(status.volumeLevel);
+    // Note: MEDIA_STATUS volume is the stream-level volume (usually 1.0),
+    // NOT the device volume. Device volume comes from RECEIVER_STATUS
+    // and is handled in _handleMessage(). Don't overwrite it here.
 
     // Update state machine based on playerState
     _updateState(status.playerState, status.idleReason);

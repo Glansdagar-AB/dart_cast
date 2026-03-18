@@ -216,12 +216,24 @@ class MediaProxy {
     final segmentCount = segmentOffsets.length;
     final avgSegmentDuration = effectiveDuration / segmentCount;
 
+    // Pre-compute all segment durations to find the max for TARGETDURATION.
+    // RFC 8216: each segment's rounded EXTINF MUST be ≤ TARGETDURATION.
+    final segmentDurations = <double>[];
+    for (int i = 0; i < segmentCount; i++) {
+      final offset = segmentOffsets[i];
+      final nextOffset =
+          (i + 1 < segmentCount) ? segmentOffsets[i + 1] : fileSize;
+      final length = nextOffset - offset;
+      segmentDurations.add((length / fileSize) * effectiveDuration);
+    }
+    final maxSegDuration = segmentDurations.reduce(
+        (a, b) => a > b ? a : b);
+
     final buffer = StringBuffer();
     buffer.writeln('#EXTM3U');
     buffer.writeln('#EXT-X-VERSION:4');
     buffer.writeln('#EXT-X-PLAYLIST-TYPE:VOD');
-    buffer
-        .writeln('#EXT-X-TARGETDURATION:${(avgSegmentDuration * 1.5).ceil()}');
+    buffer.writeln('#EXT-X-TARGETDURATION:${maxSegDuration.ceil()}');
     buffer.writeln('#EXT-X-MEDIA-SEQUENCE:0');
 
     for (int i = 0; i < segmentCount; i++) {
@@ -230,9 +242,7 @@ class MediaProxy {
           (i + 1 < segmentCount) ? segmentOffsets[i + 1] : fileSize;
       final length = nextOffset - offset;
 
-      // Estimate segment duration proportionally from byte size
-      final segDuration = (length / fileSize) * effectiveDuration;
-      buffer.writeln('#EXTINF:${segDuration.toStringAsFixed(3)},');
+      buffer.writeln('#EXTINF:${segmentDurations[i].toStringAsFixed(3)},');
       buffer.writeln('#EXT-X-BYTERANGE:$length@$offset');
       buffer.writeln(fileProxyUrl);
     }

@@ -23,8 +23,7 @@ Future<String> _fetchString(String url) async {
 /// Creates a temporary directory + file filled with [size] zero-bytes.
 /// Returns both objects; callers must delete the directory when done.
 Future<({Directory dir, File file})> _createTempFile(int size) async {
-  final dir =
-      await Directory.systemTemp.createTemp('media_proxy_hls_test_');
+  final dir = await Directory.systemTemp.createTemp('media_proxy_hls_test_');
   final file = File('${dir.path}/test_video.ts');
   await file.writeAsBytes(List.filled(size, 0));
   return (dir: dir, file: file);
@@ -72,8 +71,7 @@ Future<({Directory dir, File file})> _createTsFileWithKeyframes({
   required int totalPackets,
   required List<int> keyframeIndices,
 }) async {
-  final dir =
-      await Directory.systemTemp.createTemp('media_proxy_hls_kf_test_');
+  final dir = await Directory.systemTemp.createTemp('media_proxy_hls_kf_test_');
   final file = File('${dir.path}/test_keyframes.ts');
 
   final keyframeSet = keyframeIndices.toSet();
@@ -356,7 +354,8 @@ void main() {
         }
       });
 
-      test('falls back to wrapInHlsPlaylist when file does not exist', () async {
+      test('falls back to wrapInHlsPlaylist when file does not exist',
+          () async {
         final missingPath = '/nonexistent/path/file.ts';
         final fakeFileProxyUrl = '${proxy.baseUrl}/file/fakefile';
         final playlistUrl =

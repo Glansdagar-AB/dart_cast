@@ -123,8 +123,7 @@ class TsKeyframeScanner {
     // Deduplicate (a packet might match both methods)
     final unique = offsets.toSet().toList()..sort();
 
-    CastLogger.debug(
-        'TsKeyframeScanner: found ${unique.length} keyframes in '
+    CastLogger.debug('TsKeyframeScanner: found ${unique.length} keyframes in '
         '${(fileLength / 1024 / 1024).toStringAsFixed(1)}MB file');
 
     return unique;

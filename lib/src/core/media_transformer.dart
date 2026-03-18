@@ -64,8 +64,7 @@ class DefaultMediaTransformer implements MediaTransformer {
   const DefaultMediaTransformer({this.wrapRemoteTs = false});
 
   @override
-  Future<TransformedMedia> transform(
-      CastMedia media, MediaProxy proxy) async {
+  Future<TransformedMedia> transform(CastMedia media, MediaProxy proxy) async {
     // Register media with proxy
     var proxyUrl = media.isLocalFile
         ? proxy.registerFile(media.url)

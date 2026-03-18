@@ -375,7 +375,7 @@ class MediaProxy {
     try {
       final path = request.uri.path;
       final rangeHeader = request.headers.value('Range');
-      CastLogger.debug(
+      CastLogger.info(
           'MediaProxy: ${request.method} $path${rangeHeader != null ? ' Range: $rangeHeader' : ''}');
 
       // Route: /ts-stream/<token> — HLS-to-MPEG-TS streaming
@@ -428,9 +428,10 @@ class MediaProxy {
       return;
     }
 
-    CastLogger.debug('MediaProxy: serving synthetic content token=$token '
+    CastLogger.info('MediaProxy: serving synthetic content token=$token '
         'contentType=${synthetic.contentType} '
         'size=${synthetic.content.length} chars');
+    CastLogger.info('MediaProxy: synthetic content:\n${synthetic.content}');
 
     final encoded = utf8.encode(synthetic.content);
     _addCorsHeaders(request.response);

@@ -41,7 +41,8 @@ class AirPlaySession extends CastSession {
   /// Creates an [AirPlaySession] for the given AirPlay [device].
   ///
   /// An optional [mediaTransformer] can customize media preparation.
-  AirPlaySession(super.device, {this.credentials, MediaTransformer? mediaTransformer})
+  AirPlaySession(super.device,
+      {this.credentials, MediaTransformer? mediaTransformer})
       : _mediaTransformer = mediaTransformer ?? const DefaultMediaTransformer();
 
   /// The underlying AirPlay HTTP client (available after [connect]).

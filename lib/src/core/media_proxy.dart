@@ -396,6 +396,15 @@ class MediaProxy {
       CastLogger.info(
           'MediaProxy: ${request.method} $path${rangeHeader != null ? ' Range: $rangeHeader' : ''}');
 
+      // Handle CORS preflight (OPTIONS) requests — Chromecast's HLS player
+      // sends these before fetching segments from a different origin/path.
+      if (request.method == 'OPTIONS') {
+        _addCorsHeaders(request.response);
+        request.response.statusCode = HttpStatus.noContent;
+        await request.response.close();
+        return;
+      }
+
       // Route: /ts-stream/<token> — HLS-to-MPEG-TS streaming
       if (path.startsWith('/ts-stream/')) {
         final token = path.substring('/ts-stream/'.length);
@@ -779,7 +788,9 @@ class MediaProxy {
 
   void _addCorsHeaders(HttpResponse response) {
     response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Headers', 'Range');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers',
+        'Range, Content-Type, Accept, Origin');
     response.headers.set(
       'Access-Control-Expose-Headers',
       'Content-Range, Content-Length',

@@ -323,35 +323,43 @@ class ChromecastSession extends CastSession {
     _mediaStatusSubscription?.cancel();
     _mediaStatusSubscription = null;
 
-    // CLOSE to app transportId
-    if (_transportId != null) {
+    // Send CLOSE messages (fire-and-forget — don't wait for response)
+    try {
+      if (_transportId != null) {
+        _channel.sendMessage(
+          namespace: CastReceiverChannel.connectionNamespace,
+          sourceId: _senderId,
+          destinationId: _transportId!,
+          payload: CastReceiverChannel.buildClose(),
+        );
+      }
       _channel.sendMessage(
         namespace: CastReceiverChannel.connectionNamespace,
         sourceId: _senderId,
-        destinationId: _transportId!,
+        destinationId: _receiverId,
         payload: CastReceiverChannel.buildClose(),
       );
+    } catch (_) {
+      // Socket may already be broken
     }
 
-    // CLOSE to receiver-0
-    _channel.sendMessage(
-      namespace: CastReceiverChannel.connectionNamespace,
-      sourceId: _senderId,
-      destinationId: _receiverId,
-      payload: CastReceiverChannel.buildClose(),
-    );
-
-    await _messageSubscription?.cancel();
-    _messageSubscription = null;
-    await _channel.close();
-
+    // Transition state immediately so the UI responds
     _transportId = null;
     _sessionId = null;
     _mediaSessionId = null;
-
-    await _proxy.stop();
-
     stateMachine.transitionTo(SessionState.disconnected);
+
+    // Clean up socket and proxy with a timeout so we don't hang
+    try {
+      await Future.wait([
+        _messageSubscription?.cancel() ?? Future.value(),
+        _channel.close(),
+        _proxy.stop(),
+      ]).timeout(const Duration(seconds: 3), onTimeout: () => []);
+    } catch (_) {
+      // Best-effort cleanup
+    }
+    _messageSubscription = null;
   }
 
   @override

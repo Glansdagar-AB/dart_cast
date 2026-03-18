@@ -228,6 +228,9 @@ class ChromecastSession extends CastSession {
       subtitles: subtitles.isNotEmpty ? subtitles : null,
     );
 
+    CastLogger.info(
+        'Chromecast: LOAD contentId=$proxyUrl contentType=$contentType');
+
     final completer = Completer<void>();
     _waitForMediaStatus(completer);
 

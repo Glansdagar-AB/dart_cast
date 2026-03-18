@@ -21,11 +21,20 @@ class DlnaSoapBuilder {
   ///
   /// [protocolInfo] defaults to `http-get:*:video/mp4:*` but can be overridden
   /// to e.g. `http-get:*:video/mp2t:*` for MPEG-TS streams.
+  ///
+  /// [duration] is the optional media duration in `HH:MM:SS` format. When
+  /// provided, it is added as a `duration` attribute on the `<res>` element
+  /// so the TV can show the correct total duration from the start.
+  ///
+  /// [size] is the optional file size in bytes. When provided, it is added as
+  /// a `size` attribute on the `<res>` element.
   static String buildSetAVTransportURI(
     String url, {
     String? title,
     String? subtitleUrl,
     String protocolInfo = 'http-get:*:video/mp4:*',
+    String? duration,
+    int? size,
   }) {
     final escapedUrl = _escapeXml(url);
     final escapedTitle = _escapeXml(title ?? 'Media');
@@ -33,6 +42,10 @@ class DlnaSoapBuilder {
     final subtitleElement = subtitleUrl != null
         ? '<sec:CaptionInfoEx sec:type="srt">${_escapeXml(subtitleUrl)}</sec:CaptionInfoEx>'
         : '';
+
+    // Build optional <res> attributes for duration and size
+    final durationAttr = duration != null ? ' duration="$duration"' : '';
+    final sizeAttr = size != null ? ' size="$size"' : '';
 
     final didlLite = _escapeXml(
       '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"'
@@ -42,7 +55,7 @@ class DlnaSoapBuilder {
       '<item id="0" parentID="0" restricted="0">'
       '<dc:title>$escapedTitle</dc:title>'
       '<upnp:class>object.item.videoItem</upnp:class>'
-      '<res protocolInfo="$protocolInfo">$escapedUrl</res>'
+      '<res protocolInfo="$protocolInfo"$durationAttr$sizeAttr>$escapedUrl</res>'
       '$subtitleElement'
       '</item>'
       '</DIDL-Lite>',

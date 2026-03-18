@@ -1,4 +1,5 @@
 import 'dart:async' show Timer, unawaited;
+import 'dart:io';
 
 import '../../core/cast_device.dart';
 import '../../core/cast_media.dart';
@@ -6,6 +7,7 @@ import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
 import '../../core/media_transformer.dart';
 import '../../utils/logger.dart';
+import '../../utils/network_utils.dart';
 import 'dlna_controller.dart';
 import 'dlna_device.dart';
 
@@ -122,15 +124,19 @@ class DlnaSession extends CastSession {
         media.url,
         headers: media.httpHeaders,
       );
-      protocolInfo = 'http-get:*:video/mp2t:*';
+      protocolInfo =
+          'http-get:*:video/mp2t:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21500000000000000000000000000000';
     } else if (transformed.effectiveType == CastMediaType.hls) {
       // Transformer wrapped media in HLS → pipe as TS stream for DLNA
       proxyUrl = _proxy.registerHlsAsStream(proxyUrl);
-      protocolInfo = 'http-get:*:video/mp2t:*';
+      protocolInfo =
+          'http-get:*:video/mp2t:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21500000000000000000000000000000';
     } else if (transformed.effectiveType == CastMediaType.mpegTs) {
-      protocolInfo = 'http-get:*:video/mp2t:*';
+      protocolInfo =
+          'http-get:*:video/mp2t:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21500000000000000000000000000000';
     } else {
-      protocolInfo = 'http-get:*:video/mp4:*';
+      protocolInfo =
+          'http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21500000000000000000000000000000';
     }
 
     _currentProxyUrl = proxyUrl;
@@ -152,6 +158,14 @@ class DlnaSession extends CastSession {
       );
     }
 
+    // Build duration string for DIDL-Lite <res> element (HH:MM:SS)
+    final durationStr = media.duration != null
+        ? NetworkUtils.formatDuration(media.duration!)
+        : null;
+
+    // File size for local files — helps DLNA renderer know the content length
+    final fileSize = media.isLocalFile ? File(media.url).lengthSync() : null;
+
     // Send SetAVTransportURI with proxy URL (not original URL)
     await _sendAvTransport(
       'SetAVTransportURI',
@@ -160,6 +174,8 @@ class DlnaSession extends CastSession {
         title: media.title,
         subtitleUrl: subtitleProxyUrl,
         protocolInfo: protocolInfo,
+        duration: durationStr,
+        size: fileSize,
       ),
     );
 

@@ -124,6 +124,8 @@ class MediaProxy {
         '$mediaProxyUrl\n'
         '#EXT-X-ENDLIST\n';
 
+    CastLogger.debug('MediaProxy: HLS playlist content:\n$playlistContent');
+
     final token = _generateToken();
     _syntheticContent[token] = _SyntheticContent(
       content: playlistContent,
@@ -212,7 +214,8 @@ class MediaProxy {
     buffer.writeln('#EXTM3U');
     buffer.writeln('#EXT-X-VERSION:4');
     buffer.writeln('#EXT-X-PLAYLIST-TYPE:VOD');
-    buffer.writeln('#EXT-X-TARGETDURATION:${(avgSegmentDuration * 1.5).ceil()}');
+    buffer
+        .writeln('#EXT-X-TARGETDURATION:${(avgSegmentDuration * 1.5).ceil()}');
     buffer.writeln('#EXT-X-MEDIA-SEQUENCE:0');
 
     for (int i = 0; i < segmentCount; i++) {
@@ -229,9 +232,12 @@ class MediaProxy {
     }
     buffer.writeln('#EXT-X-ENDLIST');
 
+    final playlistContent = buffer.toString();
+    CastLogger.debug('MediaProxy: HLS playlist content:\n$playlistContent');
+
     final token = _generateToken();
     _syntheticContent[token] = _SyntheticContent(
-      content: buffer.toString(),
+      content: playlistContent,
       contentType: ContentType('application', 'vnd.apple.mpegurl'),
     );
 
@@ -421,6 +427,10 @@ class MediaProxy {
       await request.response.close();
       return;
     }
+
+    CastLogger.debug('MediaProxy: serving synthetic content token=$token '
+        'contentType=${synthetic.contentType} '
+        'size=${synthetic.content.length} chars');
 
     final encoded = utf8.encode(synthetic.content);
     _addCorsHeaders(request.response);
@@ -613,6 +623,7 @@ class MediaProxy {
     _addCorsHeaders(request.response);
     request.response.headers.contentType = contentType;
     request.response.headers.set('Accept-Ranges', 'bytes');
+    request.response.headers.set('transferMode.dlna.org', 'Streaming');
 
     // Handle Range requests
     final rangeHeader = request.headers.value('Range');
@@ -657,8 +668,7 @@ class MediaProxy {
     }
 
     // Full file
-    CastLogger.debug(
-        'MediaProxy: serving full file ($fileLength bytes)');
+    CastLogger.debug('MediaProxy: serving full file ($fileLength bytes)');
     request.response.headers.set('Content-Length', fileLength.toString());
     await file.openRead().pipe(request.response);
   }

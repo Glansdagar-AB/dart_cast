@@ -24,7 +24,8 @@ class TransformedMedia {
 /// and wrapping content as needed for the target device.
 ///
 /// Built-in implementations:
-/// - [DefaultMediaTransformer] — registers with proxy, wraps local TS in HLS
+/// - [DefaultMediaTransformer] — registers with proxy, serves local files directly
+/// - [TsHlsMediaTransformer] — extends Default, wraps local TS files in HLS
 ///
 /// To add custom logic (e.g., transcoding, custom segmentation), implement
 /// this interface and pass it when creating a session.
@@ -48,16 +49,17 @@ abstract class MediaTransformer {
 /// Default transformer that handles common casting scenarios.
 ///
 /// - Registers remote URLs and local files with the proxy
-/// - Wraps local MPEG-TS files in HLS (keyframe-aligned byte-range segments
-///   when [CastMedia.useChunkedHls] is true, single-segment otherwise)
+/// - Wraps remote MPEG-TS in HLS when [wrapRemoteTs] is `true`
+/// - Serves local files directly (all types) via proxy
 /// - Passes through other formats unchanged
 ///
-/// This covers Chromecast (needs HLS for TS), DLNA (protocol session wraps
-/// HLS→stream separately), and AirPlay.
+/// For local MPEG-TS files that need HLS wrapping (e.g., Chromecast),
+/// use [TsHlsMediaTransformer] instead, which extends this class and
+/// adds local-TS-to-HLS conversion with keyframe-aligned segments.
 class DefaultMediaTransformer implements MediaTransformer {
   /// Whether to wrap remote MPEG-TS URLs in HLS.
   ///
-  /// Default `false` — only local TS files are wrapped.
+  /// Default `false` — remote TS is passed through unchanged.
   /// Set to `true` for devices like Chromecast that can't play raw TS at all.
   final bool wrapRemoteTs;
 
@@ -66,31 +68,27 @@ class DefaultMediaTransformer implements MediaTransformer {
   @override
   Future<TransformedMedia> transform(CastMedia media, MediaProxy proxy) async {
     // Register media with proxy
-    var proxyUrl = media.isLocalFile
+    final proxyUrl = media.isLocalFile
         ? proxy.registerFile(media.url)
         : proxy.registerMedia(media.url, headers: media.httpHeaders);
 
     var effectiveType = media.type;
 
-    // Wrap MPEG-TS in HLS for devices that need it (like Chromecast).
-    // Only wraps when wrapRemoteTs is true (Chromecast) or for local files
-    // when useChunkedHls is requested. DLNA serves local TS files directly
-    // with Content-Length so the TV knows the total duration.
-    if (media.type == CastMediaType.mpegTs && wrapRemoteTs) {
+    // Wrap remote MPEG-TS in HLS for devices that need it (like Chromecast).
+    // Local files are served directly — use TsHlsMediaTransformer for
+    // local TS→HLS wrapping.
+    if (media.type == CastMediaType.mpegTs &&
+        wrapRemoteTs &&
+        !media.isLocalFile) {
       final durationSecs = media.duration?.inMilliseconds != null
           ? media.duration!.inMilliseconds / 1000.0
           : null;
 
-      if (media.useChunkedHls && media.isLocalFile) {
-        proxyUrl = proxy.wrapLocalFileAsHls(
-          proxyUrl,
-          media.url,
-          totalDuration: durationSecs,
-        );
-      } else {
-        proxyUrl = proxy.wrapInHlsPlaylist(proxyUrl, duration: durationSecs);
-      }
-      effectiveType = CastMediaType.hls;
+      final hlsUrl = proxy.wrapInHlsPlaylist(proxyUrl, duration: durationSecs);
+      return TransformedMedia(
+        proxyUrl: hlsUrl,
+        effectiveType: CastMediaType.hls,
+      );
     }
 
     return TransformedMedia(proxyUrl: proxyUrl, effectiveType: effectiveType);

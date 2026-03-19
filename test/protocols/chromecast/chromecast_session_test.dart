@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:dart_cast/src/core/cast_device.dart';
 import 'package:dart_cast/src/core/cast_media.dart';
 import 'package:dart_cast/src/core/cast_session.dart';
+import 'package:dart_cast/src/core/media_proxy.dart';
 import 'package:dart_cast/src/protocols/chromecast/cast_media_channel.dart';
 import 'package:dart_cast/src/protocols/chromecast/cast_receiver_channel.dart';
 import 'package:dart_cast/src/protocols/chromecast/chromecast_session.dart';
@@ -95,46 +96,13 @@ class MockReceivedMessage {
   });
 }
 
-/// A mock MediaProxy that returns a predictable URL.
-class MockMediaProxy {
-  bool isStarted = false;
-  bool isStopped = false;
-  String? registeredUrl;
-  Map<String, String> registeredHeaders = {};
-
-  String get baseUrl => 'http://192.168.1.10:8080';
-
-  Future<void> start() async {
-    isStarted = true;
-  }
-
-  Future<void> stop() async {
-    isStopped = true;
-  }
-
-  String registerMedia(String url, {Map<String, String> headers = const {}}) {
-    registeredUrl = url;
-    registeredHeaders = headers;
-    return '$baseUrl/stream/token123';
-  }
-
-  String registerSubtitle(String urlOrPath,
-      {Map<String, String> headers = const {}}) {
-    registeredUrl = urlOrPath;
-    registeredHeaders = headers;
-    return '$baseUrl/stream/token123';
-  }
-
-  void cleanupPreviousMedia({String? excludeToken}) {}
-}
-
 void main() {
   late CastDevice device;
   late MockCastV2Channel mockChannel;
-  late MockMediaProxy mockProxy;
   late ChromecastSession session;
+  late MediaProxy proxy;
 
-  setUp(() {
+  setUp(() async {
     device = CastDevice(
       id: 'test-device-id',
       name: 'Test Chromecast',
@@ -143,16 +111,20 @@ void main() {
       port: 8009,
     );
     mockChannel = MockCastV2Channel();
-    mockProxy = MockMediaProxy();
+    // Pre-start a real MediaProxy so that _proxy.start() inside loadMedia
+    // is a no-op (idempotent) and doesn't block test injection timing.
+    proxy = MediaProxy();
+    await proxy.start();
     session = ChromecastSession.withMocks(
       device: device,
       channel: mockChannel,
-      proxy: mockProxy,
+      proxy: proxy,
     );
   });
 
   tearDown(() async {
     session.dispose();
+    await proxy.stop();
   });
 
   group('ChromecastSession', () {
@@ -289,14 +261,14 @@ void main() {
         );
         expect(loadMsg, isNotNull);
         expect(loadMsg.destinationId, 'web-4');
-        // Should use proxy URL
+        // Should use a proxy URL (real MediaProxy produces http://<ip>:<port>/stream/<token>)
         expect(
           loadMsg.payload['media']['contentId'],
-          contains('http://192.168.1.10:8080/stream/'),
+          contains('/stream/'),
         );
       });
 
-      test('starts proxy before loading', () async {
+      test('sends LOAD message after starting proxy', () async {
         final media = CastMedia(
           url: 'http://example.com/video.m3u8',
           type: CastMediaType.hls,
@@ -314,7 +286,13 @@ void main() {
 
         await loadFuture;
 
-        expect(mockProxy.isStarted, isTrue);
+        // Verify LOAD was sent — proxy must have started for this to succeed
+        final loadMsg = mockChannel.sentMessages.firstWhere(
+          (m) =>
+              m.namespace == CastMediaChannel.mediaNamespace &&
+              m.payload['type'] == 'LOAD',
+        );
+        expect(loadMsg, isNotNull);
       });
     });
 

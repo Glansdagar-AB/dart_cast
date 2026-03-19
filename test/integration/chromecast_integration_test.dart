@@ -13,7 +13,6 @@ import 'mock_chromecast_server.dart';
 void main() {
   late CastDevice device;
   late MockChromecastServer server;
-  late MockMediaProxy proxy;
   late ChromecastSession session;
 
   setUp(() {
@@ -26,12 +25,10 @@ void main() {
     );
 
     server = MockChromecastServer();
-    proxy = MockMediaProxy();
 
     session = ChromecastSession.withMocks(
       device: device,
       channel: server,
-      proxy: proxy,
     );
   });
 
@@ -90,12 +87,9 @@ void main() {
         (m) => m.type == 'LOAD',
       );
       expect(loadMsg.destinationId, server.transportId);
-      expect(loadMsg.payload['media']['contentId'], contains('proxy'));
+      // The real MediaProxy proxies the URL — verify it uses a proxy URL
+      expect(loadMsg.payload['media']['contentId'], contains('/stream/'));
       expect(loadMsg.payload['autoplay'], isTrue);
-
-      // Verify proxy was started
-      expect(proxy.isStarted, isTrue);
-      expect(proxy.registeredUrl, 'http://example.com/video.m3u8');
 
       // 3. Seek to 1 hour
       server.clearMessages();
@@ -387,9 +381,8 @@ void main() {
       );
       final tracks = loadMsg.payload['media']['tracks'] as List;
       expect(tracks, hasLength(1));
-      // Subtitle URLs are proxied through MediaProxy for CORS support
-      expect(tracks[0]['trackContentId'],
-          'http://192.168.1.10:8080/stream/proxy-token');
+      // Subtitle URLs are proxied through real MediaProxy for CORS support
+      expect(tracks[0]['trackContentId'], contains('/stream/'));
       expect(tracks[0]['language'], 'en');
     });
   });

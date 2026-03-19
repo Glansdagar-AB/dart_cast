@@ -49,6 +49,9 @@ class DiscoveryManager {
         ? _providers
         : _providers.where((p) => protocols.contains(p.protocol)).toList();
 
+    CastLogger.info('Discovery: starting with ${matchingProviders.length} provider(s), '
+        'timeout=${timeout.inSeconds}s');
+
     for (var i = 0; i < matchingProviders.length; i++) {
       final provider = matchingProviders[i];
       final providerIndex = i;
@@ -65,7 +68,8 @@ class DiscoveryManager {
           _checkCompletion(matchingProviders.length);
         },
         onError: (Object error) {
-          // Ignore individual provider errors; keep other providers running
+          CastLogger.warning(
+              'Discovery: provider ${provider.protocol} error: $error');
         },
       );
       _subscriptions.add(subscription);
@@ -138,6 +142,9 @@ class DiscoveryManager {
 
   /// Stops all active discovery scans.
   void stopDiscovery() {
+    if (_activeProviders.isNotEmpty) {
+      CastLogger.info('Discovery: stopping');
+    }
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
 

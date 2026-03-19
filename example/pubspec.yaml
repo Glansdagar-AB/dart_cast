@@ -11,6 +11,7 @@ dependencies:
     sdk: flutter
   dart_cast:
     path: ../
+  path: ^1.8.0
 
 dev_dependencies:
   flutter_test:

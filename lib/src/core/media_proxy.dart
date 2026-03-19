@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'hls_parser.dart';
 import 'hls_stream_proxy.dart';
 import 'subtitle_converter.dart';
+import '../utils/logger.dart';
 import '../utils/network_utils.dart';
+import 'ts_keyframe_scanner.dart';
 
 /// Route type for proxy routing.
 enum _RouteType { remote, localFile, hlsStream }
@@ -44,8 +47,21 @@ class MediaProxy {
   final Map<String, _SyntheticContent> _syntheticContent = {};
   final Random _random = Random.secure();
 
+  /// Cached PAT+PMT packets from the TS file header.
+  /// Prepended to every virtual HLS segment so the Chromecast's demuxer
+  /// can initialize independently for each segment.
+  Uint8List? _tsPatPmt;
+
   /// The base URL of the running proxy server, or null if not started.
   String? get baseUrl => _baseUrl;
+
+  /// Sets the cached PAT+PMT packets to prepend to virtual HLS segments.
+  ///
+  /// Called by [TsHlsMediaTransformer] after scanning the TS file header,
+  /// before calling [wrapLocalFileAsHls].
+  void setPatPmt(Uint8List patPmt) {
+    _tsPatPmt = patPmt;
+  }
 
   /// Starts the proxy server bound to the local WiFi IP.
   ///
@@ -65,10 +81,14 @@ class MediaProxy {
     _baseUrl = 'http://${ip ?? bindAddress}:$actualPort';
 
     _server!.listen(_handleRequest);
+    CastLogger.info('MediaProxy: started on $_baseUrl');
   }
 
   /// Stops the proxy server and cleans up resources.
   Future<void> stop() async {
+    if (_server != null) {
+      CastLogger.info('MediaProxy: stopping');
+    }
     await _server?.close(force: true);
     _server = null;
     _httpClient?.close(force: true);
@@ -97,11 +117,232 @@ class MediaProxy {
   /// Returns a proxy URL that can be given to a cast device.
   String registerFile(String filePath) {
     final token = _generateToken();
-    _routes[token] = _ProxyRoute(
+    // Add file extension to the proxy URL so HLS players can detect format
+    final ext = filePath.toLowerCase().endsWith('.ts')
+        ? '.ts'
+        : filePath.toLowerCase().endsWith('.mp4')
+            ? '.mp4'
+            : '';
+    _routes['$token$ext'] = _ProxyRoute(
       type: _RouteType.localFile,
       url: filePath,
     );
-    return '$_baseUrl/file/$token';
+    return '$_baseUrl/file/$token$ext';
+  }
+
+  /// Wraps a media URL in a single-segment HLS playlist.
+  ///
+  /// [duration] is the known duration in seconds. When provided, the playlist
+  /// reports the correct total duration so the cast device shows accurate
+  /// progress. When null, falls back to a large placeholder value.
+  ///
+  /// Returns a proxy URL pointing to the generated m3u8 playlist.
+  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration}) {
+    final dur = duration ?? 99999.0;
+    final playlistContent = '#EXTM3U\n'
+        '#EXT-X-VERSION:3\n'
+        '#EXT-X-PLAYLIST-TYPE:VOD\n'
+        '#EXT-X-TARGETDURATION:${dur.ceil()}\n'
+        '#EXT-X-MEDIA-SEQUENCE:0\n'
+        '#EXTINF:${dur.toStringAsFixed(3)},\n'
+        '$mediaProxyUrl\n'
+        '#EXT-X-ENDLIST\n';
+
+    CastLogger.debug('MediaProxy: HLS playlist content:\n$playlistContent');
+
+    final token = _generateToken();
+    _syntheticContent[token] = _SyntheticContent(
+      content: playlistContent,
+      contentType: ContentType('application', 'x-mpegURL'),
+    );
+    return '$_baseUrl/synthetic/$token';
+  }
+
+  /// Creates a fake HLS playlist that splits a local file into virtual
+  /// byte-range segments of approximately [segmentSeconds] seconds each.
+  ///
+  /// The segments are served via `#EXT-X-BYTERANGE` so the proxy serves
+  /// different byte ranges of the same file. This approach:
+  /// - Reports correct playback duration to the TV
+  /// - Reduces memory usage (TV loads one segment at a time)
+  /// - Enables seeking to specific positions
+  ///
+  /// [fileProxyUrl] should be a proxy URL from [registerFile].
+  /// [filePath] is the local file path (used to determine file size).
+  /// [totalDuration] is the known duration in seconds (if available).
+  ///   When provided, segment durations are calculated precisely.
+  ///   When null, duration is estimated from file size and [estimatedBitrateMbps].
+  /// Returns a proxy URL pointing to the generated m3u8 playlist.
+  String wrapLocalFileAsHls(
+    String fileProxyUrl,
+    String filePath, {
+    double segmentSeconds = 20.0,
+    double? totalDuration,
+    double estimatedBitrateMbps = 5.0,
+  }) {
+    final file = File(filePath);
+    if (!file.existsSync()) return wrapInHlsPlaylist(fileProxyUrl);
+
+    final fileSize = file.lengthSync();
+
+    // Only byte-range split MPEG-TS files. MP4 files cannot be split at
+    // arbitrary offsets — they need fMP4 with initialization segments.
+    final isMpegTs = filePath.toLowerCase().endsWith('.ts') ||
+        filePath.toLowerCase().endsWith('.mts') ||
+        filePath.toLowerCase().endsWith('.m2ts');
+    if (!isMpegTs) {
+      CastLogger.info('MediaProxy: non-TS file, using single-segment HLS');
+      return wrapInHlsPlaylist(fileProxyUrl);
+    }
+
+    // Try to get keyframes with PTS values for accurate segment durations.
+    // PTS-based durations prevent subtitle desync caused by VBR content
+    // where byte proportions don't match time proportions.
+    final keyframesWithPts = TsKeyframeScanner.findKeyframeOffsetsWithPts(file);
+    final bool usePtsDurations = keyframesWithPts != null && keyframesWithPts.length > 1;
+
+    // Scan for keyframe positions — segments MUST start at keyframes
+    // for the cast device to decode them independently.
+    final keyframeOffsets = usePtsDurations
+        ? keyframesWithPts.map((kf) => kf.offset).toList()
+        : TsKeyframeScanner.findKeyframeOffsets(file);
+
+    // If only 1 keyframe (or scan failed), fall back to single segment
+    if (keyframeOffsets.length <= 1) {
+      CastLogger.info('MediaProxy: only ${keyframeOffsets.length} keyframe(s), '
+          'using single-segment HLS');
+      return wrapInHlsPlaylist(fileProxyUrl, duration: totalDuration);
+    }
+
+    final double effectiveDuration;
+    if (totalDuration != null && totalDuration > 0) {
+      effectiveDuration = totalDuration;
+    } else {
+      final estimatedBytesPerSecond =
+          (estimatedBitrateMbps * 1000000 / 8).round();
+      effectiveDuration = fileSize / estimatedBytesPerSecond;
+    }
+
+    // Group keyframes into segments of ~segmentSeconds each.
+    // Each segment starts at a keyframe and ends just before the next
+    // segment's first keyframe.
+    final segmentOffsets = <int>[0]; // First segment always at 0
+    final segmentPtsValues = <int?>[]; // PTS at each segment start (if available)
+
+    if (usePtsDurations) {
+      segmentPtsValues.add(keyframesWithPts.first.pts);
+      // Build a map from offset to PTS for quick lookup
+      final offsetToPts = <int, int>{};
+      for (final kf in keyframesWithPts) {
+        offsetToPts[kf.offset] = kf.pts;
+      }
+
+      // Use PTS-based target duration for grouping
+      final targetPtsDelta = (segmentSeconds * 90000).round();
+      int lastSegmentPts = keyframesWithPts.first.pts;
+      for (int i = 1; i < keyframesWithPts.length; i++) {
+        final ptsDelta = keyframesWithPts[i].pts - lastSegmentPts;
+        if (ptsDelta >= targetPtsDelta) {
+          segmentOffsets.add(keyframesWithPts[i].offset);
+          segmentPtsValues.add(keyframesWithPts[i].pts);
+          lastSegmentPts = keyframesWithPts[i].pts;
+        }
+      }
+    } else {
+      final bytesPerSecond = fileSize / effectiveDuration;
+      final targetBytesPerSegment = (segmentSeconds * bytesPerSecond).round();
+
+      int lastSegmentStart = 0;
+      for (int i = 1; i < keyframeOffsets.length; i++) {
+        final bytesSinceLastSegment = keyframeOffsets[i] - lastSegmentStart;
+        if (bytesSinceLastSegment >= targetBytesPerSegment) {
+          segmentOffsets.add(keyframeOffsets[i]);
+          lastSegmentStart = keyframeOffsets[i];
+        }
+      }
+    }
+
+    final segmentCount = segmentOffsets.length;
+    final avgSegmentDuration = effectiveDuration / segmentCount;
+
+    // Pre-compute all segment durations to find the max for TARGETDURATION.
+    // RFC 8216: each segment's rounded EXTINF MUST be ≤ TARGETDURATION.
+    final segmentDurations = <double>[];
+    if (usePtsDurations && segmentPtsValues.length == segmentCount) {
+      // Use actual PTS differences for accurate durations
+      for (int i = 0; i < segmentCount; i++) {
+        if (i + 1 < segmentCount) {
+          final ptsDelta = segmentPtsValues[i + 1]! - segmentPtsValues[i]!;
+          segmentDurations.add(ptsDelta / 90000.0);
+        } else {
+          // Last segment: use totalDuration or estimate from PTS
+          if (totalDuration != null && totalDuration > 0) {
+            // Total elapsed PTS so far
+            final elapsedPts =
+                (segmentPtsValues[i]! - segmentPtsValues[0]!) / 90000.0;
+            segmentDurations.add(totalDuration - elapsedPts);
+          } else {
+            // Estimate last segment from byte proportion as fallback
+            final offset = segmentOffsets[i];
+            final length = fileSize - offset;
+            segmentDurations.add((length / fileSize) * effectiveDuration);
+          }
+        }
+      }
+    } else {
+      // Fallback: byte-proportion estimate
+      for (int i = 0; i < segmentCount; i++) {
+        final offset = segmentOffsets[i];
+        final nextOffset =
+            (i + 1 < segmentCount) ? segmentOffsets[i + 1] : fileSize;
+        final length = nextOffset - offset;
+        segmentDurations.add((length / fileSize) * effectiveDuration);
+      }
+    }
+    final maxSegDuration = segmentDurations.reduce(
+        (a, b) => a > b ? a : b);
+
+    // Use virtual segment URLs instead of EXT-X-BYTERANGE — the Chromecast
+    // Default Media Receiver's MPL does not support byte-range segments.
+    // Each segment URL includes start/end query params; the proxy serves
+    // the corresponding byte range as a complete HTTP response.
+    final buffer = StringBuffer();
+    buffer.writeln('#EXTM3U');
+    buffer.writeln('#EXT-X-VERSION:3');
+    buffer.writeln('#EXT-X-PLAYLIST-TYPE:VOD');
+    buffer.writeln('#EXT-X-TARGETDURATION:${maxSegDuration.ceil()}');
+    buffer.writeln('#EXT-X-MEDIA-SEQUENCE:0');
+
+    for (int i = 0; i < segmentCount; i++) {
+      final offset = segmentOffsets[i];
+      final nextOffset =
+          (i + 1 < segmentCount) ? segmentOffsets[i + 1] : fileSize;
+
+      buffer.writeln('#EXTINF:${segmentDurations[i].toStringAsFixed(3)},');
+      buffer.writeln('$fileProxyUrl?start=$offset&end=${nextOffset - 1}');
+    }
+    buffer.writeln('#EXT-X-ENDLIST');
+
+    final playlistContent = buffer.toString();
+    CastLogger.debug('MediaProxy: HLS playlist content:\n$playlistContent');
+
+    final token = _generateToken();
+    _syntheticContent[token] = _SyntheticContent(
+      content: playlistContent,
+      contentType: ContentType('application', 'x-mpegURL'),
+    );
+
+    CastLogger.info(
+        'MediaProxy: created HLS playlist with $segmentCount keyframe-aligned segments '
+        '(~${avgSegmentDuration.toStringAsFixed(1)}s avg, '
+        '~${effectiveDuration.toStringAsFixed(0)}s total, '
+        '${(fileSize / 1024 / 1024).toStringAsFixed(1)}MB, '
+        '${keyframeOffsets.length} keyframes found'
+        '${usePtsDurations ? ", PTS-based durations" : ", byte-estimated durations"}'
+        '${totalDuration != null ? ", known duration" : ", estimated"}'
+        ')');
+
+    return '$_baseUrl/synthetic/$token';
   }
 
   /// Registers a subtitle URL — handles both remote URLs and local file:// paths.
@@ -161,7 +402,7 @@ class MediaProxy {
     final token = _generateToken();
     _syntheticContent[token] = _SyntheticContent(
       content: playlistContent,
-      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+      contentType: ContentType('application', 'x-mpegURL'),
     );
     return '$_baseUrl/synthetic/$token';
   }
@@ -197,23 +438,47 @@ class MediaProxy {
     final token = _generateToken();
     _syntheticContent[token] = _SyntheticContent(
       content: buffer.toString(),
-      contentType: ContentType('application', 'vnd.apple.mpegurl'),
+      contentType: ContentType('application', 'x-mpegURL'),
     );
     return '$_baseUrl/synthetic/$token';
   }
 
-  /// Removes all previously registered routes, optionally keeping [excludeToken].
+  /// Removes all previously registered routes and synthetic content,
+  /// optionally keeping [excludeToken] and anything it depends on.
+  ///
+  /// The token can be either a route key or a synthetic content key.
+  /// If it's synthetic content (e.g. an HLS playlist), any /file/ routes
+  /// referenced in that content are also preserved so segment URLs keep working.
   void cleanupPreviousMedia({String? excludeToken}) {
     if (excludeToken != null) {
-      final kept = _routes[excludeToken];
+      final keptRoute = _routes[excludeToken];
+      final keptSynthetic = _syntheticContent[excludeToken];
+
+      // If the excluded token is synthetic content (e.g. HLS playlist),
+      // preserve any file routes it references as segment URLs.
+      final referencedRoutes = <String, _ProxyRoute>{};
+      if (keptSynthetic != null) {
+        for (final entry in _routes.entries) {
+          if (keptSynthetic.content.contains('/file/${entry.key}')) {
+            referencedRoutes[entry.key] = entry.value;
+          }
+        }
+      }
+
       _routes.clear();
-      if (kept != null) {
-        _routes[excludeToken] = kept;
+      if (keptRoute != null) {
+        _routes[excludeToken] = keptRoute;
+      }
+      _routes.addAll(referencedRoutes);
+
+      _syntheticContent.clear();
+      if (keptSynthetic != null) {
+        _syntheticContent[excludeToken] = keptSynthetic;
       }
     } else {
       _routes.clear();
+      _syntheticContent.clear();
     }
-    _syntheticContent.clear();
   }
 
   String _generateToken() {
@@ -225,6 +490,18 @@ class MediaProxy {
   Future<void> _handleRequest(HttpRequest request) async {
     try {
       final path = request.uri.path;
+      final rangeHeader = request.headers.value('Range');
+      CastLogger.debug(
+          'MediaProxy: ${request.method} $path${rangeHeader != null ? ' Range: $rangeHeader' : ''}');
+
+      // Handle CORS preflight (OPTIONS) requests — Chromecast's HLS player
+      // sends these before fetching segments from a different origin/path.
+      if (request.method == 'OPTIONS') {
+        _addCorsHeaders(request.response);
+        request.response.statusCode = HttpStatus.noContent;
+        await request.response.close();
+        return;
+      }
 
       // Route: /ts-stream/<token> — HLS-to-MPEG-TS streaming
       if (path.startsWith('/ts-stream/')) {
@@ -256,7 +533,8 @@ class MediaProxy {
 
       request.response.statusCode = HttpStatus.notFound;
       await request.response.close();
-    } catch (_) {
+    } catch (e) {
+      CastLogger.error('MediaProxy: request handler error: $e');
       try {
         request.response.statusCode = HttpStatus.internalServerError;
         await request.response.close();
@@ -275,6 +553,11 @@ class MediaProxy {
       await request.response.close();
       return;
     }
+
+    CastLogger.debug('MediaProxy: serving synthetic content token=$token '
+        'contentType=${synthetic.contentType} '
+        'size=${synthetic.content.length} chars');
+    CastLogger.debug('MediaProxy: synthetic content:\n${synthetic.content}');
 
     final encoded = utf8.encode(synthetic.content);
     _addCorsHeaders(request.response);
@@ -364,26 +647,39 @@ class MediaProxy {
       request.response.headers.set('Content-Length', contentLength);
     }
 
-    // Auto-convert SRT subtitle responses to VTT
+    // Auto-convert SRT subtitle responses to VTT and strip X-TIMESTAMP-MAP
     if (_isSubtitleResponse(targetUrl, upstreamContentType) &&
         upstreamResponse.statusCode == HttpStatus.ok) {
       final body = await upstreamResponse
           .fold<List<int>>(<int>[], (prev, chunk) => prev..addAll(chunk));
-      final content = utf8.decode(body);
+      var content = utf8.decode(body);
+
+      CastLogger.debug(
+          'MediaProxy: subtitle response (${content.length} chars, '
+          'isSrt=${SubtitleConverter.isSrt(content)}, '
+          'hasTimestampMap=${content.contains('X-TIMESTAMP-MAP')})');
+      CastLogger.debug(
+          'MediaProxy: subtitle content (first 500 chars):\n'
+          '${content.substring(0, content.length > 500 ? 500 : content.length)}');
 
       if (SubtitleConverter.isSrt(content)) {
-        final vttContent = SubtitleConverter.srtToVtt(content);
-        final encoded = utf8.encode(vttContent);
-        request.response.headers.contentType = ContentType('text', 'vtt');
-        request.response.headers
-            .set('Content-Length', encoded.length.toString());
-        request.response.add(encoded);
-        await request.response.close();
-        return;
+        content = SubtitleConverter.srtToVtt(content);
+        CastLogger.debug('MediaProxy: converted SRT → VTT');
       }
 
-      // Not SRT — send as-is
-      request.response.add(body);
+      // Strip X-TIMESTAMP-MAP from VTT — this header is for HLS subtitle
+      // segments and causes cast devices to apply an incorrect PTS offset
+      // when the VTT is served as a sidecar track.
+      if (content.contains('X-TIMESTAMP-MAP')) {
+        CastLogger.debug('MediaProxy: stripping X-TIMESTAMP-MAP from VTT');
+        content = SubtitleConverter.stripTimestampMap(content);
+      }
+
+      final encoded = utf8.encode(content);
+      request.response.headers.contentType = ContentType('text', 'vtt');
+      request.response.headers
+          .set('Content-Length', encoded.length.toString());
+      request.response.add(encoded);
       await request.response.close();
       return;
     }
@@ -404,10 +700,13 @@ class MediaProxy {
           token,
         );
 
+        CastLogger.info('MediaProxy: rewritten HLS playlist (${rewritten.length} chars)');
+        CastLogger.debug('MediaProxy: rewritten HLS playlist:\n$rewritten');
+
         // Override content type and length for rewritten playlist
         final encoded = utf8.encode(rewritten);
         request.response.headers.contentType =
-            ContentType('application', 'vnd.apple.mpegurl');
+            ContentType('application', 'x-mpegURL');
         request.response.headers.set(
           'Content-Length',
           encoded.length.toString(),
@@ -444,12 +743,35 @@ class MediaProxy {
       return;
     }
 
-    // Auto-convert SRT subtitle files to VTT
+    // Auto-convert SRT subtitle files to VTT and strip X-TIMESTAMP-MAP
     if (_isSubtitleFile(route.url)) {
-      final content = await file.readAsString();
+      var content = await file.readAsString();
+
+      CastLogger.debug(
+          'MediaProxy: local subtitle file (${content.length} chars, '
+          'isSrt=${SubtitleConverter.isSrt(content)}, '
+          'hasTimestampMap=${content.contains('X-TIMESTAMP-MAP')})');
+
+      bool converted = false;
       if (SubtitleConverter.isSrt(content)) {
-        final vttContent = SubtitleConverter.srtToVtt(content);
-        final encoded = utf8.encode(vttContent);
+        content = SubtitleConverter.srtToVtt(content);
+        CastLogger.debug('MediaProxy: converted local SRT → VTT');
+        converted = true;
+      }
+
+      if (content.contains('X-TIMESTAMP-MAP')) {
+        CastLogger.debug(
+            'MediaProxy: stripping existing X-TIMESTAMP-MAP from local VTT');
+        content = SubtitleConverter.stripTimestampMap(content);
+        converted = true;
+      }
+
+      // Note: X-TIMESTAMP-MAP injection was removed — Chromecast's Shaka Player
+      // doesn't support it in sidecar VTT tracks (only HLS subtitle segments).
+      // PTS-based EXTINF durations handle timeline alignment instead.
+
+      if (converted || content.trimLeft().startsWith('WEBVTT')) {
+        final encoded = utf8.encode(content);
         _addCorsHeaders(request.response);
         request.response.statusCode = HttpStatus.ok;
         request.response.headers.contentType = ContentType('text', 'vtt');
@@ -467,6 +789,50 @@ class MediaProxy {
     _addCorsHeaders(request.response);
     request.response.headers.contentType = contentType;
     request.response.headers.set('Accept-Ranges', 'bytes');
+    request.response.headers.set('transferMode.dlna.org', 'Streaming');
+
+    // Handle virtual segment requests (?start=X&end=Y) from HLS playlists.
+    // These serve a byte range as a normal 200 response (not 206), which is
+    // how HLS segment requests work — each segment is a complete resource.
+    //
+    // Each segment is prepended with cached PAT+PMT packets so the
+    // Chromecast's TS demuxer can initialize independently per segment.
+    final startParam = request.uri.queryParameters['start'];
+    final endParam = request.uri.queryParameters['end'];
+    if (startParam != null && endParam != null) {
+      final start = int.parse(startParam);
+      final end = int.parse(endParam);
+      final segmentLength = end - start + 1;
+
+      // Prepend PAT+PMT for segments that don't start at file offset 0
+      // (the first segment already contains the original PAT/PMT).
+      final patPmt = (start > 0) ? _tsPatPmt : null;
+      final patPmtLength = patPmt?.length ?? 0;
+      final totalLength = segmentLength + patPmtLength;
+
+      CastLogger.debug(
+          'MediaProxy: serving virtual segment bytes $start-$end '
+          '($segmentLength bytes${patPmtLength > 0 ? ' + ${patPmtLength}B PAT/PMT' : ''})');
+
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.set('Content-Length', totalLength.toString());
+
+      // Write PAT+PMT first so the demuxer knows the stream layout
+      if (patPmt != null) {
+        request.response.add(patPmt);
+      }
+
+      final raf = await file.open();
+      try {
+        await raf.setPosition(start);
+        final bytes = await raf.read(segmentLength);
+        request.response.add(bytes);
+      } finally {
+        await raf.close();
+      }
+      await request.response.close();
+      return;
+    }
 
     // Handle Range requests
     final rangeHeader = request.headers.value('Range');
@@ -490,24 +856,30 @@ class MediaProxy {
 
       final length = end - start + 1;
 
-      request.response.statusCode = HttpStatus.partialContent;
-      request.response.headers
-          .set('Content-Range', 'bytes $start-$end/$fileLength');
-      request.response.headers.set('Content-Length', length.toString());
-
-      final raf = await file.open();
-      try {
-        await raf.setPosition(start);
-        final bytes = await raf.read(length);
-        request.response.add(bytes);
-      } finally {
-        await raf.close();
+      // If the range covers the entire file, respond with 200 OK instead
+      // of 206 Partial Content. Some DLNA renderers reject 206 for the
+      // initial full-file request (Range: bytes=0-).
+      if (start == 0 && end == fileLength - 1) {
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.set('Content-Length', fileLength.toString());
+      } else {
+        request.response.statusCode = HttpStatus.partialContent;
+        request.response.headers
+            .set('Content-Range', 'bytes $start-$end/$fileLength');
+        request.response.headers.set('Content-Length', length.toString());
       }
-      await request.response.close();
+
+      CastLogger.debug(
+          'MediaProxy: serving bytes $start-$end/$fileLength (${length} bytes)');
+
+      // Stream the file range instead of reading it all into memory.
+      // For large files (400MB+), reading into memory causes timeouts.
+      await file.openRead(start, end + 1).pipe(request.response);
       return;
     }
 
     // Full file
+    CastLogger.debug('MediaProxy: serving full file ($fileLength bytes)');
     request.response.headers.set('Content-Length', fileLength.toString());
     await file.openRead().pipe(request.response);
   }
@@ -547,7 +919,7 @@ class MediaProxy {
   ContentType _contentTypeForPath(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.m3u8') || lower.endsWith('.m3u')) {
-      return ContentType('application', 'vnd.apple.mpegurl');
+      return ContentType('application', 'x-mpegURL');
     }
     if (lower.endsWith('.mp4') ||
         lower.endsWith('.m4v') ||
@@ -571,7 +943,9 @@ class MediaProxy {
 
   void _addCorsHeaders(HttpResponse response) {
     response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Headers', 'Range');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers',
+        'Range, Content-Type, Accept, Origin');
     response.headers.set(
       'Access-Control-Expose-Headers',
       'Content-Range, Content-Length',

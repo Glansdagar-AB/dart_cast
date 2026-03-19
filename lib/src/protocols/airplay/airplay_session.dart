@@ -7,6 +7,7 @@ import '../../core/cast_exceptions.dart';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
+import '../../core/media_transformer.dart';
 import '../../utils/logger.dart';
 import 'airplay_client.dart';
 import 'airplay_features.dart';
@@ -28,6 +29,7 @@ class AirPlaySession extends CastSession {
   HapSession? _hapSession;
   AirPlayMediaController? _mediaController;
   final MediaProxy _proxy = MediaProxy();
+  final MediaTransformer _mediaTransformer;
   Timer? _pollTimer;
   bool _isPolling = false;
   CastMedia? _currentMedia;
@@ -37,7 +39,11 @@ class AirPlaySession extends CastSession {
   HapCredentials? credentials;
 
   /// Creates an [AirPlaySession] for the given AirPlay [device].
-  AirPlaySession(super.device, {this.credentials});
+  ///
+  /// An optional [mediaTransformer] can customize media preparation.
+  AirPlaySession(super.device,
+      {this.credentials, MediaTransformer? mediaTransformer})
+      : _mediaTransformer = mediaTransformer ?? const DefaultMediaTransformer();
 
   /// The underlying AirPlay HTTP client (available after [connect]).
   AirPlayClient? get client => _client;
@@ -226,11 +232,9 @@ class AirPlaySession extends CastSession {
 
       _currentMedia = media;
 
-      // Register the media URL with the proxy
-      final proxyUrl = _proxy.registerMedia(
-        media.url,
-        headers: media.httpHeaders,
-      );
+      // Transform and register media with the proxy
+      final transformed = await _mediaTransformer.transform(media, _proxy);
+      final proxyUrl = transformed.proxyUrl;
 
       // Determine the final URL to send to the device
       String playUrl;
@@ -257,6 +261,7 @@ class AirPlaySession extends CastSession {
       // Start polling for playback state
       _startPolling();
     } catch (e) {
+      CastLogger.error('AirPlay: loadMedia failed: $e');
       if (stateMachine.canTransitionTo(SessionState.idle)) {
         stateMachine.transitionTo(SessionState.idle);
       }
@@ -295,6 +300,7 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> play() async {
     _ensureClient();
+    CastLogger.info('AirPlay: Play (resume)');
     if (_mediaController != null) {
       await _mediaController!.resume();
     } else {
@@ -309,6 +315,7 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> pause() async {
     _ensureClient();
+    CastLogger.info('AirPlay: Pause');
     if (_mediaController != null) {
       await _mediaController!.pause();
     } else {
@@ -323,6 +330,7 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> stop() async {
     _ensureClient();
+    CastLogger.info('AirPlay: Stop');
     _stopPolling();
     if (_mediaController != null) {
       await _mediaController!.stop();
@@ -339,10 +347,12 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> seek(Duration position) async {
     _ensureClient();
+    final seconds = position.inMilliseconds / 1000.0;
+    CastLogger.info('AirPlay: Seek to ${seconds.toStringAsFixed(1)}s');
     if (_mediaController != null) {
-      await _mediaController!.seek(position.inMilliseconds / 1000.0);
+      await _mediaController!.seek(seconds);
     } else {
-      await _client!.scrub(position.inMilliseconds / 1000.0);
+      await _client!.scrub(seconds);
     }
   }
 
@@ -377,10 +387,8 @@ class AirPlaySession extends CastSession {
     // Clean up old proxy routes and re-register
     _proxy.cleanupPreviousMedia();
 
-    final proxyUrl = _proxy.registerMedia(
-      newMedia.url,
-      headers: newMedia.httpHeaders,
-    );
+    final newTransformed = await _mediaTransformer.transform(newMedia, _proxy);
+    final proxyUrl = newTransformed.proxyUrl;
 
     String playUrl;
     if (newMedia.subtitles.isNotEmpty && newMedia.type == CastMediaType.hls) {
@@ -400,6 +408,7 @@ class AirPlaySession extends CastSession {
   /// Disconnects from the device, stopping playback and cleaning up.
   @override
   Future<void> disconnect() async {
+    CastLogger.info('AirPlay: disconnecting from ${device.name}');
     _stopPolling();
 
     try {
@@ -408,8 +417,8 @@ class AirPlaySession extends CastSession {
       } else if (_client != null) {
         await _client!.stop();
       }
-    } catch (_) {
-      // Ignore errors during disconnect cleanup
+    } catch (e) {
+      CastLogger.warning('AirPlay: error sending Stop during disconnect: $e');
     }
 
     _mediaController?.dispose();
@@ -420,6 +429,7 @@ class AirPlaySession extends CastSession {
     _client = null;
     await _proxy.stop();
     stateMachine.transitionTo(SessionState.disconnected);
+    CastLogger.info('AirPlay: disconnected from ${device.name}');
   }
 
   /// Disposes all resources.
@@ -465,8 +475,8 @@ class AirPlaySession extends CastSession {
         info = await _client!.getPlaybackInfo();
       }
       _updateFromPlaybackInfo(info);
-    } catch (_) {
-      // Connection lost or device unresponsive — could transition to disconnected
+    } catch (e) {
+      CastLogger.debug('AirPlay: playback-info polling failed: $e');
     } finally {
       _isPolling = false;
     }

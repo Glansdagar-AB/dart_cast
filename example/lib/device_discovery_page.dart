@@ -538,13 +538,37 @@ class _DeviceListSheet extends StatelessWidget {
     }
   }
 
+  /// Protocol display order: Chromecast first (best local file support).
+  static const _protocolOrder = [
+    CastProtocol.chromecast,
+    CastProtocol.dlna,
+    CastProtocol.airplay,
+  ];
+
+  /// Known limitations per protocol for user guidance.
+  String? _protocolNote(CastProtocol protocol) {
+    switch (protocol) {
+      case CastProtocol.chromecast:
+        return null; // Best support, no caveats
+      case CastProtocol.dlna:
+        return 'Local file casting may not work on all TVs';
+      case CastProtocol.airplay:
+        return 'Video casting not supported on some smart TVs';
+    }
+  }
+
   /// Groups devices by their protocol for organized display.
   Map<CastProtocol, List<CastDevice>> _groupByProtocol() {
     final grouped = <CastProtocol, List<CastDevice>>{};
     for (final device in devices) {
       grouped.putIfAbsent(device.protocol, () => []).add(device);
     }
-    return grouped;
+    // Sort by preferred protocol order
+    final sorted = <CastProtocol, List<CastDevice>>{};
+    for (final p in _protocolOrder) {
+      if (grouped.containsKey(p)) sorted[p] = grouped[p]!;
+    }
+    return sorted;
   }
 
   @override
@@ -612,9 +636,9 @@ class _DeviceListSheet extends StatelessWidget {
                     )
                   : ListView.builder(
                       controller: scrollController,
-                      itemCount: _buildItems(grouped).length,
+                      itemCount: _buildItems(context, grouped).length,
                       itemBuilder: (context, index) {
-                        return _buildItems(grouped)[index];
+                        return _buildItems(context, grouped)[index];
                       },
                     ),
             ),
@@ -625,29 +649,75 @@ class _DeviceListSheet extends StatelessWidget {
   }
 
   /// Builds a flat list of widgets: section headers + device tiles.
-  List<Widget> _buildItems(Map<CastProtocol, List<CastDevice>> grouped) {
+  List<Widget> _buildItems(
+      BuildContext context, Map<CastProtocol, List<CastDevice>> grouped) {
     final items = <Widget>[];
     for (final entry in grouped.entries) {
-      // Protocol group header
+      final protocol = entry.key;
+      final note = _protocolNote(protocol);
+
+      // Protocol group header with optional "Recommended" badge
       items.add(
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
           child: Row(
             children: [
-              Icon(_protocolIcon(entry.key), size: 18),
+              Icon(_protocolIcon(protocol), size: 18),
               const SizedBox(width: 8),
               Text(
-                entry.key.name.toUpperCase(),
+                protocol.name.toUpperCase(),
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                   letterSpacing: 1.2,
                 ),
               ),
+              if (protocol == CastProtocol.chromecast) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Recommended',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       );
+
+      // Limitation note if applicable
+      if (note != null) {
+        items.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(42, 0, 16, 4),
+            child: Text(
+              note,
+              style: TextStyle(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.5),
+                fontSize: 11,
+              ),
+            ),
+          ),
+        );
+      }
+
       // Devices in this group
       for (final device in entry.value) {
         items.add(

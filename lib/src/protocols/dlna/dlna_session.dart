@@ -143,6 +143,9 @@ class DlnaSession extends CastSession {
     _currentProtocolInfo = protocolInfo;
 
     CastLogger.info('DlnaSession: proxy URL = $proxyUrl');
+    CastLogger.info(
+        'DlnaSession: effectiveType=${transformed.effectiveType.name}, '
+        'protocolInfo=$protocolInfo');
 
     // Proxy subtitle URLs too if available (handles file:// and http://)
     String? subtitleProxyUrl;
@@ -331,12 +334,18 @@ class DlnaSession extends CastSession {
       );
     }
 
-    return _httpClient.sendAction(
+    CastLogger.debug('DLNA: $action → $controlUrl');
+    final response = await _httpClient.sendAction(
       controlUrl,
       DlnaServiceType.avTransport,
       action,
       body,
     );
+    if (action != 'GetPositionInfo' && action != 'GetTransportInfo') {
+      CastLogger.info('DLNA: $action response (${response.length} chars)');
+      CastLogger.debug('DLNA: $action response body: $response');
+    }
+    return response;
   }
 
   void _startPolling() {

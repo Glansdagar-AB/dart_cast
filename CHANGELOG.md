@@ -1,3 +1,11 @@
+## 0.3.1
+
+- Added protocol status table to README with testing coverage and known limitations
+- Documented DLNA MP4 playback issues (TV-dependent, some reject proxy-served MP4)
+- Documented DLNA subtitle limitations (`sec:CaptionInfoEx` not universally supported)
+- Documented AirPlay video casting limitations (404 on some Google TV devices)
+- Recommended Chromecast as the primary tested protocol for local file casting
+
 ## 0.3.0
 
 ### Breaking changes

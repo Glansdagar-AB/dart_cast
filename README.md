@@ -9,17 +9,34 @@ A pure Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
 ## Features
 
 - **Chromecast (CASTV2)** -- TLS + protobuf protocol with default media receiver
-- **AirPlay 1** -- HTTP-based video casting to Apple TV and AirPlay-enabled TVs
+- **AirPlay** -- HTTP-based video casting with HAP authentication and feature detection
 - **DLNA/UPnP** -- SSDP discovery with SOAP AVTransport control
 - **Cross-platform** -- Android, iOS, macOS, Windows, Linux
 - **Built-in HTTP proxy** -- transparent custom header injection for cast devices
 - **HLS rewriting** -- m3u8 playlist URLs rewritten through proxy automatically
-- **Subtitle support** -- WebVTT and SRT for Chromecast and DLNA (AirPlay subtitles not yet supported)
-- **Local file serving** -- cast downloaded content via the proxy server
+- **Subtitle support** -- WebVTT and SRT with automatic SRT-to-VTT conversion
+- **Local file serving** -- cast downloaded content via the proxy server with `MediaTransformer` interface
 - **Pluggable discovery** -- swap in native mDNS (e.g., bonsoir) on Apple platforms
-- **Thoroughly tested** -- 366+ tests with mock servers for each protocol
+- **Thoroughly tested** -- 658+ tests with mock servers for each protocol
 
-## Supported Protocols & Platforms
+## Protocol Status
+
+| Protocol   | Streaming | Local Files | Subtitles | Status |
+|------------|-----------|-------------|-----------|--------|
+| **Chromecast** | Fully tested | MP4 recommended, TS fallback | VTT (auto-converts SRT) | **Recommended** |
+| **DLNA** | Tested (HLS piped as TS) | TV-dependent (some reject MP4 via proxy) | TV-dependent (`sec:CaptionInfoEx`) | Limited |
+| **AirPlay** | Feature detection + V1/V2 `/play` | Not tested | Not yet supported | Experimental |
+
+> **Chromecast is the most thoroughly tested protocol.** For local file casting, remux `.ts` files to `.mp4` using ffmpeg for the best experience. See [`doc/LOCAL_FILE_CASTING.md`](doc/LOCAL_FILE_CASTING.md) for details.
+
+### Known Limitations
+
+- **DLNA local MP4**: Some TVs (e.g., TCL Google TV) accept the SOAP commands but fail to play MP4 files served over the proxy. Streaming HLS content works reliably. This appears to be TV-specific.
+- **DLNA subtitles**: Uses Samsung's `sec:CaptionInfoEx` extension — not all TVs support this.
+- **AirPlay video**: Feature flag detection works, but actual video casting (URL `/play`) returns 404 on some Google TV devices. AirPlay screen mirroring is not implemented.
+- **Local TS files on Chromecast**: The built-in `TsHlsMediaTransformer` has known issues (per-segment buffering, subtitle drift). Remuxing to MP4 via ffmpeg is strongly recommended — see [`example/lib/ffmpeg_media_transformer.dart`](example/lib/ffmpeg_media_transformer.dart) for a reference implementation.
+
+## Supported Platforms
 
 | Protocol   | Android | iOS | macOS | Windows | Linux |
 |------------|---------|-----|-------|---------|-------|

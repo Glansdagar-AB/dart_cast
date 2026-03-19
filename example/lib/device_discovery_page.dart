@@ -551,7 +551,7 @@ class _DeviceListSheet extends StatelessWidget {
       case CastProtocol.chromecast:
         return null; // Best support, no caveats
       case CastProtocol.dlna:
-        return 'Local file casting may not work on all TVs';
+        return 'Subtitles and local file casting may not work on all TVs';
       case CastProtocol.airplay:
         return 'Video casting not supported on some smart TVs';
     }

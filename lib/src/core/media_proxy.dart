@@ -867,10 +867,18 @@ class MediaProxy {
 
       final length = end - start + 1;
 
-      request.response.statusCode = HttpStatus.partialContent;
-      request.response.headers
-          .set('Content-Range', 'bytes $start-$end/$fileLength');
-      request.response.headers.set('Content-Length', length.toString());
+      // If the range covers the entire file, respond with 200 OK instead
+      // of 206 Partial Content. Some DLNA renderers reject 206 for the
+      // initial full-file request (Range: bytes=0-).
+      if (start == 0 && end == fileLength - 1) {
+        request.response.statusCode = HttpStatus.ok;
+        request.response.headers.set('Content-Length', fileLength.toString());
+      } else {
+        request.response.statusCode = HttpStatus.partialContent;
+        request.response.headers
+            .set('Content-Range', 'bytes $start-$end/$fileLength');
+        request.response.headers.set('Content-Length', length.toString());
+      }
 
       CastLogger.debug(
           'MediaProxy: serving bytes $start-$end/$fileLength (${length} bytes)');

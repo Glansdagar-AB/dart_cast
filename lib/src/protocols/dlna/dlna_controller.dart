@@ -274,7 +274,12 @@ class DlnaHttpClient {
     String action,
     String body,
   ) async {
-    CastLogger.debug('DLNA: SOAP $action request body:\n$body');
+    // Only log SOAP bodies for non-polling actions to reduce noise
+    if (action != 'GetPositionInfo' &&
+        action != 'GetTransportInfo' &&
+        action != 'GetVolume') {
+      CastLogger.debug('DLNA: SOAP $action request body:\n$body');
+    }
     final response = await _client.post(
       Uri.parse(controlUrl),
       headers: {

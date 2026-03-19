@@ -345,14 +345,22 @@ class DlnaSession extends CastSession {
       );
     }
 
-    CastLogger.debug('DLNA: $action → $controlUrl');
+    // Non-polling actions get logged at info level
+    final isPolling = action == 'GetPositionInfo' ||
+        action == 'GetTransportInfo' ||
+        action == 'GetVolume';
+    if (!isPolling) {
+      CastLogger.debug('DLNA: $action → $controlUrl');
+    }
+
     final response = await _httpClient.sendAction(
       controlUrl,
       DlnaServiceType.avTransport,
       action,
       body,
     );
-    if (action != 'GetPositionInfo' && action != 'GetTransportInfo') {
+
+    if (!isPolling) {
       CastLogger.info('DLNA: $action response (${response.length} chars)');
       CastLogger.debug('DLNA: $action response body: $response');
     }

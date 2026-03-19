@@ -47,9 +47,6 @@ class MediaProxy {
   final Map<String, _SyntheticContent> _syntheticContent = {};
   final Random _random = Random.secure();
 
-  /// First video PTS from the most recently scanned TS file (90kHz clock).
-  int? _tsFirstPts;
-
   /// Cached PAT+PMT packets from the TS file header.
   /// Prepended to every virtual HLS segment so the Chromecast's demuxer
   /// can initialize independently for each segment.
@@ -64,14 +61,6 @@ class MediaProxy {
   /// before calling [wrapLocalFileAsHls].
   void setPatPmt(Uint8List patPmt) {
     _tsPatPmt = patPmt;
-  }
-
-  /// Sets the first video PTS value (90kHz clock) from the TS file.
-  ///
-  /// Called by [TsHlsMediaTransformer] after scanning the TS file,
-  /// before calling [wrapLocalFileAsHls]. Used for subtitle PTS alignment.
-  void setFirstPts(int pts) {
-    _tsFirstPts = pts;
   }
 
   /// Starts the proxy server bound to the local WiFi IP.
@@ -215,7 +204,7 @@ class MediaProxy {
     // Scan for keyframe positions — segments MUST start at keyframes
     // for the cast device to decode them independently.
     final keyframeOffsets = usePtsDurations
-        ? keyframesWithPts!.map((kf) => kf.offset).toList()
+        ? keyframesWithPts.map((kf) => kf.offset).toList()
         : TsKeyframeScanner.findKeyframeOffsets(file);
 
     // If only 1 keyframe (or scan failed), fall back to single segment
@@ -241,7 +230,7 @@ class MediaProxy {
     final segmentPtsValues = <int?>[]; // PTS at each segment start (if available)
 
     if (usePtsDurations) {
-      segmentPtsValues.add(keyframesWithPts!.first.pts);
+      segmentPtsValues.add(keyframesWithPts.first.pts);
       // Build a map from offset to PTS for quick lookup
       final offsetToPts = <int, int>{};
       for (final kf in keyframesWithPts) {

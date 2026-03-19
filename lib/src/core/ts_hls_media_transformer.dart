@@ -60,13 +60,6 @@ class TsHlsMediaTransformer extends DefaultMediaTransformer {
       proxy.setPatPmt(patPmt);
     }
 
-    // Read the first video PTS — TS files often start at a non-zero PTS
-    // which affects the Chromecast's HLS timeline and subtitle sync.
-    final firstPts = TsKeyframeScanner.readFirstVideoPts(file);
-    if (firstPts != null && firstPts > 0) {
-      proxy.setFirstPts(firstPts);
-    }
-
     final durationSecs = media.duration?.inMilliseconds != null
         ? media.duration!.inMilliseconds / 1000.0
         : null;

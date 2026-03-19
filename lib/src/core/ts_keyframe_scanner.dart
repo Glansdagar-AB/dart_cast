@@ -161,10 +161,6 @@ class TsKeyframeScanner {
       if (fileOffset >= fileLength) return null;
       raf.setPositionSync(fileOffset);
 
-      // Track the PID of the video stream so we can read PTS from
-      // continuation packets on that same PID.
-      int? videoPid;
-
       while (fileOffset < fileLength) {
         final remaining = fileLength - fileOffset;
         final toRead = remaining < chunkSize ? remaining : chunkSize;
@@ -176,7 +172,6 @@ class TsKeyframeScanner {
 
           final packetOffset = fileOffset + pos;
           final adaptCtrl = (chunk[pos + 3] >> 4) & 0x03;
-          final pid = ((chunk[pos + 1] & 0x1F) << 8) | chunk[pos + 2];
 
           bool isKeyframe = false;
 
@@ -249,7 +244,6 @@ class TsKeyframeScanner {
                     chunk[payloadStart + 2] == 0x01) {
                   final streamId = chunk[payloadStart + 3];
                   if (streamId >= 0xE0 && streamId <= 0xEF) {
-                    videoPid = pid;
                     final ptsDtsFlags =
                         (chunk[payloadStart + 7] >> 6) & 0x03;
                     if (ptsDtsFlags >= 2) {

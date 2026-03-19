@@ -34,7 +34,7 @@ A pure Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
 - **DLNA local MP4**: Some TVs (e.g., TCL Google TV) accept the SOAP commands but fail to play MP4 files served over the proxy. Streaming HLS content works reliably. This appears to be TV-specific.
 - **DLNA subtitles**: Uses Samsung's `sec:CaptionInfoEx` extension — not all TVs support this.
 - **AirPlay video**: Feature flag detection works, but actual video casting (URL `/play`) returns 404 on some Google TV devices. AirPlay screen mirroring is not implemented.
-- **Local TS files on Chromecast**: The built-in `TsHlsMediaTransformer` has known issues (per-segment buffering, subtitle drift). Remuxing to MP4 via ffmpeg is strongly recommended.
+- **Local TS files on Chromecast**: The built-in `TsHlsMediaTransformer` has known issues (per-segment buffering, subtitle drift). Remuxing to MP4 via ffmpeg is strongly recommended — see [`example/lib/ffmpeg_media_transformer.dart`](example/lib/ffmpeg_media_transformer.dart) for a reference implementation.
 
 ## Supported Platforms
 

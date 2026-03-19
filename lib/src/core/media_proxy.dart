@@ -883,15 +883,9 @@ class MediaProxy {
       CastLogger.debug(
           'MediaProxy: serving bytes $start-$end/$fileLength (${length} bytes)');
 
-      final raf = await file.open();
-      try {
-        await raf.setPosition(start);
-        final bytes = await raf.read(length);
-        request.response.add(bytes);
-      } finally {
-        await raf.close();
-      }
-      await request.response.close();
+      // Stream the file range instead of reading it all into memory.
+      // For large files (400MB+), reading into memory causes timeouts.
+      await file.openRead(start, end + 1).pipe(request.response);
       return;
     }
 

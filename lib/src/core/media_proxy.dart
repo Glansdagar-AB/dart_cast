@@ -92,10 +92,14 @@ class MediaProxy {
     _baseUrl = 'http://${ip ?? bindAddress}:$actualPort';
 
     _server!.listen(_handleRequest);
+    CastLogger.info('MediaProxy: started on $_baseUrl');
   }
 
   /// Stops the proxy server and cleans up resources.
   Future<void> stop() async {
+    if (_server != null) {
+      CastLogger.info('MediaProxy: stopping');
+    }
     await _server?.close(force: true);
     _server = null;
     _httpClient?.close(force: true);
@@ -498,7 +502,7 @@ class MediaProxy {
     try {
       final path = request.uri.path;
       final rangeHeader = request.headers.value('Range');
-      CastLogger.info(
+      CastLogger.debug(
           'MediaProxy: ${request.method} $path${rangeHeader != null ? ' Range: $rangeHeader' : ''}');
 
       // Handle CORS preflight (OPTIONS) requests — Chromecast's HLS player
@@ -540,7 +544,8 @@ class MediaProxy {
 
       request.response.statusCode = HttpStatus.notFound;
       await request.response.close();
-    } catch (_) {
+    } catch (e) {
+      CastLogger.error('MediaProxy: request handler error: $e');
       try {
         request.response.statusCode = HttpStatus.internalServerError;
         await request.response.close();
@@ -560,7 +565,7 @@ class MediaProxy {
       return;
     }
 
-    CastLogger.info('MediaProxy: serving synthetic content token=$token '
+    CastLogger.debug('MediaProxy: serving synthetic content token=$token '
         'contentType=${synthetic.contentType} '
         'size=${synthetic.content.length} chars');
     CastLogger.debug('MediaProxy: synthetic content:\n${synthetic.content}');
@@ -660,7 +665,7 @@ class MediaProxy {
           .fold<List<int>>(<int>[], (prev, chunk) => prev..addAll(chunk));
       var content = utf8.decode(body);
 
-      CastLogger.info(
+      CastLogger.debug(
           'MediaProxy: subtitle response (${content.length} chars, '
           'isSrt=${SubtitleConverter.isSrt(content)}, '
           'hasTimestampMap=${content.contains('X-TIMESTAMP-MAP')})');
@@ -670,14 +675,14 @@ class MediaProxy {
 
       if (SubtitleConverter.isSrt(content)) {
         content = SubtitleConverter.srtToVtt(content);
-        CastLogger.info('MediaProxy: converted SRT → VTT');
+        CastLogger.debug('MediaProxy: converted SRT → VTT');
       }
 
       // Strip X-TIMESTAMP-MAP from VTT — this header is for HLS subtitle
       // segments and causes cast devices to apply an incorrect PTS offset
       // when the VTT is served as a sidecar track.
       if (content.contains('X-TIMESTAMP-MAP')) {
-        CastLogger.info('MediaProxy: stripping X-TIMESTAMP-MAP from VTT');
+        CastLogger.debug('MediaProxy: stripping X-TIMESTAMP-MAP from VTT');
         content = SubtitleConverter.stripTimestampMap(content);
       }
 
@@ -706,8 +711,8 @@ class MediaProxy {
           token,
         );
 
-        CastLogger.info(
-            'MediaProxy: rewritten HLS playlist:\n$rewritten');
+        CastLogger.info('MediaProxy: rewritten HLS playlist (${rewritten.length} chars)');
+        CastLogger.debug('MediaProxy: rewritten HLS playlist:\n$rewritten');
 
         // Override content type and length for rewritten playlist
         final encoded = utf8.encode(rewritten);
@@ -753,7 +758,7 @@ class MediaProxy {
     if (_isSubtitleFile(route.url)) {
       var content = await file.readAsString();
 
-      CastLogger.info(
+      CastLogger.debug(
           'MediaProxy: local subtitle file (${content.length} chars, '
           'isSrt=${SubtitleConverter.isSrt(content)}, '
           'hasTimestampMap=${content.contains('X-TIMESTAMP-MAP')})');
@@ -761,12 +766,12 @@ class MediaProxy {
       bool converted = false;
       if (SubtitleConverter.isSrt(content)) {
         content = SubtitleConverter.srtToVtt(content);
-        CastLogger.info('MediaProxy: converted local SRT → VTT');
+        CastLogger.debug('MediaProxy: converted local SRT → VTT');
         converted = true;
       }
 
       if (content.contains('X-TIMESTAMP-MAP')) {
-        CastLogger.info(
+        CastLogger.debug(
             'MediaProxy: stripping existing X-TIMESTAMP-MAP from local VTT');
         content = SubtitleConverter.stripTimestampMap(content);
         converted = true;
@@ -816,7 +821,7 @@ class MediaProxy {
       final patPmtLength = patPmt?.length ?? 0;
       final totalLength = segmentLength + patPmtLength;
 
-      CastLogger.info(
+      CastLogger.debug(
           'MediaProxy: serving virtual segment bytes $start-$end '
           '($segmentLength bytes${patPmtLength > 0 ? ' + ${patPmtLength}B PAT/PMT' : ''})');
 

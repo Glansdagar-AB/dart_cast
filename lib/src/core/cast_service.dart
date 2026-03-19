@@ -4,6 +4,7 @@ import 'cast_device.dart';
 import 'cast_session.dart';
 import 'discovery_manager.dart';
 import 'discovery_provider.dart';
+import '../utils/logger.dart';
 
 /// Factory function for creating protocol-specific sessions.
 typedef SessionFactory = CastSession Function(CastDevice device);
@@ -64,12 +65,16 @@ class CastService {
   ///
   /// Sets [lastDevice] to the connected device for later [reconnect].
   Future<CastSession> connect(CastDevice device) async {
+    CastLogger.info(
+        'CastService: connecting to ${device.name} (${device.protocol})');
+
     // Auto-disconnect previous session
     if (_activeSession != null) {
       try {
         await _activeSession!.disconnect();
-      } catch (_) {
-        // Best effort disconnect
+      } catch (e) {
+        CastLogger.warning(
+            'CastService: error disconnecting previous session: $e');
       }
     }
 
@@ -77,6 +82,7 @@ class CastService {
     await session.connect();
     _activeSession = session;
     _lastDevice = device;
+    CastLogger.info('CastService: connected to ${device.name}');
     return session;
   }
 
@@ -109,8 +115,8 @@ class CastService {
     if (_activeSession != null) {
       try {
         await _activeSession!.disconnect();
-      } catch (_) {
-        // Best effort disconnect
+      } catch (e) {
+        CastLogger.warning('CastService: error during dispose disconnect: $e');
       }
       _activeSession = null;
     }

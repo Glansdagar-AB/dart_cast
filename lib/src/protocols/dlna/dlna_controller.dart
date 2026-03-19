@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/cast_device.dart';
 import '../../core/cast_exceptions.dart';
+import '../../utils/logger.dart';
 import '../../utils/network_utils.dart';
 
 /// Service type URNs for DLNA SOAP actions.
@@ -273,6 +274,7 @@ class DlnaHttpClient {
     String action,
     String body,
   ) async {
+    CastLogger.debug('DLNA: SOAP $action request body:\n$body');
     final response = await _client.post(
       Uri.parse(controlUrl),
       headers: {
@@ -283,6 +285,9 @@ class DlnaHttpClient {
     );
 
     if (response.statusCode >= 400) {
+      CastLogger.error(
+          'DLNA: SOAP $action failed: HTTP ${response.statusCode}');
+      CastLogger.debug('DLNA: SOAP error body: ${response.body}');
       throw ProtocolException(
         'DLNA SOAP error: HTTP ${response.statusCode}',
         CastProtocol.dlna,

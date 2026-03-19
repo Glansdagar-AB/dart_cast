@@ -97,16 +97,19 @@ class DlnaSession extends CastSession {
   /// Connects to the DLNA device by verifying it is reachable.
   @override
   Future<void> connect() async {
+    CastLogger.info(
+        'DLNA: connecting to ${device.name} at ${device.address.address}:${device.port}');
     stateMachine.transitionTo(SessionState.connecting);
     // For DLNA, "connect" simply means we verified the device is reachable.
     // There is no persistent connection — each action is an HTTP POST.
     stateMachine.transitionTo(SessionState.connected);
+    CastLogger.info('DLNA: connected to ${device.name}');
   }
 
   @override
   Future<void> loadMedia(CastMedia media) async {
     CastLogger.info(
-        'DlnaSession.loadMedia called, current state: ${stateMachine.state}');
+        'DLNA: loadMedia called, state=${stateMachine.state}');
     stateMachine.transitionTo(SessionState.loading);
     _currentMedia = media;
 
@@ -142,10 +145,10 @@ class DlnaSession extends CastSession {
     _currentProxyUrl = proxyUrl;
     _currentProtocolInfo = protocolInfo;
 
-    CastLogger.info('DlnaSession: proxy URL = $proxyUrl');
     CastLogger.info(
-        'DlnaSession: effectiveType=${transformed.effectiveType.name}, '
-        'protocolInfo=$protocolInfo');
+        'DLNA: loading media, effectiveType=${transformed.effectiveType.name}');
+    CastLogger.debug('DLNA: proxy URL = $proxyUrl');
+    CastLogger.debug('DLNA: protocolInfo=$protocolInfo');
 
     // Proxy subtitle URLs too if available (handles file:// and http://)
     String? subtitleProxyUrl;
@@ -199,6 +202,7 @@ class DlnaSession extends CastSession {
 
   @override
   Future<void> play() async {
+    CastLogger.info('DLNA: Play');
     await _sendAvTransport('Play', DlnaSoapBuilder.buildPlay());
     if (stateMachine.canTransitionTo(SessionState.playing)) {
       stateMachine.transitionTo(SessionState.playing);
@@ -207,6 +211,7 @@ class DlnaSession extends CastSession {
 
   @override
   Future<void> pause() async {
+    CastLogger.info('DLNA: Pause');
     await _sendAvTransport('Pause', DlnaSoapBuilder.buildPause());
     if (stateMachine.canTransitionTo(SessionState.paused)) {
       stateMachine.transitionTo(SessionState.paused);
@@ -215,6 +220,7 @@ class DlnaSession extends CastSession {
 
   @override
   Future<void> stop() async {
+    CastLogger.info('DLNA: Stop');
     _stopPolling();
     await _sendAvTransport('Stop', DlnaSoapBuilder.buildStop());
     if (stateMachine.canTransitionTo(SessionState.idle)) {
@@ -224,11 +230,13 @@ class DlnaSession extends CastSession {
 
   @override
   Future<void> seek(Duration position) async {
+    CastLogger.info('DLNA: Seek to ${position.inSeconds}s');
     await _sendAvTransport('Seek', DlnaSoapBuilder.buildSeek(position));
   }
 
   @override
   Future<void> setVolume(double volume) async {
+    CastLogger.info('DLNA: SetVolume ${volume.toStringAsFixed(2)}');
     final intVolume = (volume.clamp(0.0, 1.0) * 100).round();
     final controlUrl = description.renderingControlUrl;
     if (controlUrl == null) return;
@@ -273,17 +281,19 @@ class DlnaSession extends CastSession {
 
   @override
   Future<void> disconnect() async {
+    CastLogger.info('DLNA: disconnecting from ${device.name}');
     _stopPolling();
 
     // Try to stop playback
     try {
       await _sendAvTransport('Stop', DlnaSoapBuilder.buildStop());
-    } catch (_) {
-      // Device may already be unreachable
+    } catch (e) {
+      CastLogger.warning('DLNA: error sending Stop during disconnect: $e');
     }
 
     await _proxy.stop();
     stateMachine.transitionTo(SessionState.disconnected);
+    CastLogger.info('DLNA: disconnected from ${device.name}');
   }
 
   /// Disposes of resources used by this session.
@@ -317,7 +327,8 @@ class DlnaSession extends CastSession {
       );
       final protocols = DlnaSoapParser.parseProtocolInfo(response);
       return protocols.any((p) => p.contains(mimeType));
-    } catch (_) {
+    } catch (e) {
+      CastLogger.warning('DLNA: failed to query GetProtocolInfo: $e');
       return false;
     }
   }
@@ -397,12 +408,12 @@ class DlnaSession extends CastSession {
           );
           final intVolume = DlnaSoapParser.parseVolume(volumeResponse);
           updateVolume(intVolume / 100.0);
-        } catch (_) {
-          // Volume polling failure is non-fatal
+        } catch (e) {
+          CastLogger.debug('DLNA: volume polling failed: $e');
         }
       }
-    } catch (_) {
-      // Polling failure — device may be temporarily unreachable
+    } catch (e) {
+      CastLogger.debug('DLNA: polling failed: $e');
     } finally {
       _isPolling = false;
     }

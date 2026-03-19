@@ -261,6 +261,7 @@ class AirPlaySession extends CastSession {
       // Start polling for playback state
       _startPolling();
     } catch (e) {
+      CastLogger.error('AirPlay: loadMedia failed: $e');
       if (stateMachine.canTransitionTo(SessionState.idle)) {
         stateMachine.transitionTo(SessionState.idle);
       }
@@ -299,6 +300,7 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> play() async {
     _ensureClient();
+    CastLogger.info('AirPlay: Play (resume)');
     if (_mediaController != null) {
       await _mediaController!.resume();
     } else {
@@ -313,6 +315,7 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> pause() async {
     _ensureClient();
+    CastLogger.info('AirPlay: Pause');
     if (_mediaController != null) {
       await _mediaController!.pause();
     } else {
@@ -327,6 +330,7 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> stop() async {
     _ensureClient();
+    CastLogger.info('AirPlay: Stop');
     _stopPolling();
     if (_mediaController != null) {
       await _mediaController!.stop();
@@ -343,10 +347,12 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> seek(Duration position) async {
     _ensureClient();
+    final seconds = position.inMilliseconds / 1000.0;
+    CastLogger.info('AirPlay: Seek to ${seconds.toStringAsFixed(1)}s');
     if (_mediaController != null) {
-      await _mediaController!.seek(position.inMilliseconds / 1000.0);
+      await _mediaController!.seek(seconds);
     } else {
-      await _client!.scrub(position.inMilliseconds / 1000.0);
+      await _client!.scrub(seconds);
     }
   }
 
@@ -402,6 +408,7 @@ class AirPlaySession extends CastSession {
   /// Disconnects from the device, stopping playback and cleaning up.
   @override
   Future<void> disconnect() async {
+    CastLogger.info('AirPlay: disconnecting from ${device.name}');
     _stopPolling();
 
     try {
@@ -410,8 +417,8 @@ class AirPlaySession extends CastSession {
       } else if (_client != null) {
         await _client!.stop();
       }
-    } catch (_) {
-      // Ignore errors during disconnect cleanup
+    } catch (e) {
+      CastLogger.warning('AirPlay: error sending Stop during disconnect: $e');
     }
 
     _mediaController?.dispose();
@@ -422,6 +429,7 @@ class AirPlaySession extends CastSession {
     _client = null;
     await _proxy.stop();
     stateMachine.transitionTo(SessionState.disconnected);
+    CastLogger.info('AirPlay: disconnected from ${device.name}');
   }
 
   /// Disposes all resources.
@@ -467,8 +475,8 @@ class AirPlaySession extends CastSession {
         info = await _client!.getPlaybackInfo();
       }
       _updateFromPlaybackInfo(info);
-    } catch (_) {
-      // Connection lost or device unresponsive — could transition to disconnected
+    } catch (e) {
+      CastLogger.debug('AirPlay: playback-info polling failed: $e');
     } finally {
       _isPolling = false;
     }

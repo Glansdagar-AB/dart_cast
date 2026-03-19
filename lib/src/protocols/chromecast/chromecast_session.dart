@@ -154,6 +154,7 @@ class ChromecastSession extends CastSession {
     await completer.future.timeout(
       const Duration(seconds: 15),
       onTimeout: () {
+        CastLogger.error('Chromecast: connect timed out after 15s');
         stateMachine.transitionTo(SessionState.disconnected);
         throw TimeoutException('Chromecast connect timed out after 15 seconds');
       },
@@ -245,6 +246,7 @@ class ChromecastSession extends CastSession {
     await completer.future.timeout(
       const Duration(seconds: 15),
       onTimeout: () {
+        CastLogger.error('Chromecast: loadMedia timed out after 15s');
         _mediaStatusSubscription?.cancel();
         _mediaStatusSubscription = null;
         stateMachine.transitionTo(SessionState.idle);
@@ -261,18 +263,21 @@ class ChromecastSession extends CastSession {
   @override
   Future<void> play() async {
     _requireMediaSession();
+    CastLogger.info('Chromecast: PLAY');
     _sendMediaCommand(_mediaChannel.buildPlay(_mediaSessionId!));
   }
 
   @override
   Future<void> pause() async {
     _requireMediaSession();
+    CastLogger.info('Chromecast: PAUSE');
     _sendMediaCommand(_mediaChannel.buildPause(_mediaSessionId!));
   }
 
   @override
   Future<void> stop() async {
     _requireMediaSession();
+    CastLogger.info('Chromecast: STOP');
     _stopPositionPolling();
     _sendMediaCommand(_mediaChannel.buildStop(_mediaSessionId!));
   }
@@ -289,6 +294,7 @@ class ChromecastSession extends CastSession {
   @override
   Future<void> setVolume(double volume) async {
     _requireMediaSession();
+    CastLogger.info('Chromecast: SET_VOLUME ${volume.toStringAsFixed(2)}');
     // Device-level volume uses receiver namespace to receiver-0.
     // The device responds with RECEIVER_STATUS containing the actual volume,
     // which is handled in _handleMessage() to update the volume stream.
@@ -319,6 +325,7 @@ class ChromecastSession extends CastSession {
 
   @override
   Future<void> disconnect() async {
+    CastLogger.info('Chromecast: disconnecting from ${device.name}');
     _stopHeartbeat();
     _stopPositionPolling();
     _mediaStatusSubscription?.cancel();
@@ -340,8 +347,8 @@ class ChromecastSession extends CastSession {
         destinationId: _receiverId,
         payload: CastReceiverChannel.buildClose(),
       );
-    } catch (_) {
-      // Socket may already be broken
+    } catch (e) {
+      CastLogger.warning('Chromecast: error sending CLOSE messages: $e');
     }
 
     // Transition state immediately so the UI responds
@@ -357,10 +364,11 @@ class ChromecastSession extends CastSession {
         _channel.close(),
         _proxy.stop(),
       ]).timeout(const Duration(seconds: 3), onTimeout: () => []);
-    } catch (_) {
-      // Best-effort cleanup
+    } catch (e) {
+      CastLogger.warning('Chromecast: cleanup error during disconnect: $e');
     }
     _messageSubscription = null;
+    CastLogger.info('Chromecast: disconnected from ${device.name}');
   }
 
   @override

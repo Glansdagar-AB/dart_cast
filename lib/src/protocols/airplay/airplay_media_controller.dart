@@ -39,7 +39,7 @@ class AirPlayMediaController {
   ///
   /// Does NOT set up an RTSP session first — V1 works over plain HTTP/1.1.
   Future<HapHttpResponse> playV1(String url, double startPosition) async {
-    CastLogger.info('AirPlayMediaController: playV1 url=$url');
+    CastLogger.debug('AirPlayMediaController: playV1 url=$url');
     final body = BinaryPlistEncoder.encode({
       'Content-Location': url,
       'Start-Position': startPosition,
@@ -60,7 +60,7 @@ class AirPlayMediaController {
   ///
   /// Uses the legacy plain-text body format. Does NOT set up an RTSP session.
   Future<HapHttpResponse> playV1Text(String url, double startPosition) async {
-    CastLogger.info('AirPlayMediaController: playV1Text url=$url');
+    CastLogger.debug('AirPlayMediaController: playV1Text url=$url');
     final bodyStr = 'Content-Location: $url\nStart-Position: $startPosition\n';
     return session.sendRequest(
       'POST',
@@ -79,7 +79,7 @@ class AirPlayMediaController {
   /// Calls [HapSession.setupRtspSession] first (SETUP + feedback + RECORD),
   /// then sends the extended AirPlay 2 plist body via HTTP/1.1.
   Future<HapHttpResponse> playV2(String url, double startPosition) async {
-    CastLogger.info('AirPlayMediaController: playV2 url=$url');
+    CastLogger.debug('AirPlayMediaController: playV2 url=$url');
     await session.setupRtspSession();
 
     final body = BinaryPlistEncoder.encode({
@@ -129,28 +129,38 @@ class AirPlayMediaController {
       );
     }
 
-    CastLogger.info('AirPlayMediaController: play (auto) url=$url');
+    CastLogger.info('AirPlayMediaController: play (auto-negotiate)');
+    CastLogger.debug('AirPlayMediaController: play url=$url');
 
     // Try V1 binary plist first
     var resp = await playV1(url, startPosition);
-    CastLogger.info(
+    CastLogger.debug(
         'AirPlayMediaController: playV1 response: ${resp.statusCode}');
-    if (resp.statusCode == 200) return;
+    if (resp.statusCode == 200) {
+      CastLogger.info('AirPlayMediaController: playV1 accepted');
+      return;
+    }
 
     if (resp.statusCode == 404 || resp.statusCode == 415) {
       // Try V1 text/parameters
       resp = await playV1Text(url, startPosition);
-      CastLogger.info(
+      CastLogger.debug(
           'AirPlayMediaController: playV1Text response: ${resp.statusCode}');
-      if (resp.statusCode == 200) return;
+      if (resp.statusCode == 200) {
+        CastLogger.info('AirPlayMediaController: playV1Text accepted');
+        return;
+      }
     }
 
     if (resp.statusCode == 404 || resp.statusCode == 415) {
       // Try V2 with RTSP
       resp = await playV2(url, startPosition);
-      CastLogger.info(
+      CastLogger.debug(
           'AirPlayMediaController: playV2 response: ${resp.statusCode}');
-      if (resp.statusCode == 200) return;
+      if (resp.statusCode == 200) {
+        CastLogger.info('AirPlayMediaController: playV2 accepted');
+        return;
+      }
     }
 
     throw PlaybackException(
@@ -197,7 +207,7 @@ class AirPlayMediaController {
 
   /// Fetches current playback state from the device via `GET /playback-info`.
   Future<PlaybackInfo> getPlaybackInfo() async {
-    CastLogger.info('AirPlayMediaController: getPlaybackInfo');
+    CastLogger.debug('AirPlayMediaController: getPlaybackInfo');
     final resp = await session.sendRequest('GET', '/playback-info');
     return PlistCodec.parsePlaybackInfo(resp.bodyText);
   }

@@ -33,6 +33,8 @@ class DlnaSoapBuilder {
     String url, {
     String? title,
     String? subtitleUrl,
+    String? subtitleFormat,
+    List<({String url, String format})>? subtitleVariants,
     String protocolInfo = 'http-get:*:video/mp4:*',
     String? duration,
     int? size,
@@ -40,9 +42,26 @@ class DlnaSoapBuilder {
     final escapedUrl = _escapeXml(url);
     final escapedTitle = _escapeXml(title ?? 'Media');
 
-    final subtitleElement = subtitleUrl != null
-        ? '<sec:CaptionInfoEx sec:type="srt">${_escapeXml(subtitleUrl)}</sec:CaptionInfoEx>'
-        : '';
+    // Subtitle elements — use multiple vendor-specific approaches for
+    // maximum TV compatibility. No DLNA standard exists for external subs.
+    // When subtitleVariants is provided (e.g., both SRT and VTT), include
+    // all variants so the TV can pick whichever format it supports.
+    final subtitleElements = StringBuffer();
+    final variants = subtitleVariants ??
+        (subtitleUrl != null
+            ? [(url: subtitleUrl, format: subtitleFormat ?? 'srt')]
+            : <({String url, String format})>[]);
+    for (final variant in variants) {
+      final escapedSubUrl = _escapeXml(variant.url);
+      final subType = variant.format;
+      final subMime = 'text/$subType';
+      // Samsung: sec:CaptionInfoEx
+      subtitleElements.write(
+          '<sec:CaptionInfoEx sec:type="$subType">$escapedSubUrl</sec:CaptionInfoEx>');
+      // Generic: separate <res> element with subtitle MIME
+      subtitleElements.write(
+          '<res protocolInfo="http-get:*:$subMime:*">$escapedSubUrl</res>');
+    }
 
     // Build optional <res> attributes for duration and size
     final durationAttr = duration != null ? ' duration="$duration"' : '';
@@ -52,12 +71,13 @@ class DlnaSoapBuilder {
       '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/"'
       ' xmlns:dc="http://purl.org/dc/elements/1.1/"'
       ' xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"'
-      ' xmlns:sec="http://www.sec.co.kr/">'
+      ' xmlns:sec="http://www.sec.co.kr/"'
+      ' xmlns:pv="http://www.pv.com/pvns/">'
       '<item id="0" parentID="0" restricted="0">'
       '<dc:title>$escapedTitle</dc:title>'
       '<upnp:class>object.item.videoItem</upnp:class>'
       '<res protocolInfo="$protocolInfo"$durationAttr$sizeAttr>$escapedUrl</res>'
-      '$subtitleElement'
+      '$subtitleElements'
       '</item>'
       '</DIDL-Lite>',
     );

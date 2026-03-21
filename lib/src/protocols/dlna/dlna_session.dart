@@ -27,6 +27,7 @@ class DlnaSession extends CastSession {
   CastSubtitle? _currentSubtitle;
   String? _currentProxyUrl;
   String? _currentProtocolInfo;
+  Duration? _pendingSeekPosition;
 
   /// Creates a [DlnaSession] for the given [device] and [description].
   ///
@@ -121,6 +122,12 @@ class DlnaSession extends CastSession {
     String proxyUrl = transformed.proxyUrl;
     final String protocolInfo;
 
+    // DLNA flags must match between DIDL-Lite protocolInfo and HTTP headers.
+    // Use 01700000 (STREAMING + BACKGROUND + CONNECTION_STALL + V1.5) —
+    // same as VLC and MiniDLNA. Include DLNA.ORG_PN profile name so the
+    // renderer knows the codec without probing the stream.
+    const dlnaFlags = '01700000000000000000000000000000';
+
     if (media.type == CastMediaType.hls) {
       // Remote HLS → pipe as continuous MPEG-TS stream for DLNA
       proxyUrl = _proxy.registerHlsAsStream(
@@ -128,18 +135,21 @@ class DlnaSession extends CastSession {
         headers: media.httpHeaders,
       );
       protocolInfo =
-          'http-get:*:video/mp2t:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21500000000000000000000000000000';
+          'http-get:*:video/mp2t:DLNA.ORG_PN=MPEG_TS_HD_NA_ISO;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=$dlnaFlags';
     } else if (transformed.effectiveType == CastMediaType.hls) {
       // Transformer wrapped media in HLS → pipe as TS stream for DLNA
       proxyUrl = _proxy.registerHlsAsStream(proxyUrl);
       protocolInfo =
-          'http-get:*:video/mp2t:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21500000000000000000000000000000';
+          'http-get:*:video/mp2t:DLNA.ORG_PN=MPEG_TS_HD_NA_ISO;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=$dlnaFlags';
     } else if (transformed.effectiveType == CastMediaType.mpegTs) {
       protocolInfo =
-          'http-get:*:video/mp2t:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21500000000000000000000000000000';
+          'http-get:*:video/mp2t:DLNA.ORG_PN=MPEG_TS_HD_NA_ISO;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=$dlnaFlags';
+    } else if (transformed.effectiveType == CastMediaType.mkv) {
+      protocolInfo =
+          'http-get:*:video/x-matroska:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=$dlnaFlags';
     } else {
       protocolInfo =
-          'http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21500000000000000000000000000000';
+          'http-get:*:video/mp4:DLNA.ORG_PN=AVC_MP4_HP_HD_AAC;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=$dlnaFlags';
     }
 
     _currentProxyUrl = proxyUrl;
@@ -150,16 +160,15 @@ class DlnaSession extends CastSession {
     CastLogger.debug('DLNA: proxy URL = $proxyUrl');
     CastLogger.debug('DLNA: protocolInfo=$protocolInfo');
 
-    // Proxy subtitle URLs too if available (handles file:// and http://)
-    String? subtitleProxyUrl;
-    if (media.subtitles.isNotEmpty) {
-      subtitleProxyUrl = _proxy.registerSubtitle(
-        media.subtitles.first.url,
-        headers: media.httpHeaders,
-      );
-    } else if (_currentSubtitle != null) {
-      subtitleProxyUrl = _proxy.registerSubtitle(
-        _currentSubtitle!.url,
+    // Register subtitle in both SRT and VTT formats so the TV can pick
+    // whichever it supports. Many DLNA TVs only support SRT, others VTT.
+    List<({String url, String format})>? subtitleVariants;
+    final subtitleSource = media.subtitles.isNotEmpty
+        ? media.subtitles.first
+        : _currentSubtitle;
+    if (subtitleSource != null) {
+      subtitleVariants = _proxy.registerSubtitleVariants(
+        subtitleSource.url,
         headers: media.httpHeaders,
       );
     }
@@ -178,7 +187,7 @@ class DlnaSession extends CastSession {
       DlnaSoapBuilder.buildSetAVTransportURI(
         proxyUrl,
         title: media.title,
-        subtitleUrl: subtitleProxyUrl,
+        subtitleVariants: subtitleVariants,
         protocolInfo: protocolInfo,
         duration: durationStr,
         size: fileSize,
@@ -195,6 +204,14 @@ class DlnaSession extends CastSession {
     await _sendAvTransport('Play', DlnaSoapBuilder.buildPlay());
 
     stateMachine.transitionTo(SessionState.playing);
+
+    // Save start position — will seek after TV confirms PLAYING via poll.
+    // Seeking immediately after Play fails because the TV hasn't loaded yet.
+    if (media.startPosition != null && media.startPosition! > Duration.zero) {
+      _pendingSeekPosition = media.startPosition;
+      CastLogger.info(
+          'DLNA: deferred seek to ${media.startPosition!.inSeconds}s (waiting for TV to load)');
+    }
 
     // Start position polling
     _startPolling();
@@ -232,6 +249,9 @@ class DlnaSession extends CastSession {
   Future<void> seek(Duration position) async {
     CastLogger.info('DLNA: Seek to ${position.inSeconds}s');
     await _sendAvTransport('Seek', DlnaSoapBuilder.buildSeek(position));
+    // Update position immediately so the UI reflects the seek without
+    // waiting for the next polling cycle.
+    updatePosition(position);
   }
 
   @override
@@ -387,6 +407,8 @@ class DlnaSession extends CastSession {
         DlnaSoapBuilder.buildGetPositionInfo(),
       );
       final posInfo = DlnaSoapParser.parsePositionInfo(positionResponse);
+      CastLogger.debug(
+          'DLNA: poll position=${posInfo.position.inSeconds}s, duration=${posInfo.duration.inSeconds}s');
       updatePosition(posInfo.position);
       // Only update duration from device if it reports a non-zero value.
       // Piped TS streams may report 0 — keep the known duration instead.
@@ -399,6 +421,7 @@ class DlnaSession extends CastSession {
         'GetTransportInfo',
         DlnaSoapBuilder.buildGetTransportInfo(),
       );
+      CastLogger.debug('DLNA: GetTransportInfo response: $transportResponse');
       final transportState =
           DlnaSoapParser.parseTransportInfo(transportResponse);
 
@@ -428,11 +451,20 @@ class DlnaSession extends CastSession {
   }
 
   void _handleTransportState(String transportState) {
+    CastLogger.debug('DLNA: transport state: $transportState (current: $state)');
     switch (transportState) {
       case 'PLAYING':
         if (state != SessionState.playing &&
             stateMachine.canTransitionTo(SessionState.playing)) {
           stateMachine.transitionTo(SessionState.playing);
+        }
+        // Execute deferred seek now that the TV has loaded and is playing.
+        if (_pendingSeekPosition != null) {
+          final pos = _pendingSeekPosition!;
+          _pendingSeekPosition = null;
+          CastLogger.info(
+              'DLNA: executing deferred seek to ${pos.inSeconds}s');
+          seek(pos);
         }
         break;
       case 'PAUSED_PLAYBACK':
@@ -442,6 +474,7 @@ class DlnaSession extends CastSession {
         }
         break;
       case 'STOPPED':
+        CastLogger.info('DLNA: device reported STOPPED, transitioning to idle');
         if (state != SessionState.idle &&
             stateMachine.canTransitionTo(SessionState.idle)) {
           stateMachine.transitionTo(SessionState.idle);

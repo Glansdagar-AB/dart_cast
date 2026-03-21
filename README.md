@@ -17,24 +17,60 @@ A pure Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
 - **Subtitle support** -- WebVTT and SRT with automatic SRT-to-VTT conversion
 - **Local file serving** -- cast downloaded content via the proxy server with `MediaTransformer` interface
 - **Pluggable discovery** -- swap in native mDNS (e.g., bonsoir) on Apple platforms
-- **Thoroughly tested** -- 658+ tests with mock servers for each protocol
+- **Thoroughly tested** -- 666+ tests with mock servers for each protocol
 
 ## Protocol Status
 
 | Protocol   | Streaming | Local Files | Subtitles | Status |
 |------------|-----------|-------------|-----------|--------|
 | **Chromecast** | Fully tested | MP4 recommended, TS fallback | VTT (auto-converts SRT) | **Recommended** |
-| **DLNA** | Tested (HLS piped as TS) | TV-dependent (some reject MP4 via proxy) | TV-dependent (`sec:CaptionInfoEx`) | Limited |
+| **DLNA** | Tested (HLS piped as TS) | Working (MP4, MKV, TS) | MKV embedded SRT | Working |
 | **AirPlay** | Feature detection + V1/V2 `/play` | Not tested | Not yet supported | Experimental |
 
 > **Chromecast is the most thoroughly tested protocol.** For local file casting, remux `.ts` files to `.mp4` using ffmpeg for the best experience. See [`doc/LOCAL_FILE_CASTING.md`](doc/LOCAL_FILE_CASTING.md) for details.
 
+### What Works Where
+
+| Use Case | Chromecast | DLNA | AirPlay |
+|----------|-----------|------|---------|
+| Stream HLS (remote) | Yes | Partial (piped as TS) | Yes |
+| Stream MP4 (remote) | Yes | No | Yes |
+| Local MP4 files | Yes | Yes | Untested |
+| Local TS files | Yes (HLS wrap) | Yes | Untested |
+| Local MKV files | No | Yes | Untested |
+| Subtitles (sidecar VTT) | Yes | No | No |
+| Subtitles (MKV embedded) | N/A | Yes | N/A |
+| Seeking | Yes | Yes | Yes |
+| Resume from position | Yes | Yes | Yes |
+| Volume control | Yes | Yes | No |
+| Subtitle switching | Yes | Requires reload | No |
+
+### Protocol Notes
+
+**Chromecast**
+- Best all-round support, recommended for streaming
+- Sidecar VTT subtitles with auto SRT-to-VTT conversion
+- Local TS files wrapped in HLS automatically via `TsHlsMediaTransformer`
+
+**DLNA**
+- Best for local/downloaded file casting
+- Uses HTTP/1.0 raw socket server -- Dart's HTTP/1.1 breaks some TVs (e.g., TCL Google TV)
+- Subtitles: embed SRT in MKV container (sidecar subtitles ignored by most TVs)
+- Subtitle styling controlled by TV settings, not the app
+- Streaming (HLS piped as TS): works but duration reports as zero and seeking is unavailable
+- Seeking in local files works via byte-range requests (206 Partial Content)
+
+**AirPlay**
+- Video URL casting supported (V1 and V2 auto-negotiation)
+- Many smart TVs (Google TV, Roku) return 404 on `/play` -- only reliable on Apple TV
+- Screen mirroring and RAOP audio not yet implemented
+
 ### Known Limitations
 
-- **DLNA local MP4**: Some TVs (e.g., TCL Google TV) accept the SOAP commands but fail to play MP4 files served over the proxy. Streaming HLS content works reliably. This appears to be TV-specific.
-- **DLNA subtitles**: Uses Samsung's `sec:CaptionInfoEx` extension — not all TVs support this.
 - **AirPlay video**: Feature flag detection works, but actual video casting (URL `/play`) returns 404 on some Google TV devices. AirPlay screen mirroring is not implemented.
-- **Local TS files on Chromecast**: The built-in `TsHlsMediaTransformer` has known issues (per-segment buffering, subtitle drift). Remuxing to MP4 via ffmpeg is strongly recommended — see [`example/lib/ffmpeg_media_transformer.dart`](example/lib/ffmpeg_media_transformer.dart) for a reference implementation.
+- **Local TS files on Chromecast**: The built-in `TsHlsMediaTransformer` has known issues (per-segment buffering, subtitle drift). Remuxing to MP4 via ffmpeg is strongly recommended -- see [`example/lib/ffmpeg_media_transformer.dart`](example/lib/ffmpeg_media_transformer.dart) for a reference implementation.
+- **DLNA streaming**: HLS piped as TS works, but duration shows as zero and seeking is not available in streaming mode.
+- **DLNA subtitle styling**: Controlled by the TV's own settings, not configurable from the app.
 
 ## Supported Platforms
 
@@ -63,8 +99,8 @@ final castService = CastService(
         return AirPlaySession(device);
       case CastProtocol.dlna:
         // DLNA requires a device description with control URLs.
-        // See the example app for full DLNA setup.
-        throw UnimplementedError('Use DlnaSession directly');
+        // Use DlnaDeviceDescription.fetch(device) then DlnaSession(device, description).
+        return DlnaSession(device, dlnaDescription);
     }
   },
 );
@@ -143,7 +179,7 @@ Describes what to play.
 ```dart
 CastMedia(
   url: 'https://example.com/video.m3u8',
-  type: CastMediaType.hls,        // hls, mp4, or mpegTs
+  type: CastMediaType.hls,        // hls, mp4, mkv, or mpegTs
   httpHeaders: {'Referer': '...'}, // injected via proxy
   title: 'Episode 1',
   imageUrl: 'https://example.com/thumb.jpg',
@@ -166,6 +202,14 @@ A built-in HTTP proxy server that handles header injection. Used internally by p
 - `start()` / `stop()` -- lifecycle
 - `registerMedia(url, headers: {...})` -- returns a proxy URL
 - `registerFile(filePath)` -- serves a local file over HTTP
+
+### SubtitleConverter
+
+Format conversion utilities for subtitles.
+
+- `SubtitleConverter.srtToVtt(srtContent)` -- convert SRT to WebVTT (for Chromecast)
+- `SubtitleConverter.vttToSrt(vttContent)` -- convert VTT to SRT (for DLNA MKV embedding)
+- `SubtitleConverter.toAss(content)` -- convert to ASS format
 
 ### DeviceDiscoveryProvider
 
@@ -218,6 +262,29 @@ No special permissions. Users may need to allow the app through Windows Firewall
 ## How the Proxy Works
 
 Cast devices cannot send custom HTTP headers (like `Referer` or cookies) when fetching media. The built-in `MediaProxy` runs a local HTTP server on the device's WiFi IP, rewrites media URLs to point through itself, and forwards requests to the upstream server with the required headers attached. For HLS streams, the proxy also rewrites all segment and variant URLs inside m3u8 playlists so every subsequent request also goes through the proxy.
+
+## DLNA Local Files
+
+DLNA local file casting works out of the box -- just use `CastMedia.file()` with `CastMediaType.mp4` or `.mkv`. The proxy handles HTTP serving automatically (using HTTP/1.0 for maximum TV compatibility).
+
+For **subtitles**, most DLNA TVs ignore sidecar subtitle URLs. The reliable approach is to embed SRT into an MKV container using ffmpeg before casting:
+
+```bash
+# Remux video + subtitle into MKV (fast, no re-encoding)
+ffmpeg -i video.mp4 -i subtitle.srt -map 0 -map 1 -c copy -c:s srt output.mkv
+```
+
+```dart
+// Cast the MKV with embedded subtitles
+await session.loadMedia(CastMedia.file(
+  filePath: '/path/to/output.mkv',
+  type: CastMediaType.mkv,
+  title: 'My Video',
+  startPosition: Duration(minutes: 5), // resume from saved position
+));
+```
+
+See the [example app](example/) for a complete implementation with ffmpeg remuxing.
 
 ## Pluggable Discovery
 

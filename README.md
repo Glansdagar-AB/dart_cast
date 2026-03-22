@@ -1,6 +1,6 @@
 # dart_cast
 
-A pure Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
+Cast media to Chromecast, AirPlay, and DLNA devices from pure Dart.
 
 <!-- Badges placeholder -->
 <!-- [![pub package](https://img.shields.io/pub/v/dart_cast.svg)](https://pub.dev/packages/dart_cast) -->
@@ -8,16 +8,16 @@ A pure Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
 
 ## Features
 
-- **Chromecast (CASTV2)** -- TLS + protobuf protocol with default media receiver
-- **AirPlay** -- HTTP-based video casting with HAP authentication and feature detection
-- **DLNA/UPnP** -- SSDP discovery with SOAP AVTransport control
+- **Chromecast (CASTV2)** -- TLS + protobuf with default media receiver
+- **AirPlay** -- HTTP video casting with HAP authentication and feature detection
+- **DLNA/UPnP** -- SSDP discovery, SOAP AVTransport control
 - **Cross-platform** -- Android, iOS, macOS, Windows, Linux
-- **Built-in HTTP proxy** -- transparent custom header injection for cast devices
-- **HLS rewriting** -- m3u8 playlist URLs rewritten through proxy automatically
+- **Built-in HTTP proxy** -- injects custom headers transparently for cast devices
+- **HLS rewriting** -- rewrites m3u8 playlist URLs through proxy automatically
 - **Subtitle support** -- WebVTT and SRT with automatic SRT-to-VTT conversion
-- **Local file serving** -- cast downloaded content via the proxy server with `MediaTransformer` interface
+- **Local file serving** -- serves downloaded content via proxy with `MediaTransformer` interface
 - **Pluggable discovery** -- swap in native mDNS (e.g., bonsoir) on Apple platforms
-- **Thoroughly tested** -- 666+ tests with mock servers for each protocol
+- **666+ tests** -- mock servers for each protocol
 
 ## Protocol Status
 
@@ -27,7 +27,7 @@ A pure Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
 | **DLNA** | Tested (HLS piped as TS) | Working (MP4, MKV, TS) | MKV embedded SRT | Working |
 | **AirPlay** | Feature detection + V1/V2 `/play` | Not tested | Not yet supported | Experimental |
 
-> **Chromecast is the most thoroughly tested protocol.** For local file casting, remux `.ts` files to `.mp4` using ffmpeg for the best experience. See [`doc/LOCAL_FILE_CASTING.md`](doc/LOCAL_FILE_CASTING.md) for details.
+> **Chromecast is the best-tested protocol.** For local file casting, remux `.ts` to `.mp4` with ffmpeg. See [`doc/LOCAL_FILE_CASTING.md`](doc/LOCAL_FILE_CASTING.md).
 
 ### What Works Where
 
@@ -48,29 +48,29 @@ A pure Dart package for casting media to Chromecast, AirPlay, and DLNA devices.
 ### Protocol Notes
 
 **Chromecast**
-- Best all-round support, recommended for streaming
+- Best overall support; recommended for streaming
 - Sidecar VTT subtitles with auto SRT-to-VTT conversion
-- Local TS files wrapped in HLS automatically via `TsHlsMediaTransformer`
+- Wraps local TS files in HLS via `TsHlsMediaTransformer`
 
 **DLNA**
-- Best for local/downloaded file casting
+- Best for local/downloaded files
 - Uses HTTP/1.0 raw socket server -- Dart's HTTP/1.1 breaks some TVs (e.g., TCL Google TV)
-- Subtitles: embed SRT in MKV container (sidecar subtitles ignored by most TVs)
-- Subtitle styling controlled by TV settings, not the app
-- Streaming (HLS piped as TS): works but duration reports as zero and seeking is unavailable
-- Seeking in local files works via byte-range requests (206 Partial Content)
+- Embed SRT in MKV for subtitles (most TVs ignore sidecar files)
+- TV controls subtitle styling
+- HLS piped as TS: works, but reports zero duration and cannot seek
+- Local file seeking via byte-range requests (206 Partial Content)
 
 **AirPlay**
-- Video URL casting supported (V1 and V2 auto-negotiation)
-- Many smart TVs (Google TV, Roku) return 404 on `/play` -- only reliable on Apple TV
-- Screen mirroring and RAOP audio not yet implemented
+- Video URL casting with V1/V2 auto-negotiation
+- Many smart TVs (Google TV, Roku) return 404 on `/play` -- reliable only on Apple TV
+- Screen mirroring and RAOP audio unimplemented
 
 ### Known Limitations
 
-- **AirPlay video**: Feature flag detection works, but actual video casting (URL `/play`) returns 404 on some Google TV devices. AirPlay screen mirroring is not implemented.
-- **Local TS files on Chromecast**: The built-in `TsHlsMediaTransformer` has known issues (per-segment buffering, subtitle drift). Remuxing to MP4 via ffmpeg is strongly recommended -- see [`example/lib/ffmpeg_media_transformer.dart`](example/lib/ffmpeg_media_transformer.dart) for a reference implementation.
-- **DLNA streaming**: HLS piped as TS works, but duration shows as zero and seeking is not available in streaming mode.
-- **DLNA subtitle styling**: Controlled by the TV's own settings, not configurable from the app.
+- **AirPlay video**: `/play` returns 404 on some Google TV devices. Screen mirroring is unimplemented.
+- **Local TS on Chromecast**: `TsHlsMediaTransformer` has per-segment buffering and subtitle drift. Remux to MP4 via ffmpeg instead -- see [`example/lib/ffmpeg_media_transformer.dart`](example/lib/ffmpeg_media_transformer.dart).
+- **DLNA streaming**: HLS piped as TS works, but reports zero duration and cannot seek.
+- **DLNA subtitle styling**: The TV controls styling, not the app.
 
 ## Supported Platforms
 
@@ -137,7 +137,7 @@ castService.dispose();
 
 ### CastService
 
-The main entry point. Manages discovery, connections, and session lifecycle.
+The main entry point. Manages discovery, connections, and sessions.
 
 ```dart
 final service = CastService(
@@ -163,7 +163,7 @@ A discovered device on the network.
 
 ### CastSession
 
-An active connection to a cast device. Provides full playback control.
+An active connection to a cast device with full playback control.
 
 - `loadMedia(CastMedia)` -- start playing content
 - `play()`, `pause()`, `stop()`, `seek(Duration)` -- playback controls
@@ -197,7 +197,7 @@ CastMedia(
 
 ### MediaProxy
 
-A built-in HTTP proxy server that handles header injection. Used internally by protocol sessions, but also available directly.
+Built-in HTTP proxy that injects headers. Protocol sessions use it internally, but you can use it directly.
 
 - `start()` / `stop()` -- lifecycle
 - `registerMedia(url, headers: {...})` -- returns a proxy URL
@@ -205,7 +205,7 @@ A built-in HTTP proxy server that handles header injection. Used internally by p
 
 ### SubtitleConverter
 
-Format conversion utilities for subtitles.
+Converts between subtitle formats.
 
 - `SubtitleConverter.srtToVtt(srtContent)` -- convert SRT to WebVTT (for Chromecast)
 - `SubtitleConverter.vttToSrt(vttContent)` -- convert VTT to SRT (for DLNA MKV embedding)
@@ -213,7 +213,7 @@ Format conversion utilities for subtitles.
 
 ### DeviceDiscoveryProvider
 
-An abstract interface for pluggable discovery. Each protocol ships with a default implementation, and you can inject alternatives (e.g., `bonsoir` on Apple platforms).
+Abstract interface for pluggable discovery. Each protocol ships a default implementation; inject alternatives (e.g., `bonsoir`) on Apple platforms.
 
 ## Platform Setup
 
@@ -257,17 +257,17 @@ Add to your entitlements file:
 
 ### Windows
 
-No special permissions. Users may need to allow the app through Windows Firewall for proxy and multicast traffic.
+No special permissions. Users may need to allow the app through Windows Firewall for proxy and multicast.
 
 ## How the Proxy Works
 
-Cast devices cannot send custom HTTP headers (like `Referer` or cookies) when fetching media. The built-in `MediaProxy` runs a local HTTP server on the device's WiFi IP, rewrites media URLs to point through itself, and forwards requests to the upstream server with the required headers attached. For HLS streams, the proxy also rewrites all segment and variant URLs inside m3u8 playlists so every subsequent request also goes through the proxy.
+Cast devices cannot send custom HTTP headers (like `Referer` or cookies) when fetching media. `MediaProxy` runs a local HTTP server on the device's WiFi IP, rewrites media URLs to route through itself, and forwards requests with the required headers. For HLS streams, it also rewrites segment and variant URLs inside m3u8 playlists so every subsequent request routes through the proxy.
 
 ## DLNA Local Files
 
-DLNA local file casting works out of the box -- just use `CastMedia.file()` with `CastMediaType.mp4` or `.mkv`. The proxy handles HTTP serving automatically (using HTTP/1.0 for maximum TV compatibility).
+DLNA local file casting works out of the box -- use `CastMedia.file()` with `CastMediaType.mp4` or `.mkv`. The proxy serves files over HTTP/1.0 for maximum TV compatibility.
 
-For **subtitles**, most DLNA TVs ignore sidecar subtitle URLs. The reliable approach is to embed SRT into an MKV container using ffmpeg before casting:
+Most DLNA TVs ignore sidecar subtitle URLs. Embed SRT into an MKV container with ffmpeg before casting:
 
 ```bash
 # Remux video + subtitle into MKV (fast, no re-encoding)
@@ -288,7 +288,7 @@ See the [example app](example/) for a complete implementation with ffmpeg remuxi
 
 ## Pluggable Discovery
 
-The default mDNS discovery uses `multicast_dns` (pure Dart), which works on Android, Windows, and Linux. On Apple platforms (iOS/macOS), the app sandbox may block raw UDP multicast. To handle this, inject a `bonsoir`-based discovery provider:
+The default mDNS discovery uses `multicast_dns` (pure Dart), which works on Android, Windows, and Linux. On Apple platforms (iOS/macOS), the app sandbox may block raw UDP multicast. Inject a `bonsoir`-based provider instead:
 
 ```dart
 // In your Flutter app
@@ -319,7 +319,7 @@ final service = CastService(
 
 ### Feature Flag Detection
 
-AirPlay devices advertise their capabilities as a bitmask in the `features` (or `ft`) TXT record of their mDNS advertisement. dart_cast parses this automatically during discovery and exposes it via `AirPlayFeatures`:
+AirPlay devices advertise capabilities as a bitmask in the `features` (or `ft`) TXT record. dart_cast parses this during discovery and exposes it via `AirPlayFeatures`:
 
 ```dart
 final features = AirPlayFeatures.parse('0x5A7FFFF7,0x1E');
@@ -342,17 +342,17 @@ features.isV2Protocol     // true if bit 38 or 48 is set
 
 ### V1/V2 Auto-Negotiation
 
-`AirPlayMediaController.play()` automatically selects the best `/play` format for the target device:
+`AirPlayMediaController.play()` selects the best `/play` format for the target device:
 
 1. **V1 binary plist** (`application/x-apple-binary-plist`) — tried first
 2. **V1 text/parameters** — fallback if V1 plist returns 404 or 415
 3. **V2 with RTSP SETUP** — fallback if V1 text also returns 404 or 415
 
-This negotiation handles the wide variation in third-party AirPlay receiver implementations (Apple TV, smart TVs, audio receivers) without any manual configuration.
+This negotiation handles the wide variation in third-party AirPlay receivers (Apple TV, smart TVs, audio receivers) without manual configuration.
 
 ### Devices Without Video Support
 
-If a device advertises neither video bit (0 nor 49), `play()` immediately throws `UnsupportedFeatureException` rather than attempting connection. This applies to many Google TV / Android TV devices that implement only screen mirroring but not video URL casting.
+If a device advertises neither video bit (0 nor 49), `play()` throws `UnsupportedFeatureException` immediately. Many Google TV / Android TV devices support only screen mirroring, not video URL casting.
 
 ```dart
 try {
@@ -381,7 +381,7 @@ All exceptions carry a `message` and optional `cause`.
 
 ## Example
 
-See the [example/](example/) directory for a Flutter app demonstrating device discovery, connection, and a full remote control UI.
+See [example/](example/) for a Flutter app with device discovery, connection, and a full remote control UI.
 
 ## Architecture
 
@@ -402,7 +402,7 @@ Protocol Layer (isolated per protocol)
 
 ## Acknowledgments and References
 
-This package was built with the help of the following open-source projects, protocol specifications, and community resources:
+Built with help from these open-source projects, specifications, and community resources:
 
 ### Protocol References
 

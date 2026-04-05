@@ -42,8 +42,7 @@ class TsHlsMediaTransformer extends DefaultMediaTransformer {
   const TsHlsMediaTransformer({super.wrapRemoteTs = true});
 
   @override
-  Future<TransformedMedia> transform(
-      CastMedia media, MediaProxy proxy) async {
+  Future<TransformedMedia> transform(CastMedia media, MediaProxy proxy) async {
     // Only handle local MPEG-TS files; delegate everything else to super.
     if (!media.isLocalFile || media.type != CastMediaType.mpegTs) {
       return super.transform(media, proxy);

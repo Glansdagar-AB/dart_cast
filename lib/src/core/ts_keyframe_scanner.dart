@@ -244,8 +244,7 @@ class TsKeyframeScanner {
                     chunk[payloadStart + 2] == 0x01) {
                   final streamId = chunk[payloadStart + 3];
                   if (streamId >= 0xE0 && streamId <= 0xEF) {
-                    final ptsDtsFlags =
-                        (chunk[payloadStart + 7] >> 6) & 0x03;
+                    final ptsDtsFlags = (chunk[payloadStart + 7] >> 6) & 0x03;
                     if (ptsDtsFlags >= 2) {
                       final ptsOffset = payloadStart + 9;
                       if (ptsOffset + 5 <= pos + 188) {
@@ -257,8 +256,7 @@ class TsKeyframeScanner {
                                     .toUnsigned(64) <<
                                 15 |
                             (chunk[ptsOffset + 3]).toUnsigned(64) << 7 |
-                            ((chunk[ptsOffset + 4] >> 1) & 0x7F)
-                                .toUnsigned(64);
+                            ((chunk[ptsOffset + 4] >> 1) & 0x7F).toUnsigned(64);
                       }
                     }
                   }

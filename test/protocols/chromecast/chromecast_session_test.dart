@@ -688,8 +688,7 @@ void main() {
         await connectFuture;
       }
 
-      test('transitions to disconnected when message stream closes',
-          () async {
+      test('transitions to disconnected when message stream closes', () async {
         await connectSession();
         expect(session.state, SessionState.connected);
 

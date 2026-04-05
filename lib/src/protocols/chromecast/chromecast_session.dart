@@ -87,8 +87,8 @@ class ChromecastSession extends CastSession {
     MediaTransformer? mediaTransformer,
   })  : _channel = _RealChannelAdapter(),
         _proxy = MediaProxy(),
-        _mediaTransformer = mediaTransformer ??
-            const TsHlsMediaTransformer(wrapRemoteTs: true),
+        _mediaTransformer =
+            mediaTransformer ?? const TsHlsMediaTransformer(wrapRemoteTs: true),
         super(device);
 
   /// Creates a [ChromecastSession] with mock dependencies for testing.
@@ -106,8 +106,8 @@ class ChromecastSession extends CastSession {
     MediaTransformer? mediaTransformer,
   })  : _channel = _MockChannelAdapter(channel),
         _proxy = proxy ?? MediaProxy(),
-        _mediaTransformer = mediaTransformer ??
-            const TsHlsMediaTransformer(wrapRemoteTs: true),
+        _mediaTransformer =
+            mediaTransformer ?? const TsHlsMediaTransformer(wrapRemoteTs: true),
         super(device);
 
   // ---------------------------------------------------------------------------

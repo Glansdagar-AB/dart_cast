@@ -53,7 +53,6 @@ class MediaProxy {
   /// can initialize independently for each segment.
   Uint8List? _tsPatPmt;
 
-
   /// The base URL of the running proxy server, or null if not started.
   String? get baseUrl => _baseUrl;
 
@@ -80,8 +79,8 @@ class MediaProxy {
     _httpClient = HttpClient();
     _hlsStreamHandler = HlsStreamHandler(httpClient: _httpClient);
 
-    final ip = await NetworkUtils.getLocalIpAddress(
-        targetDeviceIp: targetDeviceIp);
+    final ip =
+        await NetworkUtils.getLocalIpAddress(targetDeviceIp: targetDeviceIp);
     final bindAddress = ip ?? '0.0.0.0';
 
     _server = await HttpServer.bind(bindAddress, port ?? 0);
@@ -219,7 +218,8 @@ class MediaProxy {
     // PTS-based durations prevent subtitle desync caused by VBR content
     // where byte proportions don't match time proportions.
     final keyframesWithPts = TsKeyframeScanner.findKeyframeOffsetsWithPts(file);
-    final bool usePtsDurations = keyframesWithPts != null && keyframesWithPts.length > 1;
+    final bool usePtsDurations =
+        keyframesWithPts != null && keyframesWithPts.length > 1;
 
     // Scan for keyframe positions — segments MUST start at keyframes
     // for the cast device to decode them independently.
@@ -247,7 +247,8 @@ class MediaProxy {
     // Each segment starts at a keyframe and ends just before the next
     // segment's first keyframe.
     final segmentOffsets = <int>[0]; // First segment always at 0
-    final segmentPtsValues = <int?>[]; // PTS at each segment start (if available)
+    final segmentPtsValues =
+        <int?>[]; // PTS at each segment start (if available)
 
     if (usePtsDurations) {
       segmentPtsValues.add(keyframesWithPts.first.pts);
@@ -319,8 +320,7 @@ class MediaProxy {
         segmentDurations.add((length / fileSize) * effectiveDuration);
       }
     }
-    final maxSegDuration = segmentDurations.reduce(
-        (a, b) => a > b ? a : b);
+    final maxSegDuration = segmentDurations.reduce((a, b) => a > b ? a : b);
 
     // Use virtual segment URLs instead of EXT-X-BYTERANGE — the Chromecast
     // Default Media Receiver's MPL does not support byte-range segments.
@@ -426,20 +426,16 @@ class MediaProxy {
       final srtContent = SubtitleConverter.vttToSrt(content);
       final srtToken = _generateToken();
       _syntheticContent['$srtToken.srt'] = _SyntheticContent(
-          content: srtContent,
-          contentType: ContentType('text', 'srt'));
-      variants.add(
-          (url: '$_baseUrl/synthetic/$srtToken.srt', format: 'srt'));
+          content: srtContent, contentType: ContentType('text', 'srt'));
+      variants.add((url: '$_baseUrl/synthetic/$srtToken.srt', format: 'srt'));
     } else if (isSrt) {
       // Original is SRT — generate VTT variant
       variants.add((url: originalUrl, format: 'srt'));
       final vttContent = SubtitleConverter.srtToVtt(content);
       final vttToken = _generateToken();
       _syntheticContent['$vttToken.vtt'] = _SyntheticContent(
-          content: vttContent,
-          contentType: ContentType('text', 'vtt'));
-      variants.add(
-          (url: '$_baseUrl/synthetic/$vttToken.vtt', format: 'vtt'));
+          content: vttContent, contentType: ContentType('text', 'vtt'));
+      variants.add((url: '$_baseUrl/synthetic/$vttToken.vtt', format: 'vtt'));
     } else {
       // Unknown format, serve as-is
       variants.add((url: originalUrl, format: 'srt'));
@@ -761,8 +757,7 @@ class MediaProxy {
           'MediaProxy: subtitle response (${content.length} chars, '
           'isSrt=${SubtitleConverter.isSrt(content)}, '
           'hasTimestampMap=${content.contains('X-TIMESTAMP-MAP')})');
-      CastLogger.debug(
-          'MediaProxy: subtitle content (first 500 chars):\n'
+      CastLogger.debug('MediaProxy: subtitle content (first 500 chars):\n'
           '${content.substring(0, content.length > 500 ? 500 : content.length)}');
 
       if (SubtitleConverter.isSrt(content)) {
@@ -780,8 +775,7 @@ class MediaProxy {
 
       final encoded = utf8.encode(content);
       request.response.headers.contentType = ContentType('text', 'vtt');
-      request.response.headers
-          .set('Content-Length', encoded.length.toString());
+      request.response.headers.set('Content-Length', encoded.length.toString());
       request.response.add(encoded);
       await request.response.close();
       return;
@@ -803,7 +797,8 @@ class MediaProxy {
           token,
         );
 
-        CastLogger.info('MediaProxy: rewritten HLS playlist (${rewritten.length} chars)');
+        CastLogger.info(
+            'MediaProxy: rewritten HLS playlist (${rewritten.length} chars)');
         CastLogger.debug('MediaProxy: rewritten HLS playlist:\n$rewritten');
 
         // Override content type and length for rewritten playlist
@@ -902,8 +897,7 @@ class MediaProxy {
       final patPmtLength = patPmt?.length ?? 0;
       final totalLength = segmentLength + patPmtLength;
 
-      CastLogger.debug(
-          'MediaProxy: serving virtual segment bytes $start-$end '
+      CastLogger.debug('MediaProxy: serving virtual segment bytes $start-$end '
           '($segmentLength bytes${patPmtLength > 0 ? ' + ${patPmtLength}B PAT/PMT' : ''})');
 
       request.response.statusCode = HttpStatus.ok;
@@ -1002,8 +996,8 @@ class MediaProxy {
   void _addCorsHeaders(HttpResponse response) {
     response.headers.set('Access-Control-Allow-Origin', '*');
     response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers',
-        'Range, Content-Type, Accept, Origin');
+    response.headers.set(
+        'Access-Control-Allow-Headers', 'Range, Content-Type, Accept, Origin');
     response.headers.set(
       'Access-Control-Expose-Headers',
       'Content-Range, Content-Length',

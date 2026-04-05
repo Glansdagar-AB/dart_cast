@@ -91,8 +91,7 @@ class Http10FileServer {
     }
     headers.write('\r\n');
 
-    CastLogger.debug(
-        'Http10FileServer: ${request.method} '
+    CastLogger.debug('Http10FileServer: ${request.method} '
         '${start == 0 && end == fileLength - 1 ? 'full file' : 'bytes $start-$end/$fileLength'} '
         '($length bytes) status=$statusCode');
 

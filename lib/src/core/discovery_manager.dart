@@ -49,7 +49,8 @@ class DiscoveryManager {
         ? _providers
         : _providers.where((p) => protocols.contains(p.protocol)).toList();
 
-    CastLogger.info('Discovery: starting with ${matchingProviders.length} provider(s), '
+    CastLogger.info(
+        'Discovery: starting with ${matchingProviders.length} provider(s), '
         'timeout=${timeout.inSeconds}s');
 
     for (var i = 0; i < matchingProviders.length; i++) {

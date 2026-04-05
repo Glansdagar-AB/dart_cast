@@ -18,8 +18,8 @@ void main() {
     test('getLocalIpAddress with targetDeviceIp prefers same subnet', () async {
       // We can't control interfaces in a unit test, but we can verify the
       // method doesn't crash and returns a valid result
-      final ip = await NetworkUtils.getLocalIpAddress(
-          targetDeviceIp: '192.168.1.100');
+      final ip =
+          await NetworkUtils.getLocalIpAddress(targetDeviceIp: '192.168.1.100');
       if (ip != null) {
         expect(ip, isNot('127.0.0.1'));
         expect(InternetAddress.tryParse(ip), isNotNull);

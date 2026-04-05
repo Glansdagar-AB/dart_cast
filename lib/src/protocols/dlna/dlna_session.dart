@@ -124,8 +124,7 @@ class DlnaSession extends CastSession {
   }
 
   Future<void> _loadMediaInternal(CastMedia media) async {
-    CastLogger.info(
-        'DLNA: loadMedia called, state=${stateMachine.state}');
+    CastLogger.info('DLNA: loadMedia called, state=${stateMachine.state}');
     stateMachine.transitionTo(SessionState.loading);
     _currentMedia = media;
 
@@ -178,9 +177,8 @@ class DlnaSession extends CastSession {
     // Register subtitle in both SRT and VTT formats so the TV can pick
     // whichever it supports. Many DLNA TVs only support SRT, others VTT.
     List<({String url, String format})>? subtitleVariants;
-    final subtitleSource = media.subtitles.isNotEmpty
-        ? media.subtitles.first
-        : _currentSubtitle;
+    final subtitleSource =
+        media.subtitles.isNotEmpty ? media.subtitles.first : _currentSubtitle;
     if (subtitleSource != null) {
       subtitleVariants = _proxy.registerSubtitleVariants(
         subtitleSource.url,
@@ -466,7 +464,8 @@ class DlnaSession extends CastSession {
   }
 
   void _handleTransportState(String transportState) {
-    CastLogger.debug('DLNA: transport state: $transportState (current: $state)');
+    CastLogger.debug(
+        'DLNA: transport state: $transportState (current: $state)');
     switch (transportState) {
       case 'PLAYING':
         if (state != SessionState.playing &&
@@ -477,8 +476,7 @@ class DlnaSession extends CastSession {
         if (_pendingSeekPosition != null) {
           final pos = _pendingSeekPosition!;
           _pendingSeekPosition = null;
-          CastLogger.info(
-              'DLNA: executing deferred seek to ${pos.inSeconds}s');
+          CastLogger.info('DLNA: executing deferred seek to ${pos.inSeconds}s');
           seek(pos);
         }
         break;

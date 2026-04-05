@@ -7,7 +7,7 @@
 ## 0.4.2
 
 ### Fixed
-- **Proxy IP selection**: MediaProxy now picks the local interface on the same subnet as the target cast device, fixing casting failures on devices with VPN, Docker, or virtual network adapters (e.g., proxy binding to 192.0.0.4 instead of 192.168.x.x)
+- **Proxy IP selection**: MediaProxy now picks the local interface on the same subnet as the target cast device, fixing casting failures on Android where the proxy would bind to a non-WiFi address unreachable by the cast device
 - **Concurrent loadMedia guard**: All protocol sessions (Chromecast, AirPlay, DLNA) now ignore duplicate `loadMedia()` calls while one is already in progress, preventing multiple LOAD messages from being sent to the device
 - **Socket disconnect detection**: Chromecast session now handles message stream errors and unexpected closures, transitioning to disconnected state so the app can react (previously the session stayed "connected" after a network drop)
 

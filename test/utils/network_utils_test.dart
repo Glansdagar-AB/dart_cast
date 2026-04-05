@@ -15,6 +15,49 @@ void main() {
       }
     });
 
+    test('getLocalIpAddress with targetDeviceIp prefers same subnet', () async {
+      // We can't control interfaces in a unit test, but we can verify the
+      // method doesn't crash and returns a valid result
+      final ip = await NetworkUtils.getLocalIpAddress(
+          targetDeviceIp: '192.168.1.100');
+      if (ip != null) {
+        expect(ip, isNot('127.0.0.1'));
+        expect(InternetAddress.tryParse(ip), isNotNull);
+      }
+    });
+
+    test('getLocalIpAddress with null targetDeviceIp still works', () async {
+      final ip = await NetworkUtils.getLocalIpAddress(targetDeviceIp: null);
+      if (ip != null) {
+        expect(ip, isNot('127.0.0.1'));
+        expect(InternetAddress.tryParse(ip), isNotNull);
+      }
+    });
+
+    test('_isPrivateAddress correctly identifies RFC 1918 ranges', () {
+      // Access via the public API — these addresses should be preferred
+      // when no same-subnet match is found. We test indirectly by verifying
+      // getLocalIpAddress prefers private over non-private.
+      // Direct unit tests for the static helpers:
+      expect(NetworkUtils.isPrivateAddress('192.168.1.1'), isTrue);
+      expect(NetworkUtils.isPrivateAddress('192.168.0.1'), isTrue);
+      expect(NetworkUtils.isPrivateAddress('10.0.0.1'), isTrue);
+      expect(NetworkUtils.isPrivateAddress('10.255.255.255'), isTrue);
+      expect(NetworkUtils.isPrivateAddress('172.16.0.1'), isTrue);
+      expect(NetworkUtils.isPrivateAddress('172.31.255.255'), isTrue);
+      expect(NetworkUtils.isPrivateAddress('172.15.0.1'), isFalse);
+      expect(NetworkUtils.isPrivateAddress('172.32.0.1'), isFalse);
+      expect(NetworkUtils.isPrivateAddress('8.8.8.8'), isFalse);
+      expect(NetworkUtils.isPrivateAddress('192.0.0.4'), isFalse);
+    });
+
+    test('_subnetPrefix extracts /24 prefix', () {
+      expect(NetworkUtils.subnetPrefix('192.168.1.100'), '192.168.1');
+      expect(NetworkUtils.subnetPrefix('10.0.0.1'), '10.0.0');
+      expect(NetworkUtils.subnetPrefix('invalid'), isNull);
+      expect(NetworkUtils.subnetPrefix('1.2.3'), isNull);
+    });
+
     test('findAvailablePort returns a usable port', () async {
       final port = await NetworkUtils.findAvailablePort();
       expect(port, greaterThan(0));

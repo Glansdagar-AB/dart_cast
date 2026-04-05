@@ -69,13 +69,19 @@ class MediaProxy {
   ///
   /// An optional [port] can be provided; otherwise binds to port 0 to let the
   /// OS assign an available port, eliminating TOCTOU races.
-  Future<void> start({int? port}) async {
+  ///
+  /// [targetDeviceIp] is the IP of the cast device we're targeting. When
+  /// provided, the proxy binds to the local interface on the same subnet,
+  /// which avoids picking a VPN or virtual adapter address that the cast
+  /// device can't reach.
+  Future<void> start({int? port, String? targetDeviceIp}) async {
     if (_server != null) return;
 
     _httpClient = HttpClient();
     _hlsStreamHandler = HlsStreamHandler(httpClient: _httpClient);
 
-    final ip = await NetworkUtils.getLocalIpAddress();
+    final ip = await NetworkUtils.getLocalIpAddress(
+        targetDeviceIp: targetDeviceIp);
     final bindAddress = ip ?? '0.0.0.0';
 
     _server = await HttpServer.bind(bindAddress, port ?? 0);

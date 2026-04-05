@@ -23,6 +23,7 @@ class DlnaSession extends CastSession {
   final MediaTransformer _mediaTransformer;
   Timer? _pollTimer;
   bool _isPolling = false;
+  bool _isLoadingMedia = false;
   CastMedia? _currentMedia;
   CastSubtitle? _currentSubtitle;
   String? _currentProxyUrl;
@@ -109,13 +110,27 @@ class DlnaSession extends CastSession {
 
   @override
   Future<void> loadMedia(CastMedia media) async {
+    if (_isLoadingMedia) {
+      CastLogger.warning(
+          'DLNA: loadMedia called while already loading — ignoring');
+      return;
+    }
+    _isLoadingMedia = true;
+    try {
+      await _loadMediaInternal(media);
+    } finally {
+      _isLoadingMedia = false;
+    }
+  }
+
+  Future<void> _loadMediaInternal(CastMedia media) async {
     CastLogger.info(
         'DLNA: loadMedia called, state=${stateMachine.state}');
     stateMachine.transitionTo(SessionState.loading);
     _currentMedia = media;
 
     // Start proxy and transform media
-    await _proxy.start();
+    await _proxy.start(targetDeviceIp: device.address.address);
 
     // Use transformer for media preparation (register, wrap TS in HLS, etc.)
     final transformed = await _mediaTransformer.transform(media, _proxy);

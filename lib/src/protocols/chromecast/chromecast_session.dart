@@ -59,6 +59,9 @@ class ChromecastSession extends CastSession {
   /// Guard to prevent overlapping GET_STATUS requests.
   bool _isPolling = false;
 
+  /// Guard to prevent concurrent [loadMedia] calls from sending multiple LOADs.
+  bool _isLoadingMedia = false;
+
   /// The current receiver session ID, if connected.
   String? get sessionId => _sessionId;
   Timer? _heartbeatTimer;
@@ -127,9 +130,19 @@ class ChromecastSession extends CastSession {
 
     // 2. Start listening for messages
     final completer = Completer<void>();
-    _messageSubscription = _channel.messageStream.listen((msg) {
-      _handleMessage(msg, completer);
-    });
+    _messageSubscription = _channel.messageStream.listen(
+      (msg) {
+        _handleMessage(msg, completer);
+      },
+      onError: (Object error) {
+        CastLogger.error('Chromecast: message stream error: $error');
+        _onSocketLost();
+      },
+      onDone: () {
+        CastLogger.warning('Chromecast: message stream closed unexpectedly');
+        _onSocketLost();
+      },
+    );
 
     // 3. CONNECT to receiver-0
     _channel.sendMessage(
@@ -183,10 +196,25 @@ class ChromecastSession extends CastSession {
       throw StateError('Not connected. Call connect() first.');
     }
 
+    if (_isLoadingMedia) {
+      CastLogger.warning(
+          'Chromecast: loadMedia called while already loading — ignoring');
+      return;
+    }
+    _isLoadingMedia = true;
+
+    try {
+      await _loadMediaInternal(media);
+    } finally {
+      _isLoadingMedia = false;
+    }
+  }
+
+  Future<void> _loadMediaInternal(CastMedia media) async {
     stateMachine.transitionTo(SessionState.loading);
 
     // Start proxy and transform media for Chromecast
-    await _proxy.start();
+    await _proxy.start(targetDeviceIp: device.address.address);
     final transformed = await _mediaTransformer.transform(media, _proxy);
     var proxyUrl = transformed.proxyUrl;
 
@@ -388,6 +416,23 @@ class ChromecastSession extends CastSession {
     if (_mediaSessionId == null) {
       throw StateError('No active media session. Call loadMedia() first.');
     }
+  }
+
+  /// Called when the TLS socket drops unexpectedly (stream error or done).
+  /// Cleans up timers and transitions to disconnected so the UI can react.
+  void _onSocketLost() {
+    if (stateMachine.state == SessionState.disconnected) return;
+    CastLogger.warning(
+        'Chromecast: socket lost, transitioning to disconnected');
+    _stopHeartbeat();
+    _stopPositionPolling();
+    _mediaStatusSubscription?.cancel();
+    _mediaStatusSubscription = null;
+    _transportId = null;
+    _sessionId = null;
+    _mediaSessionId = null;
+    _isLoadingMedia = false;
+    stateMachine.transitionTo(SessionState.disconnected);
   }
 
   void _sendMediaCommand(String payload) {

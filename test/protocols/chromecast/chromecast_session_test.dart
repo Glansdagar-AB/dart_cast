@@ -584,6 +584,139 @@ void main() {
         expect(session.state, SessionState.disconnected);
       });
     });
+
+    group('concurrent loadMedia guard', () {
+      Future<void> connectSession() async {
+        final connectFuture = session.connect();
+        await Future<void>.delayed(Duration.zero);
+        mockChannel.injectMessage(
+          namespace: CastReceiverChannel.receiverNamespace,
+          sourceId: 'receiver-0',
+          destinationId: 'sender-0',
+          payload: _receiverStatusPayload(),
+        );
+        await connectFuture;
+      }
+
+      test('second loadMedia is ignored while first is in progress', () async {
+        await connectSession();
+
+        final media = CastMedia(
+          url: 'http://example.com/video.mp4',
+          type: CastMediaType.mp4,
+        );
+
+        // Start first loadMedia — it will wait for MEDIA_STATUS
+        final firstLoad = session.loadMedia(media);
+
+        // Immediately start second loadMedia — should be ignored
+        final secondLoad = session.loadMedia(media);
+
+        // Second should complete immediately (no-op)
+        await secondLoad;
+
+        // Now inject MEDIA_STATUS to complete first load
+        await Future<void>.delayed(Duration.zero);
+        mockChannel.injectMessage(
+          namespace: CastMediaChannel.mediaNamespace,
+          sourceId: 'transport-abc',
+          destinationId: 'sender-0',
+          payload: _mediaStatusPayload(mediaSessionId: 1),
+        );
+
+        await firstLoad;
+
+        // Only one LOAD message should have been sent
+        final loadMessages = mockChannel.sentMessages
+            .where((m) =>
+                m.namespace == CastMediaChannel.mediaNamespace &&
+                m.payload['type'] == 'LOAD')
+            .toList();
+        expect(loadMessages, hasLength(1));
+      });
+
+      test('loadMedia works again after first completes', () async {
+        await connectSession();
+
+        final media = CastMedia(
+          url: 'http://example.com/video.mp4',
+          type: CastMediaType.mp4,
+        );
+
+        // First load
+        final firstLoad = session.loadMedia(media);
+        await Future<void>.delayed(Duration.zero);
+        mockChannel.injectMessage(
+          namespace: CastMediaChannel.mediaNamespace,
+          sourceId: 'transport-abc',
+          destinationId: 'sender-0',
+          payload: _mediaStatusPayload(mediaSessionId: 1),
+        );
+        await firstLoad;
+
+        // Second load should work
+        final secondLoad = session.loadMedia(media);
+        await Future<void>.delayed(Duration.zero);
+        mockChannel.injectMessage(
+          namespace: CastMediaChannel.mediaNamespace,
+          sourceId: 'transport-abc',
+          destinationId: 'sender-0',
+          payload: _mediaStatusPayload(mediaSessionId: 2),
+        );
+        await secondLoad;
+
+        // Two LOAD messages
+        final loadMessages = mockChannel.sentMessages
+            .where((m) =>
+                m.namespace == CastMediaChannel.mediaNamespace &&
+                m.payload['type'] == 'LOAD')
+            .toList();
+        expect(loadMessages, hasLength(2));
+      });
+    });
+
+    group('socket disconnect detection', () {
+      Future<void> connectSession() async {
+        final connectFuture = session.connect();
+        await Future<void>.delayed(Duration.zero);
+        mockChannel.injectMessage(
+          namespace: CastReceiverChannel.receiverNamespace,
+          sourceId: 'receiver-0',
+          destinationId: 'sender-0',
+          payload: _receiverStatusPayload(),
+        );
+        await connectFuture;
+      }
+
+      test('transitions to disconnected when message stream closes',
+          () async {
+        await connectSession();
+        expect(session.state, SessionState.connected);
+
+        // Listen for state changes
+        final states = <SessionState>[];
+        session.stateStream.listen(states.add);
+
+        // Close the mock channel (simulates socket drop)
+        await mockChannel.close();
+
+        // Allow microtask to process
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(session.state, SessionState.disconnected);
+        expect(states, contains(SessionState.disconnected));
+      });
+
+      test('heartbeat stops after socket loss', () async {
+        await connectSession();
+        expect(session.isHeartbeatActive, isTrue);
+
+        await mockChannel.close();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(session.isHeartbeatActive, isFalse);
+      });
+    });
   });
 }
 

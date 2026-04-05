@@ -32,6 +32,7 @@ class AirPlaySession extends CastSession {
   final MediaTransformer _mediaTransformer;
   Timer? _pollTimer;
   bool _isPolling = false;
+  bool _isLoadingMedia = false;
   CastMedia? _currentMedia;
 
   /// Stored HAP credentials for pair-verify. Set these before calling
@@ -223,12 +224,26 @@ class AirPlaySession extends CastSession {
   /// to the device. Begins position polling after playback starts.
   @override
   Future<void> loadMedia(CastMedia media) async {
+    if (_isLoadingMedia) {
+      CastLogger.warning(
+          'AirPlay: loadMedia called while already loading — ignoring');
+      return;
+    }
+    _isLoadingMedia = true;
+    try {
+      await _loadMediaInternal(media);
+    } finally {
+      _isLoadingMedia = false;
+    }
+  }
+
+  Future<void> _loadMediaInternal(CastMedia media) async {
     _ensureClient();
     stateMachine.transitionTo(SessionState.loading);
 
     try {
       // Start proxy server
-      await _proxy.start();
+      await _proxy.start(targetDeviceIp: device.address.address);
 
       _currentMedia = media;
 

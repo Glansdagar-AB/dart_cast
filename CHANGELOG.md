@@ -1,3 +1,11 @@
+## 0.5.1
+
+### Fixed
+- **Pub points (static analysis)**: Resolved the six pana lints under `lib/` that kept the 0.5.0 static-analysis score at 40/50:
+  - `curly_braces_in_flow_control_structures` in `ts_keyframe_scanner.dart` and `airplay/auth/airplay_auth.dart` — single-statement `if` bodies now wrapped in braces.
+  - `use_super_parameters` on the two `CastMessage_*` enum constructors — converted to super-parameter syntax.
+  - `camel_case_types` on the hand-written `CastMessage_ProtocolVersion` / `CastMessage_PayloadType` bindings in `chromecast/proto/cast_channel.dart` — suppressed via a file-level `// ignore_for_file: camel_case_types`, since these identifiers intentionally mirror the names `protoc --dart_out` would emit for Chromium's `cast_channel.proto`.
+
 ## 0.5.0
 
 ### Changed

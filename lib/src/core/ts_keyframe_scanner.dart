@@ -352,8 +352,9 @@ class TsKeyframeScanner {
         // Check for PES header: 0x00 0x00 0x01
         if (chunk[payloadStart] != 0x00 ||
             chunk[payloadStart + 1] != 0x00 ||
-            chunk[payloadStart + 2] != 0x01)
+            chunk[payloadStart + 2] != 0x01) {
           continue;
+        }
 
         final streamId = chunk[payloadStart + 3];
         // Video stream IDs: 0xE0-0xEF

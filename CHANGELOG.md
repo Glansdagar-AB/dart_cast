@@ -1,4 +1,4 @@
-## Unreleased
+## 0.5.0
 
 ### Changed
 - **protobuf**: Upgraded `protobuf` dependency from `^3.1.0` to `^6.0.0` for the latest performance improvements and bug fixes (#6). Hand-written CastMessage bindings remain compatible; no API changes.

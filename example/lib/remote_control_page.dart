@@ -399,7 +399,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
                   width: 80,
                   height: 60,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+                  errorBuilder: (_, _, _) => Container(
                     width: 80,
                     height: 60,
                     color: Colors.grey.shade300,

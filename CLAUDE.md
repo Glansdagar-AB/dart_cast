@@ -2,28 +2,39 @@
 
 ## Before opening a PR: run the exact CI checks locally
 
-CI (`.github/workflows/ci.yml`) runs these three commands. Run the same ones
-before pushing any branch that will open a PR, and only open the PR if all
-three exit `0`:
+CI runs two workflows — `.github/workflows/ci.yml` for the package and
+`.github/workflows/build_example.yml` for the Flutter example. Replay all
+of these locally before pushing, and only open the PR if every one exits
+`0`:
 
 ```sh
+# Package (workflow: ci.yml)
 dart pub get --no-example
-dart analyze lib/ test/            # must exit 0 — warnings are fatal, info is not
+dart analyze lib/ test/            # exit 2 on warnings; info is OK
 dart format --set-exit-if-changed lib/ test/
 dart test
+
+# Example (workflow: build_example.yml)
+cd example && flutter pub get && flutter analyze   # exit 1 on *info* too
+cd example && flutter build apk --debug            # optional but mirrors CI
 ```
 
 Things that have actually broken CI here:
 
-- **Pre-existing `warning`-level lints.** `dart analyze` exits with code `2`
-  when it finds *any* warning (e.g. `unnecessary_non_null_assertion`). Info-
+- **Pre-existing `warning`-level lints in `lib/` or `test/`.** `dart analyze`
+  exits `2` on *any* warning (e.g. `unnecessary_non_null_assertion`). Info-
   level diagnostics are fine; warnings are not. Fix them before pushing — do
   not rely on the merge-base being green.
-- **Formatter style changes from SDK bumps.** Bumping the `environment.sdk`
-  floor past `3.7.0` switches the default formatter to the new "tall style",
+- **Formatter style changes from SDK bumps.** Bumping `environment.sdk`
+  past `3.7.0` switches the default formatter to the new "tall style",
   which rewrites most files. If you touch the SDK constraint, always run
   `dart format lib/ test/` in the same commit — otherwise the format step
   fails on a huge diff unrelated to your actual change.
+- **`flutter analyze` is stricter than `dart analyze`.** The example's build
+  job fails on *info*-level diagnostics too (exit `1`). Running `dart analyze`
+  against `lib/ test/` is not enough — you must also `cd example && flutter
+  analyze` before pushing. Common trap: pre-existing `unnecessary_underscores`
+  infos that the package analyze step would ignore.
 
 `flutter pub outdated` (run in repo root *and* `example/`) is the canonical
 way to decide whether a bump is needed — prefer it over pub.dev scraping.

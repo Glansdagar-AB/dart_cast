@@ -64,8 +64,9 @@ class MdnsServiceInfo {
       final parts = features.split(',');
       final lower = parts[0].trim();
       final value = int.parse(
-          lower.replaceFirst('0x', '').replaceFirst('0X', ''),
-          radix: 16);
+        lower.replaceFirst('0x', '').replaceFirst('0X', ''),
+        radix: 16,
+      );
       return (value & 0x01) != 0;
     } catch (_) {
       return false;
@@ -138,14 +139,15 @@ class MdnsDiscovery {
         if (round > 0) {
           await Future<void>.delayed(const Duration(seconds: 2));
           CastLogger.debug(
-              'mDNS: re-querying PTR records (round ${round + 1})');
+            'mDNS: re-querying PTR records (round ${round + 1})',
+          );
         }
 
         // Query for PTR records (service instances).
-        await for (final PtrResourceRecord ptr
-            in client.lookup<PtrResourceRecord>(
-          ResourceRecordQuery.serverPointer(serviceType),
-        )) {
+        await for (final PtrResourceRecord ptr in client
+            .lookup<PtrResourceRecord>(
+              ResourceRecordQuery.serverPointer(serviceType),
+            )) {
           // Skip already-discovered services
           if (seenServices.contains(ptr.domainName)) continue;
           seenServices.add(ptr.domainName);
@@ -162,8 +164,10 @@ class MdnsDiscovery {
                     .lookup<IPAddressResourceRecord>(
                       ResourceRecordQuery.addressIPv4(srv.target),
                     )
-                    .timeout(nestedTimeout,
-                        onTimeout: (sink) => sink.close())) {
+                    .timeout(
+                      nestedTimeout,
+                      onTimeout: (sink) => sink.close(),
+                    )) {
                   // Look up TXT records (metadata key=value pairs).
                   final txtRecords = <String, String>{};
                   try {
@@ -171,8 +175,10 @@ class MdnsDiscovery {
                         .lookup<TxtResourceRecord>(
                           ResourceRecordQuery.text(ptr.domainName),
                         )
-                        .timeout(nestedTimeout,
-                            onTimeout: (sink) => sink.close())) {
+                        .timeout(
+                          nestedTimeout,
+                          onTimeout: (sink) => sink.close(),
+                        )) {
                       // The multicast_dns package joins TXT strings with writeln(),
                       // producing newline-separated key=value pairs.
                       for (final line in txt.text.split('\n')) {
@@ -180,8 +186,8 @@ class MdnsDiscovery {
                         if (trimmed.isEmpty) continue;
                         final eqIndex = trimmed.indexOf('=');
                         if (eqIndex > 0) {
-                          txtRecords[trimmed.substring(0, eqIndex)] =
-                              trimmed.substring(eqIndex + 1);
+                          txtRecords[trimmed.substring(0, eqIndex)] = trimmed
+                              .substring(eqIndex + 1);
                         }
                       }
                     }
@@ -190,7 +196,8 @@ class MdnsDiscovery {
                   }
 
                   CastLogger.info(
-                      'mDNS: found service "${ptr.domainName}" at ${ip.address.address}:${srv.port}');
+                    'mDNS: found service "${ptr.domainName}" at ${ip.address.address}:${srv.port}',
+                  );
                   yield MdnsServiceInfo(
                     name: ptr.domainName,
                     host: ip.address.address,

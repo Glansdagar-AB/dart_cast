@@ -5,17 +5,18 @@ void main() {
   group('SessionState', () {
     test('has all expected values', () {
       expect(
-          SessionState.values,
-          containsAll([
-            SessionState.connecting,
-            SessionState.connected,
-            SessionState.loading,
-            SessionState.playing,
-            SessionState.paused,
-            SessionState.buffering,
-            SessionState.idle,
-            SessionState.disconnected,
-          ]));
+        SessionState.values,
+        containsAll([
+          SessionState.connecting,
+          SessionState.connected,
+          SessionState.loading,
+          SessionState.playing,
+          SessionState.paused,
+          SessionState.buffering,
+          SessionState.idle,
+          SessionState.disconnected,
+        ]),
+      );
     });
   });
 
@@ -78,10 +79,7 @@ void main() {
 
     test('invalid transition throws StateError', () {
       // disconnected -> playing is not valid
-      expect(
-        () => sm.transitionTo(SessionState.playing),
-        throwsStateError,
-      );
+      expect(() => sm.transitionTo(SessionState.playing), throwsStateError);
     });
 
     test('canTransitionTo returns correct bool', () {

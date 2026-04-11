@@ -8,7 +8,8 @@ void main() {
   group('SubtitleConverter', () {
     group('srtToVtt', () {
       test('converts SRT timestamps to VTT format', () {
-        const srt = '1\n'
+        const srt =
+            '1\n'
             '00:00:01,000 --> 00:00:04,000\n'
             'Hello world\n'
             '\n'
@@ -28,7 +29,8 @@ void main() {
       });
 
       test('produces valid VTT header', () {
-        const srt = '1\n'
+        const srt =
+            '1\n'
             '00:00:00,000 --> 00:00:01,000\n'
             'Test\n';
 
@@ -42,7 +44,8 @@ void main() {
       });
 
       test('preserves multi-line subtitle text', () {
-        const srt = '1\n'
+        const srt =
+            '1\n'
             '00:00:01,000 --> 00:00:04,000\n'
             'Line one\n'
             'Line two\n';
@@ -55,7 +58,8 @@ void main() {
 
     group('vttToSrt', () {
       test('converts VTT to SRT format', () {
-        const vtt = 'WEBVTT\n\n'
+        const vtt =
+            'WEBVTT\n\n'
             '00:00:01.000 --> 00:00:04.000\n'
             'Hello world\n'
             '\n'
@@ -72,7 +76,8 @@ void main() {
       });
 
       test('strips X-TIMESTAMP-MAP from VTT', () {
-        const vtt = 'WEBVTT\n'
+        const vtt =
+            'WEBVTT\n'
             'X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000\n\n'
             '00:00:01.000 --> 00:00:04.000\n'
             'Test\n';
@@ -83,7 +88,8 @@ void main() {
       });
 
       test('handles 2-component MM:SS.mmm timestamps', () {
-        const vtt = 'WEBVTT\n\n'
+        const vtt =
+            'WEBVTT\n\n'
             '01:30.500 --> 01:35.250\n'
             'Short timestamp\n';
 
@@ -94,7 +100,8 @@ void main() {
       });
 
       test('adds sequence numbers', () {
-        const vtt = 'WEBVTT\n\n'
+        const vtt =
+            'WEBVTT\n\n'
             '00:00:01.000 --> 00:00:02.000\n'
             'First\n'
             '\n'
@@ -109,7 +116,8 @@ void main() {
 
     group('toAss', () {
       test('generates valid ASS header', () {
-        const vtt = 'WEBVTT\n\n'
+        const vtt =
+            'WEBVTT\n\n'
             '00:00:01.000 --> 00:00:04.000\n'
             'Hello\n';
 
@@ -121,7 +129,8 @@ void main() {
       });
 
       test('converts VTT cues to ASS dialogues', () {
-        const vtt = 'WEBVTT\n\n'
+        const vtt =
+            'WEBVTT\n\n'
             '00:00:25.250 --> 00:00:32.210\n'
             'Hello world\n';
 
@@ -133,7 +142,8 @@ void main() {
       });
 
       test('converts SRT input to ASS', () {
-        const srt = '1\n'
+        const srt =
+            '1\n'
             '00:00:01,000 --> 00:00:04,000\n'
             'From SRT\n';
 
@@ -143,7 +153,8 @@ void main() {
       });
 
       test('respects custom fontSize', () {
-        const vtt = 'WEBVTT\n\n'
+        const vtt =
+            'WEBVTT\n\n'
             '00:00:01.000 --> 00:00:02.000\n'
             'Test\n';
 
@@ -154,21 +165,24 @@ void main() {
 
     group('isSrt', () {
       test('detects SRT format', () {
-        const srt = '1\n'
+        const srt =
+            '1\n'
             '00:00:01,000 --> 00:00:04,000\n'
             'Hello\n';
         expect(SubtitleConverter.isSrt(srt), isTrue);
       });
 
       test('detects SRT with leading whitespace', () {
-        const srt = '  1\n'
+        const srt =
+            '  1\n'
             '00:00:01,000 --> 00:00:04,000\n'
             'Hello\n';
         expect(SubtitleConverter.isSrt(srt), isTrue);
       });
 
       test('returns false for VTT content', () {
-        const vtt = 'WEBVTT\n\n'
+        const vtt =
+            'WEBVTT\n\n'
             '00:00:01.000 --> 00:00:04.000\n'
             'Hello\n';
         expect(SubtitleConverter.isSrt(vtt), isFalse);
@@ -226,8 +240,9 @@ void main() {
 
     test('auto-converts local SRT file to VTT when served', () async {
       // Create a temporary SRT file
-      final tempDir =
-          await Directory.systemTemp.createTemp('subtitle_proxy_test');
+      final tempDir = await Directory.systemTemp.createTemp(
+        'subtitle_proxy_test',
+      );
       final srtFile = File('${tempDir.path}/test.srt');
       await srtFile.writeAsString(
         '1\n'
@@ -258,10 +273,7 @@ void main() {
           expect(body, contains('00:00:05.500 --> 00:00:08.200'));
 
           // Content-Type should be text/vtt
-          expect(
-            response.headers.contentType.toString(),
-            contains('vtt'),
-          );
+          expect(response.headers.contentType.toString(), contains('vtt'));
         } finally {
           client.close();
         }
@@ -271,8 +283,9 @@ void main() {
     });
 
     test('serves VTT files without conversion', () async {
-      final tempDir =
-          await Directory.systemTemp.createTemp('subtitle_proxy_vtt');
+      final tempDir = await Directory.systemTemp.createTemp(
+        'subtitle_proxy_vtt',
+      );
       final vttFile = File('${tempDir.path}/test.vtt');
       await vttFile.writeAsString(
         'WEBVTT\n\n'
@@ -304,14 +317,18 @@ void main() {
 
     test('auto-converts remote SRT to VTT', () async {
       // Create an upstream server that serves SRT content
-      final upstreamServer =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final upstreamServer = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       final upstreamBaseUrl = 'http://127.0.0.1:${upstreamServer.port}';
 
       upstreamServer.listen((request) async {
         request.response.statusCode = HttpStatus.ok;
-        request.response.headers.contentType =
-            ContentType('application', 'x-subrip');
+        request.response.headers.contentType = ContentType(
+          'application',
+          'x-subrip',
+        );
         request.response.write(
           '1\n'
           '00:00:01,000 --> 00:00:04,000\n'
@@ -338,10 +355,7 @@ void main() {
           expect(body, contains('Remote subtitle'));
 
           // Content-Type should be text/vtt
-          expect(
-            response.headers.contentType.toString(),
-            contains('vtt'),
-          );
+          expect(response.headers.contentType.toString(), contains('vtt'));
         } finally {
           client.close();
         }
@@ -351,8 +365,9 @@ void main() {
     });
 
     test('registerSubtitle with file:// serves SRT as VTT', () async {
-      final tempDir =
-          await Directory.systemTemp.createTemp('subtitle_reg_test');
+      final tempDir = await Directory.systemTemp.createTemp(
+        'subtitle_reg_test',
+      );
       final srtFile = File('${tempDir.path}/cast_sub.srt');
       await srtFile.writeAsString(
         '1\n'

@@ -114,8 +114,9 @@ class PlistCodec {
       }
 
       // Self-closing boolean tags
-      final boolMatch =
-          RegExp(r'<(true|false)\s*/>').matchAsPrefix(content, pos);
+      final boolMatch = RegExp(
+        r'<(true|false)\s*/>',
+      ).matchAsPrefix(content, pos);
       if (boolMatch != null) {
         tokens.add(_Token(boolMatch.group(1)!, null));
         pos = boolMatch.end;
@@ -123,9 +124,10 @@ class PlistCodec {
       }
 
       // Simple value tags: key, real, integer, string
-      final simpleMatch =
-          RegExp(r'<(key|real|integer|string)>(.*?)</\1>', dotAll: true)
-              .matchAsPrefix(content, pos);
+      final simpleMatch = RegExp(
+        r'<(key|real|integer|string)>(.*?)</\1>',
+        dotAll: true,
+      ).matchAsPrefix(content, pos);
       if (simpleMatch != null) {
         tokens.add(_Token(simpleMatch.group(1)!, simpleMatch.group(2)!));
         pos = simpleMatch.end;

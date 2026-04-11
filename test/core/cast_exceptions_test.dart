@@ -47,10 +47,7 @@ void main() {
     });
 
     test('ProtocolException includes protocol field', () {
-      final e = ProtocolException(
-        'protocol error',
-        CastProtocol.chromecast,
-      );
+      final e = ProtocolException('protocol error', CastProtocol.chromecast);
       expect(e, isA<CastException>());
       expect(e.message, 'protocol error');
       expect(e.protocol, CastProtocol.chromecast);

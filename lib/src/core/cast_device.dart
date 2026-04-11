@@ -1,11 +1,7 @@
 import 'dart:io';
 
 /// Protocol types supported for casting.
-enum CastProtocol {
-  chromecast,
-  airplay,
-  dlna,
-}
+enum CastProtocol { chromecast, airplay, dlna }
 
 /// Represents a discovered cast-capable device on the network.
 class CastDevice {
@@ -39,13 +35,13 @@ class CastDevice {
 
   /// Serializes this device to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'protocol': protocol.name,
-        'address': address.address,
-        'port': port,
-        'metadata': metadata,
-      };
+    'id': id,
+    'name': name,
+    'protocol': protocol.name,
+    'address': address.address,
+    'port': port,
+    'metadata': metadata,
+  };
 
   /// Creates a [CastDevice] from a JSON map.
   factory CastDevice.fromJson(Map<String, dynamic> json) {
@@ -55,8 +51,10 @@ class CastDevice {
       protocol: CastProtocol.values.byName(json['protocol'] as String),
       address: InternetAddress(json['address'] as String),
       port: json['port'] as int,
-      metadata: (json['metadata'] as Map<String, dynamic>?)
-              ?.map((k, v) => MapEntry(k, v.toString())) ??
+      metadata:
+          (json['metadata'] as Map<String, dynamic>?)?.map(
+            (k, v) => MapEntry(k, v.toString()),
+          ) ??
           const {},
     );
   }

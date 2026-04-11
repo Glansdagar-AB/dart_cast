@@ -39,13 +39,15 @@ class NetworkUtils {
         for (final addr in allAddresses) {
           if (subnetPrefix(addr.address) == targetPrefix) {
             CastLogger.debug(
-                'NetworkUtils: picked ${addr.address} (same subnet as $targetDeviceIp)');
+              'NetworkUtils: picked ${addr.address} (same subnet as $targetDeviceIp)',
+            );
             return addr.address;
           }
         }
         CastLogger.warning(
-            'NetworkUtils: no interface on same subnet as $targetDeviceIp, '
-            'falling back to private IP heuristic');
+          'NetworkUtils: no interface on same subnet as $targetDeviceIp, '
+          'falling back to private IP heuristic',
+        );
       }
     }
 
@@ -53,14 +55,16 @@ class NetworkUtils {
     for (final addr in allAddresses) {
       if (isPrivateAddress(addr.address)) {
         CastLogger.debug(
-            'NetworkUtils: picked ${addr.address} (private address)');
+          'NetworkUtils: picked ${addr.address} (private address)',
+        );
         return addr.address;
       }
     }
 
     // 3. First non-loopback address
     CastLogger.debug(
-        'NetworkUtils: picked ${allAddresses.first.address} (first available)');
+      'NetworkUtils: picked ${allAddresses.first.address} (first available)',
+    );
     return allAddresses.first.address;
   }
 

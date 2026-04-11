@@ -13,7 +13,7 @@ void main() {
 
       test('encodes single byte value', () {
         final result = Tlv8.encode([
-          (0x06, [0x01])
+          (0x06, [0x01]),
         ]);
         expect(result, equals(Uint8List.fromList([0x06, 0x01, 0x01])));
       });
@@ -25,10 +25,12 @@ void main() {
         ]);
         expect(
           result,
-          equals(Uint8List.fromList([
-            0x00, 0x01, 0x00, // Method = PairSetup
-            0x06, 0x01, 0x01, // SeqNo = 1
-          ])),
+          equals(
+            Uint8List.fromList([
+              0x00, 0x01, 0x00, // Method = PairSetup
+              0x06, 0x01, 0x01, // SeqNo = 1
+            ]),
+          ),
         );
       });
 
@@ -87,10 +89,11 @@ void main() {
       test('decodes single tag with value', () {
         final result = Tlv8.decode([0x06, 0x01, 0x03]);
         expect(
-            result,
-            equals({
-              0x06: [0x03]
-            }));
+          result,
+          equals({
+            0x06: [0x03],
+          }),
+        );
       });
 
       test('decodes multiple tags', () {
@@ -99,11 +102,12 @@ void main() {
           0x06, 0x01, 0x01, // SeqNo
         ]);
         expect(
-            result,
-            equals({
-              0x00: [0x00],
-              0x06: [0x01]
-            }));
+          result,
+          equals({
+            0x00: [0x00],
+            0x06: [0x01],
+          }),
+        );
       });
 
       test('concatenates consecutive entries with same tag', () {
@@ -112,10 +116,11 @@ void main() {
           0x03, 0x03, 0xCC, 0xDD, 0xEE, // PublicKey part 2
         ]);
         expect(
-            result,
-            equals({
-              0x03: [0xAA, 0xBB, 0xCC, 0xDD, 0xEE]
-            }));
+          result,
+          equals({
+            0x03: [0xAA, 0xBB, 0xCC, 0xDD, 0xEE],
+          }),
+        );
       });
 
       test('does not concatenate non-consecutive same tags', () {
@@ -130,10 +135,7 @@ void main() {
       });
 
       test('throws on truncated data (missing length byte)', () {
-        expect(
-          () => Tlv8.decode([0x06]),
-          throwsFormatException,
-        );
+        expect(() => Tlv8.decode([0x06]), throwsFormatException);
       });
 
       test('throws on value overflowing data', () {
@@ -189,7 +191,7 @@ void main() {
     group('encodeMap()', () {
       test('encodes from map', () {
         final result = Tlv8.encodeMap({
-          0x06: [0x01]
+          0x06: [0x01],
         });
         expect(result, equals(Uint8List.fromList([0x06, 0x01, 0x01])));
       });

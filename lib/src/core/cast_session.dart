@@ -21,7 +21,7 @@ class SessionStateMachine {
     SessionState.disconnected: {SessionState.connecting},
     SessionState.connecting: {
       SessionState.connected,
-      SessionState.disconnected
+      SessionState.disconnected,
     },
     SessionState.connected: {SessionState.loading, SessionState.disconnected},
     SessionState.loading: {SessionState.playing, SessionState.disconnected},
@@ -68,9 +68,7 @@ class SessionStateMachine {
   void transitionTo(SessionState target) {
     if (_state == target) return; // no-op for same state
     if (!canTransitionTo(target)) {
-      throw StateError(
-        'Invalid transition from $_state to $target',
-      );
+      throw StateError('Invalid transition from $_state to $target');
     }
     _state = target;
     _controller.add(target);

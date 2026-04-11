@@ -16,10 +16,7 @@ void main() {
       expect(xml, contains('s:Envelope'));
       expect(xml, contains('s:Body'));
       expect(xml, contains('GetProtocolInfo'));
-      expect(
-        xml,
-        contains('urn:schemas-upnp-org:service:ConnectionManager:1'),
-      );
+      expect(xml, contains('urn:schemas-upnp-org:service:ConnectionManager:1'));
     });
 
     test('uses ConnectionManager service type namespace', () {
@@ -137,38 +134,54 @@ void main() {
 
         switch (action) {
           case 'SetAVTransportURI':
-            request.response.write(_soapResponse(
-                'SetAVTransportURIResponse', DlnaServiceType.avTransport, ''));
+            request.response.write(
+              _soapResponse(
+                'SetAVTransportURIResponse',
+                DlnaServiceType.avTransport,
+                '',
+              ),
+            );
             break;
           case 'Play':
             request.response.write(
-                _soapResponse('PlayResponse', DlnaServiceType.avTransport, ''));
+              _soapResponse('PlayResponse', DlnaServiceType.avTransport, ''),
+            );
             break;
           case 'Stop':
             request.response.write(
-                _soapResponse('StopResponse', DlnaServiceType.avTransport, ''));
+              _soapResponse('StopResponse', DlnaServiceType.avTransport, ''),
+            );
             break;
           case 'GetPositionInfo':
-            request.response.write(_soapResponse(
-              'GetPositionInfoResponse',
-              DlnaServiceType.avTransport,
-              '<Track>1</Track>'
-                  '<TrackDuration>00:30:00</TrackDuration>'
-                  '<RelTime>00:00:00</RelTime>',
-            ));
+            request.response.write(
+              _soapResponse(
+                'GetPositionInfoResponse',
+                DlnaServiceType.avTransport,
+                '<Track>1</Track>'
+                    '<TrackDuration>00:30:00</TrackDuration>'
+                    '<RelTime>00:00:00</RelTime>',
+              ),
+            );
             break;
           case 'GetTransportInfo':
-            request.response.write(_soapResponse(
-              'GetTransportInfoResponse',
-              DlnaServiceType.avTransport,
-              '<CurrentTransportState>PLAYING</CurrentTransportState>'
-                  '<CurrentTransportStatus>OK</CurrentTransportStatus>'
-                  '<CurrentSpeed>1</CurrentSpeed>',
-            ));
+            request.response.write(
+              _soapResponse(
+                'GetTransportInfoResponse',
+                DlnaServiceType.avTransport,
+                '<CurrentTransportState>PLAYING</CurrentTransportState>'
+                    '<CurrentTransportStatus>OK</CurrentTransportStatus>'
+                    '<CurrentSpeed>1</CurrentSpeed>',
+              ),
+            );
             break;
           default:
-            request.response.write(_soapResponse(
-                '${action}Response', DlnaServiceType.avTransport, ''));
+            request.response.write(
+              _soapResponse(
+                '${action}Response',
+                DlnaServiceType.avTransport,
+                '',
+              ),
+            );
         }
 
         await request.response.close();
@@ -196,20 +209,20 @@ void main() {
         locationUrl: serverUrl,
       );
 
-      final session = DlnaSession(
-        device: device,
-        description: description,
-      );
+      final session = DlnaSession(device: device, description: description);
 
       await session.connect();
-      await session.loadMedia(const CastMedia(
-        url: 'http://example.com/video.m3u8',
-        type: CastMediaType.hls,
-        title: 'HLS Video',
-      ));
+      await session.loadMedia(
+        const CastMedia(
+          url: 'http://example.com/video.m3u8',
+          type: CastMediaType.hls,
+          title: 'HLS Video',
+        ),
+      );
 
-      final setUri =
-          capturedActions.firstWhere((a) => a.action == 'SetAVTransportURI');
+      final setUri = capturedActions.firstWhere(
+        (a) => a.action == 'SetAVTransportURI',
+      );
 
       // Should use ts-stream route, not stream route
       expect(setUri.body, contains('/ts-stream/'));
@@ -237,20 +250,20 @@ void main() {
         locationUrl: serverUrl,
       );
 
-      final session = DlnaSession(
-        device: device,
-        description: description,
-      );
+      final session = DlnaSession(device: device, description: description);
 
       await session.connect();
-      await session.loadMedia(const CastMedia(
-        url: 'http://example.com/video.mp4',
-        type: CastMediaType.mp4,
-        title: 'MP4 Video',
-      ));
+      await session.loadMedia(
+        const CastMedia(
+          url: 'http://example.com/video.mp4',
+          type: CastMediaType.mp4,
+          title: 'MP4 Video',
+        ),
+      );
 
-      final setUri =
-          capturedActions.firstWhere((a) => a.action == 'SetAVTransportURI');
+      final setUri = capturedActions.firstWhere(
+        (a) => a.action == 'SetAVTransportURI',
+      );
 
       // Should use stream route for MP4
       expect(setUri.body, contains('/stream/'));
@@ -278,20 +291,20 @@ void main() {
         locationUrl: serverUrl,
       );
 
-      final session = DlnaSession(
-        device: device,
-        description: description,
-      );
+      final session = DlnaSession(device: device, description: description);
 
       await session.connect();
-      await session.loadMedia(const CastMedia(
-        url: 'http://example.com/stream.ts',
-        type: CastMediaType.mpegTs,
-        title: 'TS Video',
-      ));
+      await session.loadMedia(
+        const CastMedia(
+          url: 'http://example.com/stream.ts',
+          type: CastMediaType.mpegTs,
+          title: 'TS Video',
+        ),
+      );
 
-      final setUri =
-          capturedActions.firstWhere((a) => a.action == 'SetAVTransportURI');
+      final setUri = capturedActions.firstWhere(
+        (a) => a.action == 'SetAVTransportURI',
+      );
 
       // Should use stream route (not ts-stream) for pre-existing TS
       expect(setUri.body, contains('/stream/'));

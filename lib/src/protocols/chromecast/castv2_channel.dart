@@ -71,8 +71,9 @@ class CastV2Channel {
           break;
         }
 
-        final messageLength =
-            readLength(Uint8List.fromList(accumulated.sublist(0, 4)));
+        final messageLength = readLength(
+          Uint8List.fromList(accumulated.sublist(0, 4)),
+        );
 
         if (accumulated.length < 4 + messageLength) {
           // Header read but body incomplete — put everything back.
@@ -140,13 +141,14 @@ class CastV2Channel {
       throw StateError('Not connected. Call connect() first.');
     }
 
-    final message = CastMessage()
-      ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-      ..sourceId = sourceId
-      ..destinationId = destinationId
-      ..namespace_ = namespace
-      ..payloadType = CastMessage_PayloadType.STRING
-      ..payloadUtf8 = payload;
+    final message =
+        CastMessage()
+          ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+          ..sourceId = sourceId
+          ..destinationId = destinationId
+          ..namespace_ = namespace
+          ..payloadType = CastMessage_PayloadType.STRING
+          ..payloadUtf8 = payload;
 
     final framed = frameMessage(message);
     _socket!.add(framed);

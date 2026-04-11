@@ -29,12 +29,15 @@ void main() {
           request.response.add([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
           await request.response.close();
         } else if (path == '/master.m3u8') {
-          final m3u8 = '#EXTM3U\n'
+          final m3u8 =
+              '#EXTM3U\n'
               '#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720\n'
               '720p/playlist.m3u8\n';
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('application', 'vnd.apple.mpegurl');
+          request.response.headers.contentType = ContentType(
+            'application',
+            'vnd.apple.mpegurl',
+          );
           request.response.write(m3u8);
           await request.response.close();
         } else if (path == '/segment.ts') {
@@ -141,10 +144,9 @@ void main() {
         expect(body, contains('url='));
         // The original relative URL should be resolved and encoded
         expect(
-            body,
-            contains(Uri.encodeComponent(
-              '$upstreamBaseUrl/720p/playlist.m3u8',
-            )));
+          body,
+          contains(Uri.encodeComponent('$upstreamBaseUrl/720p/playlist.m3u8')),
+        );
         // Should still have the EXTM3U and STREAM-INF tags
         expect(body, contains('#EXTM3U'));
         expect(body, contains('#EXT-X-STREAM-INF:'));
@@ -216,10 +218,7 @@ void main() {
 
         // Register new media and clean up previous
         proxy.cleanupPreviousMedia();
-        proxy.registerMedia(
-          '$upstreamBaseUrl/segment.ts',
-          headers: {},
-        );
+        proxy.registerMedia('$upstreamBaseUrl/segment.ts', headers: {});
 
         // Old URL should now return 404
         request = await client.getUrl(Uri.parse(proxyUrl1));
@@ -232,70 +231,84 @@ void main() {
     });
 
     test(
-        'cleanupPreviousMedia with synthetic excludeToken preserves HLS and file routes',
-        () async {
-      await proxy.start();
+      'cleanupPreviousMedia with synthetic excludeToken preserves HLS and file routes',
+      () async {
+        await proxy.start();
 
-      // Create a temp .ts file with keyframe data so wrapLocalFileAsHls
-      // produces a multi-segment playlist referencing the file route.
-      final tempDir =
-          await Directory.systemTemp.createTemp('media_proxy_cleanup_');
-      final tempFile = File('${tempDir.path}/video.ts');
-      // Write enough data to avoid single-segment fallback
-      await tempFile.writeAsBytes(List.filled(1024 * 100, 0));
-
-      try {
-        // Step 1: Register local file (creates a /file/ route)
-        final fileProxyUrl = proxy.registerFile(tempFile.path);
-
-        // Step 2: Wrap in HLS playlist (creates /synthetic/ content
-        // that references the /file/ route)
-        final hlsUrl = proxy.wrapLocalFileAsHls(
-          fileProxyUrl,
-          tempFile.path,
-          totalDuration: 60.0,
+        // Create a temp .ts file with keyframe data so wrapLocalFileAsHls
+        // produces a multi-segment playlist referencing the file route.
+        final tempDir = await Directory.systemTemp.createTemp(
+          'media_proxy_cleanup_',
         );
+        final tempFile = File('${tempDir.path}/video.ts');
+        // Write enough data to avoid single-segment fallback
+        await tempFile.writeAsBytes(List.filled(1024 * 100, 0));
 
-        // Step 3: Simulate what ChromecastSession does — extract token
-        // from the HLS URL and call cleanupPreviousMedia with it.
-        final syntheticToken = Uri.parse(hlsUrl).pathSegments.last;
-        proxy.cleanupPreviousMedia(excludeToken: syntheticToken);
-
-        // Step 4: Verify the HLS playlist (synthetic content) is still
-        // accessible — this is what Chromecast fetches first.
-        final client = HttpClient();
         try {
-          var request = await client.getUrl(Uri.parse(hlsUrl));
-          var response = await request.close();
-          final playlistBody = await response
-              .fold<List<int>>(<int>[], (prev, chunk) => prev..addAll(chunk));
-          final playlist = String.fromCharCodes(playlistBody);
+          // Step 1: Register local file (creates a /file/ route)
+          final fileProxyUrl = proxy.registerFile(tempFile.path);
 
-          expect(response.statusCode, HttpStatus.ok,
-              reason: 'HLS playlist must survive cleanup');
-          expect(playlist, contains('#EXTM3U'),
-              reason: 'Response must be valid HLS');
+          // Step 2: Wrap in HLS playlist (creates /synthetic/ content
+          // that references the /file/ route)
+          final hlsUrl = proxy.wrapLocalFileAsHls(
+            fileProxyUrl,
+            tempFile.path,
+            totalDuration: 60.0,
+          );
 
-          // Step 5: Verify the file route is still accessible — this is
-          // what Chromecast fetches for each segment.
-          request = await client.getUrl(Uri.parse(fileProxyUrl));
-          response = await request.close();
-          await response.drain<void>();
-          expect(response.statusCode, HttpStatus.ok,
-              reason: 'File route must survive cleanup');
+          // Step 3: Simulate what ChromecastSession does — extract token
+          // from the HLS URL and call cleanupPreviousMedia with it.
+          final syntheticToken = Uri.parse(hlsUrl).pathSegments.last;
+          proxy.cleanupPreviousMedia(excludeToken: syntheticToken);
+
+          // Step 4: Verify the HLS playlist (synthetic content) is still
+          // accessible — this is what Chromecast fetches first.
+          final client = HttpClient();
+          try {
+            var request = await client.getUrl(Uri.parse(hlsUrl));
+            var response = await request.close();
+            final playlistBody = await response.fold<List<int>>(
+              <int>[],
+              (prev, chunk) => prev..addAll(chunk),
+            );
+            final playlist = String.fromCharCodes(playlistBody);
+
+            expect(
+              response.statusCode,
+              HttpStatus.ok,
+              reason: 'HLS playlist must survive cleanup',
+            );
+            expect(
+              playlist,
+              contains('#EXTM3U'),
+              reason: 'Response must be valid HLS',
+            );
+
+            // Step 5: Verify the file route is still accessible — this is
+            // what Chromecast fetches for each segment.
+            request = await client.getUrl(Uri.parse(fileProxyUrl));
+            response = await request.close();
+            await response.drain<void>();
+            expect(
+              response.statusCode,
+              HttpStatus.ok,
+              reason: 'File route must survive cleanup',
+            );
+          } finally {
+            client.close();
+          }
         } finally {
-          client.close();
+          await tempDir.delete(recursive: true);
         }
-      } finally {
-        await tempDir.delete(recursive: true);
-      }
-    });
+      },
+    );
 
     test('supports Range requests for local files', () async {
       await proxy.start();
 
-      final tempDir =
-          await Directory.systemTemp.createTemp('media_proxy_range');
+      final tempDir = await Directory.systemTemp.createTemp(
+        'media_proxy_range',
+      );
       final tempFile = File('${tempDir.path}/ranged.mp4');
       await tempFile.writeAsBytes(
         List.generate(100, (i) => i), // 0..99
@@ -318,10 +331,7 @@ void main() {
           );
           expect(body, List.generate(10, (i) => i + 10)); // 10..19
 
-          expect(
-            response.headers.value('Content-Range'),
-            'bytes 10-19/100',
-          );
+          expect(response.headers.value('Content-Range'), 'bytes 10-19/100');
         } finally {
           client.close();
         }
@@ -343,10 +353,7 @@ void main() {
         final response = await request.close();
         await response.drain<void>();
 
-        expect(
-          response.headers.value('Access-Control-Allow-Origin'),
-          '*',
-        );
+        expect(response.headers.value('Access-Control-Allow-Origin'), '*');
       } finally {
         client.close();
       }
@@ -365,10 +372,7 @@ void main() {
         final response = await request.close();
         await response.drain<void>();
 
-        expect(
-          response.headers.contentType.toString(),
-          contains('mpegURL'),
-        );
+        expect(response.headers.contentType.toString(), contains('mpegURL'));
       } finally {
         client.close();
       }

@@ -39,9 +39,10 @@ void main() {
         },
       );
 
-      final results = await provider
-          .startDiscovery(timeout: const Duration(milliseconds: 500))
-          .toList();
+      final results =
+          await provider
+              .startDiscovery(timeout: const Duration(milliseconds: 500))
+              .toList();
 
       expect(results, isNotEmpty);
       final devices = results.last;
@@ -74,9 +75,10 @@ void main() {
         },
       );
 
-      final results = await provider
-          .startDiscovery(timeout: const Duration(milliseconds: 500))
-          .toList();
+      final results =
+          await provider
+              .startDiscovery(timeout: const Duration(milliseconds: 500))
+              .toList();
 
       expect(results, isNotEmpty);
       // Only one device with that ID
@@ -96,7 +98,7 @@ void main() {
               txtRecords: {
                 'fn': 'Living Room',
                 'id': 'cc-1',
-                'md': 'Chromecast'
+                'md': 'Chromecast',
               },
             ),
             const MdnsServiceInfo(
@@ -106,16 +108,17 @@ void main() {
               txtRecords: {
                 'fn': 'Bedroom',
                 'id': 'cc-2',
-                'md': 'Chromecast Ultra'
+                'md': 'Chromecast Ultra',
               },
             ),
           ]);
         },
       );
 
-      final results = await provider
-          .startDiscovery(timeout: const Duration(milliseconds: 500))
-          .toList();
+      final results =
+          await provider
+              .startDiscovery(timeout: const Duration(milliseconds: 500))
+              .toList();
 
       expect(results.last, hasLength(2));
 
@@ -135,12 +138,14 @@ void main() {
       provider.stopDiscovery();
 
       // Adding to the controller after stop should not cause issues
-      controller.add(const MdnsServiceInfo(
-        name: 'Late',
-        host: '192.168.1.99',
-        port: 8009,
-        txtRecords: {'fn': 'Late Device', 'id': 'late-1'},
-      ));
+      controller.add(
+        const MdnsServiceInfo(
+          name: 'Late',
+          host: '192.168.1.99',
+          port: 8009,
+          txtRecords: {'fn': 'Late Device', 'id': 'late-1'},
+        ),
+      );
 
       await controller.close();
     });

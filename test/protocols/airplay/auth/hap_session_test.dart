@@ -151,8 +151,10 @@ void main() {
         key[i] = i;
       }
 
-      final serverSock =
-          await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final serverSock = await ServerSocket.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       final encSocket = await Socket.connect('127.0.0.1', serverSock.port);
       final encSession = HapSession(
         socket: encSocket,
@@ -183,8 +185,10 @@ void main() {
       }
 
       // Create decrypt session with inputKey = encrypt session's outputKey
-      final serverSock =
-          await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final serverSock = await ServerSocket.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       final decSocket = await Socket.connect('127.0.0.1', serverSock.port);
       final decSession = HapSession(
         socket: decSocket,
@@ -245,8 +249,10 @@ void main() {
         key[i] = i;
       }
 
-      final serverSock =
-          await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final serverSock = await ServerSocket.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       final decSocket = await Socket.connect('127.0.0.1', serverSock.port);
       final decSession = HapSession(
         socket: decSocket,
@@ -280,8 +286,10 @@ void main() {
       }
 
       // Encrypt to get valid frame
-      final serverSock =
-          await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final serverSock = await ServerSocket.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       final encSocket = await Socket.connect('127.0.0.1', serverSock.port);
       final encSession = HapSession(
         socket: encSocket,
@@ -329,70 +337,75 @@ void main() {
   });
 
   group('HapSession HTTP request/response through encrypted channel', () {
-    test('sendRequest sends encrypted HTTP and receives encrypted response',
-        () async {
-      // Set up keys
-      final key = Uint8List(32);
-      for (int i = 0; i < 32; i++) {
-        key[i] = i;
-      }
+    test(
+      'sendRequest sends encrypted HTTP and receives encrypted response',
+      () async {
+        // Set up keys
+        final key = Uint8List(32);
+        for (int i = 0; i < 32; i++) {
+          key[i] = i;
+        }
 
-      // Create a raw TCP server that decrypts requests and sends encrypted responses
-      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+        // Create a raw TCP server that decrypts requests and sends encrypted responses
+        final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
 
-      final clientSocket = await Socket.connect('127.0.0.1', server.port);
+        final clientSocket = await Socket.connect('127.0.0.1', server.port);
 
-      final hapSession = HapSession(
-        socket: clientSocket,
-        outputKey: Uint8List.fromList(key),
-        inputKey: Uint8List.fromList(key),
-        host: '127.0.0.1',
-        port: server.port,
-        sessionId: 'test-session-id',
-      );
-
-      // Server side: decrypt request, send encrypted response.
-      // HapSession's constructor sets up a single persistent listener on
-      // the socket, so we must NOT call serverSocket.listen() separately.
-      server.listen((serverSocket) async {
-        final serverDecSession = HapSession(
-          socket: serverSocket,
-          outputKey: Uint8List.fromList(key), // matches client's inputKey
-          inputKey: Uint8List.fromList(key), // matches client's outputKey
+        final hapSession = HapSession(
+          socket: clientSocket,
+          outputKey: Uint8List.fromList(key),
+          inputKey: Uint8List.fromList(key),
           host: '127.0.0.1',
           port: server.port,
+          sessionId: 'test-session-id',
         );
 
-        try {
-          // Read decrypted data via the session's internal buffer
-          final decrypted = await serverDecSession.readDecryptedData();
-          final requestStr = utf8.decode(decrypted);
+        // Server side: decrypt request, send encrypted response.
+        // HapSession's constructor sets up a single persistent listener on
+        // the socket, so we must NOT call serverSocket.listen() separately.
+        server.listen((serverSocket) async {
+          final serverDecSession = HapSession(
+            socket: serverSocket,
+            outputKey: Uint8List.fromList(key), // matches client's inputKey
+            inputKey: Uint8List.fromList(key), // matches client's outputKey
+            host: '127.0.0.1',
+            port: server.port,
+          );
 
-          // Verify it looks like an HTTP request
-          if (requestStr.contains('GET /test-endpoint')) {
-            // Send encrypted HTTP response
-            final responseStr =
-                'HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, World!';
-            final respBytes = Uint8List.fromList(utf8.encode(responseStr));
-            final encrypted = await serverDecSession.encrypt(respBytes);
-            serverSocket.add(encrypted);
-            await serverSocket.flush();
+          try {
+            // Read decrypted data via the session's internal buffer
+            final decrypted = await serverDecSession.readDecryptedData();
+            final requestStr = utf8.decode(decrypted);
+
+            // Verify it looks like an HTTP request
+            if (requestStr.contains('GET /test-endpoint')) {
+              // Send encrypted HTTP response
+              final responseStr =
+                  'HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, World!';
+              final respBytes = Uint8List.fromList(utf8.encode(responseStr));
+              final encrypted = await serverDecSession.encrypt(respBytes);
+              serverSocket.add(encrypted);
+              await serverSocket.flush();
+            }
+          } catch (e) {
+            // Ignore decryption errors in test
           }
-        } catch (e) {
-          // Ignore decryption errors in test
+        });
+
+        try {
+          final response = await hapSession.sendRequest(
+            'GET',
+            '/test-endpoint',
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(response.bodyText, equals('Hello, World!'));
+        } finally {
+          await hapSession.close();
+          await server.close();
         }
-      });
-
-      try {
-        final response = await hapSession.sendRequest('GET', '/test-endpoint');
-
-        expect(response.statusCode, equals(200));
-        expect(response.bodyText, equals('Hello, World!'));
-      } finally {
-        await hapSession.close();
-        await server.close();
-      }
-    });
+      },
+    );
   });
 
   group('HapSession nonce building', () {
@@ -401,8 +414,10 @@ void main() {
       final key = Uint8List(32);
       final data = Uint8List.fromList([1, 2, 3]);
 
-      final serverSock =
-          await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final serverSock = await ServerSocket.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       final socket = await Socket.connect('127.0.0.1', serverSock.port);
 
       final session = HapSession(
@@ -509,8 +524,9 @@ void main() {
           // Send back a valid RTSP response
           final resp =
               'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
@@ -541,8 +557,9 @@ void main() {
 
             final resp =
                 'RTSP/1.0 200 OK\r\nCSeq: ${i + 1}\r\nContent-Length: 0\r\n\r\n';
-            final encrypted =
-                await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+            final encrypted = await srvSession.encrypt(
+              Uint8List.fromList(utf8.encode(resp)),
+            );
             sock.add(encrypted);
             await sock.flush();
           }
@@ -576,8 +593,9 @@ void main() {
 
           final resp =
               'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
@@ -585,8 +603,10 @@ void main() {
 
       await clientSession.sendRtspRequest('OPTIONS', '*');
 
-      expect(receivedRequest,
-          contains('X-Apple-Session-ID: my-unique-session-42'));
+      expect(
+        receivedRequest,
+        contains('X-Apple-Session-ID: my-unique-session-42'),
+      );
 
       await clientSession.close();
       await server.close();
@@ -606,8 +626,9 @@ void main() {
 
           final resp =
               'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
@@ -635,16 +656,21 @@ void main() {
 
           final resp =
               'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
       });
 
       final body = utf8.encode('{"test": true}');
-      await clientSession.sendRtspRequest('POST', '/play',
-          headers: {'Content-Type': 'application/json'}, body: body);
+      await clientSession.sendRtspRequest(
+        'POST',
+        '/play',
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      );
 
       expect(receivedRaw, isNotNull);
       final requestStr = utf8.decode(receivedRaw!);
@@ -674,8 +700,9 @@ void main() {
 
           final resp =
               'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
@@ -738,8 +765,9 @@ void main() {
 
           final resp =
               'RTSP/1.0 200 OK\r\nCSeq: 1\r\nServer: AirTunes/550.10\r\nContent-Length: 5\r\n\r\nhello';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
@@ -769,8 +797,9 @@ void main() {
 
           // Status line with no reason phrase after code
           final resp = 'RTSP/1.0 200\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
@@ -791,8 +820,14 @@ void main() {
       clientSession = pair.client;
 
       // Binary body with non-UTF8 bytes
-      final binaryBody =
-          Uint8List.fromList([0x00, 0x01, 0xFF, 0xFE, 0x80, 0x90]);
+      final binaryBody = Uint8List.fromList([
+        0x00,
+        0x01,
+        0xFF,
+        0xFE,
+        0x80,
+        0x90,
+      ]);
 
       server.listen((sock) async {
         final srvSession = _serverSession(sock, server.port);
@@ -802,16 +837,20 @@ void main() {
           final headerStr =
               'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Type: application/octet-stream\r\nContent-Length: ${binaryBody.length}\r\n\r\n';
           final headerBytes = utf8.encode(headerStr);
-          final fullResponse =
-              Uint8List.fromList([...headerBytes, ...binaryBody]);
+          final fullResponse = Uint8List.fromList([
+            ...headerBytes,
+            ...binaryBody,
+          ]);
           final encrypted = await srvSession.encrypt(fullResponse);
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
       });
 
-      final response =
-          await clientSession.sendRtspRequest('GET', '/playback-info');
+      final response = await clientSession.sendRtspRequest(
+        'GET',
+        '/playback-info',
+      );
 
       expect(response.statusCode, equals(200));
       expect(response.body, equals(binaryBody));
@@ -833,15 +872,18 @@ void main() {
 
           final resp =
               'RTSP/1.0 453 Not Enough Bandwidth\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
       });
 
-      final response =
-          await clientSession.sendRtspRequest('SETUP', 'rtsp://127.0.0.1/1');
+      final response = await clientSession.sendRtspRequest(
+        'SETUP',
+        'rtsp://127.0.0.1/1',
+      );
 
       expect(response.statusCode, equals(453));
       expect(response.reasonPhrase, equals('Not Enough Bandwidth'));
@@ -901,8 +943,9 @@ void main() {
 
           final resp =
               'HTTP/1.1 200 OK\r\nContent-Length: ${bodyContent.length}\r\n\r\n$bodyContent';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
@@ -930,8 +973,9 @@ void main() {
 
           // No Content-Length, no body — just headers
           final resp = 'HTTP/1.1 204 No Content\r\n\r\n';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
@@ -959,8 +1003,9 @@ void main() {
           // Chunked response with terminal 0\r\n\r\n
           final resp =
               'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n';
-          final encrypted =
-              await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+          final encrypted = await srvSession.encrypt(
+            Uint8List.fromList(utf8.encode(resp)),
+          );
           sock.add(encrypted);
           await sock.flush();
         } catch (_) {}
@@ -1034,8 +1079,9 @@ void main() {
             final cseq = cseqMatch?.group(1) ?? '1';
             final resp =
                 'RTSP/1.0 200 OK\r\nCSeq: $cseq\r\nContent-Length: 0\r\n\r\n';
-            final encrypted =
-                await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+            final encrypted = await srvSession.encrypt(
+              Uint8List.fromList(utf8.encode(resp)),
+            );
             sock.add(encrypted);
             await sock.flush();
           }
@@ -1073,59 +1119,64 @@ void main() {
       await server.close();
     });
 
-    test('resetRtspSession causes next setupRtspSession to re-run SETUP+RECORD',
-        () async {
-      final pair = await _createPair();
-      server = pair.server;
-      clientSession = pair.client;
+    test(
+      'resetRtspSession causes next setupRtspSession to re-run SETUP+RECORD',
+      () async {
+        final pair = await _createPair();
+        server = pair.server;
+        clientSession = pair.client;
 
-      int requestCount = 0;
+        int requestCount = 0;
 
-      server.listen((sock) async {
-        final srvSession = _serverSession(sock, server.port);
-        try {
-          while (true) {
-            final data = await srvSession.readDecryptedData();
-            requestCount++;
-            final requestStr = utf8.decode(data, allowMalformed: true);
+        server.listen((sock) async {
+          final srvSession = _serverSession(sock, server.port);
+          try {
+            while (true) {
+              final data = await srvSession.readDecryptedData();
+              requestCount++;
+              final requestStr = utf8.decode(data, allowMalformed: true);
 
-            final cseqMatch = RegExp(r'CSeq:\s*(\d+)').firstMatch(requestStr);
-            final cseq = cseqMatch?.group(1) ?? '$requestCount';
-            final resp =
-                'RTSP/1.0 200 OK\r\nCSeq: $cseq\r\nContent-Length: 0\r\n\r\n';
-            final encrypted =
-                await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
-            sock.add(encrypted);
-            await sock.flush();
-          }
-        } catch (_) {}
-      });
+              final cseqMatch = RegExp(r'CSeq:\s*(\d+)').firstMatch(requestStr);
+              final cseq = cseqMatch?.group(1) ?? '$requestCount';
+              final resp =
+                  'RTSP/1.0 200 OK\r\nCSeq: $cseq\r\nContent-Length: 0\r\n\r\n';
+              final encrypted = await srvSession.encrypt(
+                Uint8List.fromList(utf8.encode(resp)),
+              );
+              sock.add(encrypted);
+              await sock.flush();
+            }
+          } catch (_) {}
+        });
 
-      // First setupRtspSession: SETUP + POST /feedback + RECORD = 3 requests
-      await clientSession.setupRtspSession();
-      expect(requestCount, equals(3));
+        // First setupRtspSession: SETUP + POST /feedback + RECORD = 3 requests
+        await clientSession.setupRtspSession();
+        expect(requestCount, equals(3));
 
-      // Second call is a no-op (already set up)
-      await clientSession.setupRtspSession();
-      expect(requestCount, equals(3));
+        // Second call is a no-op (already set up)
+        await clientSession.setupRtspSession();
+        expect(requestCount, equals(3));
 
-      // resetRtspSession() resets _rtspSessionSetUp and CSeq — no network request
-      clientSession.resetRtspSession();
-      expect(requestCount, equals(3)); // no /stop sent
+        // resetRtspSession() resets _rtspSessionSetUp and CSeq — no network request
+        clientSession.resetRtspSession();
+        expect(requestCount, equals(3)); // no /stop sent
 
-      // Now setupRtspSession must run again (3 more requests)
-      await clientSession.setupRtspSession();
-      expect(requestCount, equals(6)); // +3 for SETUP + feedback + RECORD
+        // Now setupRtspSession must run again (3 more requests)
+        await clientSession.setupRtspSession();
+        expect(requestCount, equals(6)); // +3 for SETUP + feedback + RECORD
 
-      await clientSession.close();
-      await server.close();
-    });
+        await clientSession.close();
+        await server.close();
+      },
+    );
   });
 
   group('UUID format validation', () {
     test('sessionId matches UUID v4 format (8-4-4-4-12 hex)', () async {
-      final serverSocket =
-          await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final serverSocket = await ServerSocket.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
       final clientSocket = await Socket.connect('127.0.0.1', serverSocket.port);
 
       final key = Uint8List(32);
@@ -1141,7 +1192,8 @@ void main() {
       // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
       // where y is one of [8, 9, a, b]
       final uuidRegex = RegExp(
-          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+      );
       expect(session.sessionId, matches(uuidRegex));
 
       await session.close();
@@ -1182,80 +1234,83 @@ void main() {
   });
 
   group('setupRtspSession flow', () {
-    test('sends SETUP, POST /feedback, RECORD in order with encrypted RTSP',
-        () async {
-      final key = Uint8List(32);
-      for (int i = 0; i < 32; i++) {
-        key[i] = i;
-      }
+    test(
+      'sends SETUP, POST /feedback, RECORD in order with encrypted RTSP',
+      () async {
+        final key = Uint8List(32);
+        for (int i = 0; i < 32; i++) {
+          key[i] = i;
+        }
 
-      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-      final clientSocket = await Socket.connect('127.0.0.1', server.port);
+        final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+        final clientSocket = await Socket.connect('127.0.0.1', server.port);
 
-      final clientSession = HapSession(
-        socket: clientSocket,
-        outputKey: Uint8List.fromList(key),
-        inputKey: Uint8List.fromList(key),
-        host: '127.0.0.1',
-        port: server.port,
-        sessionId: 'test-setup-session',
-      );
-
-      final receivedMethods = <String>[];
-      final receivedUris = <String>[];
-
-      server.listen((sock) async {
-        final srvSession = HapSession(
-          socket: sock,
+        final clientSession = HapSession(
+          socket: clientSocket,
           outputKey: Uint8List.fromList(key),
           inputKey: Uint8List.fromList(key),
           host: '127.0.0.1',
           port: server.port,
+          sessionId: 'test-setup-session',
         );
 
-        try {
-          for (int i = 0; i < 3; i++) {
-            final data = await srvSession.readDecryptedData();
-            final requestStr = utf8.decode(data, allowMalformed: true);
-            final firstLine = requestStr.split('\r\n').first;
-            final parts = firstLine.split(' ');
-            receivedMethods.add(parts[0]);
-            if (parts.length > 1) receivedUris.add(parts[1]);
+        final receivedMethods = <String>[];
+        final receivedUris = <String>[];
 
-            final cseqMatch = RegExp(r'CSeq:\s*(\d+)').firstMatch(requestStr);
-            final cseq = cseqMatch?.group(1) ?? '${i + 1}';
-            final resp =
-                'RTSP/1.0 200 OK\r\nCSeq: $cseq\r\nContent-Length: 0\r\n\r\n';
-            final encrypted =
-                await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
-            sock.add(encrypted);
-            await sock.flush();
-          }
-        } catch (_) {}
-      });
+        server.listen((sock) async {
+          final srvSession = HapSession(
+            socket: sock,
+            outputKey: Uint8List.fromList(key),
+            inputKey: Uint8List.fromList(key),
+            host: '127.0.0.1',
+            port: server.port,
+          );
 
-      await clientSession.setupRtspSession();
+          try {
+            for (int i = 0; i < 3; i++) {
+              final data = await srvSession.readDecryptedData();
+              final requestStr = utf8.decode(data, allowMalformed: true);
+              final firstLine = requestStr.split('\r\n').first;
+              final parts = firstLine.split(' ');
+              receivedMethods.add(parts[0]);
+              if (parts.length > 1) receivedUris.add(parts[1]);
 
-      // Verify order: SETUP, POST, RECORD
-      expect(receivedMethods.length, equals(3));
-      expect(receivedMethods[0], equals('SETUP'));
-      expect(receivedMethods[1], equals('POST'));
-      expect(receivedMethods[2], equals('RECORD'));
+              final cseqMatch = RegExp(r'CSeq:\s*(\d+)').firstMatch(requestStr);
+              final cseq = cseqMatch?.group(1) ?? '${i + 1}';
+              final resp =
+                  'RTSP/1.0 200 OK\r\nCSeq: $cseq\r\nContent-Length: 0\r\n\r\n';
+              final encrypted = await srvSession.encrypt(
+                Uint8List.fromList(utf8.encode(resp)),
+              );
+              sock.add(encrypted);
+              await sock.flush();
+            }
+          } catch (_) {}
+        });
 
-      // POST /feedback URI
-      expect(receivedUris[1], equals('/feedback'));
+        await clientSession.setupRtspSession();
 
-      // SETUP and RECORD should use rtsp://host/number URI format
-      final rtspUriRegex = RegExp(r'^rtsp://127\.0\.0\.1/\d+$');
-      expect(receivedUris[0], matches(rtspUriRegex));
-      expect(receivedUris[2], matches(rtspUriRegex));
+        // Verify order: SETUP, POST, RECORD
+        expect(receivedMethods.length, equals(3));
+        expect(receivedMethods[0], equals('SETUP'));
+        expect(receivedMethods[1], equals('POST'));
+        expect(receivedMethods[2], equals('RECORD'));
 
-      // SETUP and RECORD should use the same URI
-      expect(receivedUris[0], equals(receivedUris[2]));
+        // POST /feedback URI
+        expect(receivedUris[1], equals('/feedback'));
 
-      await clientSession.close();
-      await server.close();
-    });
+        // SETUP and RECORD should use rtsp://host/number URI format
+        final rtspUriRegex = RegExp(r'^rtsp://127\.0\.0\.1/\d+$');
+        expect(receivedUris[0], matches(rtspUriRegex));
+        expect(receivedUris[2], matches(rtspUriRegex));
+
+        // SETUP and RECORD should use the same URI
+        expect(receivedUris[0], equals(receivedUris[2]));
+
+        await clientSession.close();
+        await server.close();
+      },
+    );
 
     test('setupRtspSession is idempotent — second call is a no-op', () async {
       final key = Uint8List(32);
@@ -1292,8 +1347,9 @@ void main() {
 
             final resp =
                 'RTSP/1.0 200 OK\r\nCSeq: $requestCount\r\nContent-Length: 0\r\n\r\n';
-            final encrypted =
-                await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+            final encrypted = await srvSession.encrypt(
+              Uint8List.fromList(utf8.encode(resp)),
+            );
             sock.add(encrypted);
             await sock.flush();
           }
@@ -1348,8 +1404,9 @@ void main() {
 
             final resp =
                 'RTSP/1.0 200 OK\r\nCSeq: ${i + 1}\r\nContent-Length: 0\r\n\r\n';
-            final encrypted =
-                await srvSession.encrypt(Uint8List.fromList(utf8.encode(resp)));
+            final encrypted = await srvSession.encrypt(
+              Uint8List.fromList(utf8.encode(resp)),
+            );
             sock.add(encrypted);
             await sock.flush();
           }
@@ -1359,8 +1416,10 @@ void main() {
       await clientSession.setupRtspSession();
 
       expect(setupRequest, isNotNull);
-      expect(setupRequest!,
-          contains('Content-Type: application/x-apple-binary-plist'));
+      expect(
+        setupRequest!,
+        contains('Content-Type: application/x-apple-binary-plist'),
+      );
       // Should also have Content-Length for the plist body
       expect(setupRequest!, contains('Content-Length:'));
 

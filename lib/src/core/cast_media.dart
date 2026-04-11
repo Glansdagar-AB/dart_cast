@@ -97,7 +97,7 @@ class CastMedia {
     this.startPosition,
     this.duration,
     this.subtitles = const [],
-  })  : url = filePath,
-        isLocalFile = true,
-        httpHeaders = const {};
+  }) : url = filePath,
+       isLocalFile = true,
+       httpHeaders = const {};
 }

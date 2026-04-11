@@ -15,16 +15,11 @@ void main() {
         expect(xml, contains('s:Envelope'));
         expect(xml, contains('s:Body'));
         expect(xml, contains('SetAVTransportURI'));
-        expect(
-          xml,
-          contains('urn:schemas-upnp-org:service:AVTransport:1'),
-        );
+        expect(xml, contains('urn:schemas-upnp-org:service:AVTransport:1'));
         expect(xml, contains('<InstanceID>0</InstanceID>'));
         expect(
           xml,
-          contains(
-            '<CurrentURI>http://example.com/video.mp4</CurrentURI>',
-          ),
+          contains('<CurrentURI>http://example.com/video.mp4</CurrentURI>'),
         );
       });
 
@@ -38,10 +33,7 @@ void main() {
         expect(xml, contains('DIDL-Lite'));
         expect(xml, contains('dc:title'));
         expect(xml, contains('My Video'));
-        expect(
-          xml,
-          contains('http://example.com/video.mp4'),
-        );
+        expect(xml, contains('http://example.com/video.mp4'));
         expect(xml, contains('object.item.videoItem'));
         expect(xml, contains('http-get:*:video/mp4:*'));
       });
@@ -108,10 +100,7 @@ void main() {
         expect(xml, contains('Play'));
         expect(xml, contains('<InstanceID>0</InstanceID>'));
         expect(xml, contains('<Speed>1</Speed>'));
-        expect(
-          xml,
-          contains('urn:schemas-upnp-org:service:AVTransport:1'),
-        );
+        expect(xml, contains('urn:schemas-upnp-org:service:AVTransport:1'));
       });
     });
 
@@ -122,10 +111,7 @@ void main() {
         expect(xml, contains('s:Envelope'));
         expect(xml, contains('Pause'));
         expect(xml, contains('<InstanceID>0</InstanceID>'));
-        expect(
-          xml,
-          contains('urn:schemas-upnp-org:service:AVTransport:1'),
-        );
+        expect(xml, contains('urn:schemas-upnp-org:service:AVTransport:1'));
       });
     });
 
@@ -136,10 +122,7 @@ void main() {
         expect(xml, contains('s:Envelope'));
         expect(xml, contains('Stop'));
         expect(xml, contains('<InstanceID>0</InstanceID>'));
-        expect(
-          xml,
-          contains('urn:schemas-upnp-org:service:AVTransport:1'),
-        );
+        expect(xml, contains('urn:schemas-upnp-org:service:AVTransport:1'));
       });
     });
 
@@ -176,10 +159,7 @@ void main() {
 
         expect(xml, contains('GetPositionInfo'));
         expect(xml, contains('<InstanceID>0</InstanceID>'));
-        expect(
-          xml,
-          contains('urn:schemas-upnp-org:service:AVTransport:1'),
-        );
+        expect(xml, contains('urn:schemas-upnp-org:service:AVTransport:1'));
       });
     });
 
@@ -189,10 +169,7 @@ void main() {
 
         expect(xml, contains('GetTransportInfo'));
         expect(xml, contains('<InstanceID>0</InstanceID>'));
-        expect(
-          xml,
-          contains('urn:schemas-upnp-org:service:AVTransport:1'),
-        );
+        expect(xml, contains('urn:schemas-upnp-org:service:AVTransport:1'));
       });
     });
 
@@ -258,7 +235,9 @@ void main() {
 
         final result = DlnaSoapParser.parsePositionInfo(xml);
         expect(
-            result.position, equals(const Duration(minutes: 15, seconds: 30)));
+          result.position,
+          equals(const Duration(minutes: 15, seconds: 30)),
+        );
         expect(result.duration, equals(const Duration(hours: 1, minutes: 30)));
       });
 
@@ -334,10 +313,7 @@ void main() {
   </s:Body>
 </s:Envelope>''';
 
-        expect(
-          DlnaSoapParser.parseTransportInfo(xml),
-          equals('TRANSITIONING'),
-        );
+        expect(DlnaSoapParser.parseTransportInfo(xml), equals('TRANSITIONING'));
       });
 
       test('extracts NO_MEDIA_PRESENT state', () {

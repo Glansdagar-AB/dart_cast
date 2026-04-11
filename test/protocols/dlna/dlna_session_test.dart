@@ -58,64 +58,86 @@ class MockDlnaServer {
 
     switch (action) {
       case 'SetAVTransportURI':
-        request.response.write(_soapResponse(
-            'SetAVTransportURIResponse', DlnaServiceType.avTransport, ''));
+        request.response.write(
+          _soapResponse(
+            'SetAVTransportURIResponse',
+            DlnaServiceType.avTransport,
+            '',
+          ),
+        );
         break;
       case 'Play':
         _transportState = 'PLAYING';
         request.response.write(
-            _soapResponse('PlayResponse', DlnaServiceType.avTransport, ''));
+          _soapResponse('PlayResponse', DlnaServiceType.avTransport, ''),
+        );
         break;
       case 'Pause':
         _transportState = 'PAUSED_PLAYBACK';
         request.response.write(
-            _soapResponse('PauseResponse', DlnaServiceType.avTransport, ''));
+          _soapResponse('PauseResponse', DlnaServiceType.avTransport, ''),
+        );
         break;
       case 'Stop':
         _transportState = 'STOPPED';
         request.response.write(
-            _soapResponse('StopResponse', DlnaServiceType.avTransport, ''));
+          _soapResponse('StopResponse', DlnaServiceType.avTransport, ''),
+        );
         break;
       case 'Seek':
         request.response.write(
-            _soapResponse('SeekResponse', DlnaServiceType.avTransport, ''));
+          _soapResponse('SeekResponse', DlnaServiceType.avTransport, ''),
+        );
         break;
       case 'GetPositionInfo':
-        request.response.write(_soapResponse(
-          'GetPositionInfoResponse',
-          DlnaServiceType.avTransport,
-          '<Track>1</Track>'
-              '<TrackDuration>$_trackDuration</TrackDuration>'
-              '<RelTime>$_relTime</RelTime>',
-        ));
+        request.response.write(
+          _soapResponse(
+            'GetPositionInfoResponse',
+            DlnaServiceType.avTransport,
+            '<Track>1</Track>'
+                '<TrackDuration>$_trackDuration</TrackDuration>'
+                '<RelTime>$_relTime</RelTime>',
+          ),
+        );
         break;
       case 'GetTransportInfo':
-        request.response.write(_soapResponse(
-          'GetTransportInfoResponse',
-          DlnaServiceType.avTransport,
-          '<CurrentTransportState>$_transportState</CurrentTransportState>'
-              '<CurrentTransportStatus>OK</CurrentTransportStatus>'
-              '<CurrentSpeed>1</CurrentSpeed>',
-        ));
+        request.response.write(
+          _soapResponse(
+            'GetTransportInfoResponse',
+            DlnaServiceType.avTransport,
+            '<CurrentTransportState>$_transportState</CurrentTransportState>'
+                '<CurrentTransportStatus>OK</CurrentTransportStatus>'
+                '<CurrentSpeed>1</CurrentSpeed>',
+          ),
+        );
         break;
       case 'SetVolume':
-        request.response.write(_soapResponse(
-            'SetVolumeResponse', DlnaServiceType.renderingControl, ''));
+        request.response.write(
+          _soapResponse(
+            'SetVolumeResponse',
+            DlnaServiceType.renderingControl,
+            '',
+          ),
+        );
         break;
       case 'GetVolume':
-        request.response.write(_soapResponse(
-          'GetVolumeResponse',
-          DlnaServiceType.renderingControl,
-          '<CurrentVolume>$_volume</CurrentVolume>',
-        ));
+        request.response.write(
+          _soapResponse(
+            'GetVolumeResponse',
+            DlnaServiceType.renderingControl,
+            '<CurrentVolume>$_volume</CurrentVolume>',
+          ),
+        );
         break;
       case 'GetProtocolInfo':
         final sink = supportedProtocols.join(',');
-        request.response.write(_soapResponse(
-          'GetProtocolInfoResponse',
-          DlnaServiceType.connectionManager,
-          '<Source></Source><Sink>$sink</Sink>',
-        ));
+        request.response.write(
+          _soapResponse(
+            'GetProtocolInfoResponse',
+            DlnaServiceType.connectionManager,
+            '<Source></Source><Sink>$sink</Sink>',
+          ),
+        );
         break;
       default:
         request.response.statusCode = 500;
@@ -171,10 +193,7 @@ void main() {
       locationUrl: mockServer.baseUrl,
     );
 
-    session = DlnaSession(
-      device: device,
-      description: description,
-    );
+    session = DlnaSession(device: device, description: description);
   });
 
   tearDown(() async {
@@ -206,22 +225,26 @@ void main() {
         await session.loadMedia(media);
 
         // Verify SetAVTransportURI was called
-        final setUriActions = mockServer.capturedActions
-            .where((a) => a.action == 'SetAVTransportURI')
-            .toList();
+        final setUriActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'SetAVTransportURI')
+                .toList();
         expect(setUriActions, hasLength(1));
 
         // Verify Play was called after SetAVTransportURI
-        final playActions = mockServer.capturedActions
-            .where((a) => a.action == 'Play')
-            .toList();
+        final playActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'Play')
+                .toList();
         expect(playActions, hasLength(1));
 
         // SetAVTransportURI should come before Play
-        final setUriIndex = mockServer.capturedActions
-            .indexWhere((a) => a.action == 'SetAVTransportURI');
-        final playIndex =
-            mockServer.capturedActions.indexWhere((a) => a.action == 'Play');
+        final setUriIndex = mockServer.capturedActions.indexWhere(
+          (a) => a.action == 'SetAVTransportURI',
+        );
+        final playIndex = mockServer.capturedActions.indexWhere(
+          (a) => a.action == 'Play',
+        );
         expect(setUriIndex, lessThan(playIndex));
       });
 
@@ -233,10 +256,12 @@ void main() {
 
         mockServer.transportState = 'PLAYING';
 
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         // Should have gone through loading state
         expect(states, contains(SessionState.loading));
@@ -248,10 +273,12 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         mockServer.capturedActions.clear();
 
@@ -259,9 +286,10 @@ void main() {
         session.stateMachine.forceState(SessionState.paused);
         await session.play();
 
-        final playActions = mockServer.capturedActions
-            .where((a) => a.action == 'Play')
-            .toList();
+        final playActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'Play')
+                .toList();
         expect(playActions, hasLength(1));
       });
     });
@@ -271,17 +299,20 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         mockServer.capturedActions.clear();
         await session.pause();
 
-        final pauseActions = mockServer.capturedActions
-            .where((a) => a.action == 'Pause')
-            .toList();
+        final pauseActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'Pause')
+                .toList();
         expect(pauseActions, hasLength(1));
       });
     });
@@ -291,17 +322,20 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         mockServer.capturedActions.clear();
         await session.stop();
 
-        final stopActions = mockServer.capturedActions
-            .where((a) => a.action == 'Stop')
-            .toList();
+        final stopActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'Stop')
+                .toList();
         expect(stopActions, hasLength(1));
       });
 
@@ -309,10 +343,12 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         await session.stop();
 
@@ -325,17 +361,20 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         mockServer.capturedActions.clear();
         await session.seek(const Duration(hours: 1, minutes: 23, seconds: 45));
 
-        final seekActions = mockServer.capturedActions
-            .where((a) => a.action == 'Seek')
-            .toList();
+        final seekActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'Seek')
+                .toList();
         expect(seekActions, hasLength(1));
         expect(seekActions.first.body, contains('01:23:45'));
       });
@@ -346,58 +385,73 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         mockServer.capturedActions.clear();
         await session.setVolume(0.75);
 
-        final volumeActions = mockServer.capturedActions
-            .where((a) => a.action == 'SetVolume')
-            .toList();
+        final volumeActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'SetVolume')
+                .toList();
         expect(volumeActions, hasLength(1));
-        expect(volumeActions.first.body,
-            contains('<DesiredVolume>75</DesiredVolume>'));
+        expect(
+          volumeActions.first.body,
+          contains('<DesiredVolume>75</DesiredVolume>'),
+        );
       });
 
       test('handles volume 0.0', () async {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         mockServer.capturedActions.clear();
         await session.setVolume(0.0);
 
-        final volumeActions = mockServer.capturedActions
-            .where((a) => a.action == 'SetVolume')
-            .toList();
-        expect(volumeActions.first.body,
-            contains('<DesiredVolume>0</DesiredVolume>'));
+        final volumeActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'SetVolume')
+                .toList();
+        expect(
+          volumeActions.first.body,
+          contains('<DesiredVolume>0</DesiredVolume>'),
+        );
       });
 
       test('handles volume 1.0', () async {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         mockServer.capturedActions.clear();
         await session.setVolume(1.0);
 
-        final volumeActions = mockServer.capturedActions
-            .where((a) => a.action == 'SetVolume')
-            .toList();
-        expect(volumeActions.first.body,
-            contains('<DesiredVolume>100</DesiredVolume>'));
+        final volumeActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'SetVolume')
+                .toList();
+        expect(
+          volumeActions.first.body,
+          contains('<DesiredVolume>100</DesiredVolume>'),
+        );
       });
     });
 
@@ -409,14 +463,17 @@ void main() {
         mockServer.relTime = '00:05:30';
         mockServer.trackDuration = '01:00:00';
 
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         // Wait for at least one poll
-        final position = await session.positionStream.first
-            .timeout(const Duration(seconds: 5));
+        final position = await session.positionStream.first.timeout(
+          const Duration(seconds: 5),
+        );
 
         expect(position, isA<Duration>());
       });
@@ -428,14 +485,17 @@ void main() {
         mockServer.relTime = '00:05:30';
         mockServer.trackDuration = '01:00:00';
 
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         // Wait for at least one poll
-        final duration = await session.durationStream.first
-            .timeout(const Duration(seconds: 5));
+        final duration = await session.durationStream.first.timeout(
+          const Duration(seconds: 5),
+        );
 
         expect(duration, isA<Duration>());
       });
@@ -446,10 +506,12 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         // Should be in playing state
         expect(session.state, equals(SessionState.playing));
@@ -464,10 +526,12 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         // Pause first
         mockServer.transportState = 'PAUSED_PLAYBACK';
@@ -486,18 +550,21 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         mockServer.capturedActions.clear();
         await session.disconnect();
 
         // Should have sent Stop
-        final stopActions = mockServer.capturedActions
-            .where((a) => a.action == 'Stop')
-            .toList();
+        final stopActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'Stop')
+                .toList();
         expect(stopActions, hasLength(1));
 
         expect(session.state, equals(SessionState.disconnected));
@@ -510,10 +577,12 @@ void main() {
         mockServer.relTime = '00:05:30';
         mockServer.trackDuration = '01:00:00';
 
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+          ),
+        );
 
         // Wait for polling to start
         await session.positionStream.first.timeout(const Duration(seconds: 5));
@@ -527,9 +596,10 @@ void main() {
         await Future.delayed(const Duration(seconds: 2));
 
         // Should not have any GetPositionInfo after disconnect
-        final positionPolls = mockServer.capturedActions
-            .where((a) => a.action == 'GetPositionInfo')
-            .toList();
+        final positionPolls =
+            mockServer.capturedActions
+                .where((a) => a.action == 'GetPositionInfo')
+                .toList();
         expect(positionPolls, isEmpty);
       });
     });
@@ -539,25 +609,30 @@ void main() {
         await session.connect();
 
         mockServer.transportState = 'PLAYING';
-        await session.loadMedia(CastMedia(
-          url: 'http://example.com/video.mp4',
-          type: CastMediaType.mp4,
-          title: 'Test Video',
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.mp4',
+            type: CastMediaType.mp4,
+            title: 'Test Video',
+          ),
+        );
 
         mockServer.capturedActions.clear();
 
-        await session.setSubtitle(const CastSubtitle(
-          url: 'http://example.com/subs.srt',
-          label: 'English',
-          language: 'en',
-          format: 'srt',
-        ));
+        await session.setSubtitle(
+          const CastSubtitle(
+            url: 'http://example.com/subs.srt',
+            label: 'English',
+            language: 'en',
+            format: 'srt',
+          ),
+        );
 
         // Should have called SetAVTransportURI again with proxied subtitle
-        final setUriActions = mockServer.capturedActions
-            .where((a) => a.action == 'SetAVTransportURI')
-            .toList();
+        final setUriActions =
+            mockServer.capturedActions
+                .where((a) => a.action == 'SetAVTransportURI')
+                .toList();
         expect(setUriActions, hasLength(1));
         // Subtitle URL should be proxied (not raw), so it should contain /stream/
         expect(setUriActions.first.body, contains('/stream/'));
@@ -587,10 +662,14 @@ void main() {
 
       final session = DlnaSession.fromDevice(device);
       expect(session.device.name, 'My TV');
-      expect(session.description.avTransportControlUrl,
-          'http://192.168.1.100:49152/AVTransport/control');
-      expect(session.description.renderingControlUrl,
-          'http://192.168.1.100:49152/RenderingControl/control');
+      expect(
+        session.description.avTransportControlUrl,
+        'http://192.168.1.100:49152/AVTransport/control',
+      );
+      expect(
+        session.description.renderingControlUrl,
+        'http://192.168.1.100:49152/RenderingControl/control',
+      );
       expect(session.description.manufacturer, 'Samsung');
     });
 
@@ -609,11 +688,13 @@ void main() {
 
       expect(
         () => DlnaSession.fromDevice(device),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.message,
-          'message',
-          contains('missing the DLNA AVTransport control URL'),
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            contains('missing the DLNA AVTransport control URL'),
+          ),
+        ),
       );
     });
 
@@ -629,11 +710,13 @@ void main() {
 
       expect(
         () => DlnaSession.fromDevice(device),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.message.toString(),
-          'message',
-          contains('someOtherKey'),
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message.toString(),
+            'message',
+            contains('someOtherKey'),
+          ),
+        ),
       );
     });
 
@@ -656,14 +739,17 @@ void main() {
       final session = DlnaSession.fromDevice(device);
       mockServer.transportState = 'PLAYING';
       await session.connect();
-      await session.loadMedia(const CastMedia(
-        url: 'https://secret-cdn.example.com/video.m3u8',
-        type: CastMediaType.hls,
-        httpHeaders: {'Referer': 'https://megacloud.blog/'},
-      ));
+      await session.loadMedia(
+        const CastMedia(
+          url: 'https://secret-cdn.example.com/video.m3u8',
+          type: CastMediaType.hls,
+          httpHeaders: {'Referer': 'https://megacloud.blog/'},
+        ),
+      );
 
-      final setUri = mockServer.capturedActions
-          .firstWhere((a) => a.action == 'SetAVTransportURI');
+      final setUri = mockServer.capturedActions.firstWhere(
+        (a) => a.action == 'SetAVTransportURI',
+      );
       // Should contain proxy URL, NOT the raw CDN URL
       expect(setUri.body, isNot(contains('secret-cdn.example.com')));
       expect(setUri.body, contains('/ts-stream/')); // HLS uses ts-stream route
@@ -696,10 +782,7 @@ void main() {
         locationUrl: mockServer.baseUrl,
       );
 
-      final session = DlnaSession(
-        device: device,
-        description: description,
-      );
+      final session = DlnaSession(device: device, description: description);
 
       final result = await session.supportsMediaType('video/mp4');
       expect(result, isFalse);
@@ -734,10 +817,7 @@ void main() {
         locationUrl: mockServer.baseUrl,
       );
 
-      final session = DlnaSession(
-        device: device,
-        description: description,
-      );
+      final session = DlnaSession(device: device, description: description);
 
       final result = await session.supportsMediaType('video/mp4');
       expect(result, isTrue);
@@ -746,42 +826,41 @@ void main() {
       await mockServer.stop();
     });
 
-    test('returns false when Sink does not contain the queried MIME type',
-        () async {
-      final mockServer = MockDlnaServer();
-      await mockServer.start();
-      mockServer.supportedProtocols = [
-        'http-get:*:video/mp4:*',
-        'http-get:*:audio/mpeg:*',
-      ];
+    test(
+      'returns false when Sink does not contain the queried MIME type',
+      () async {
+        final mockServer = MockDlnaServer();
+        await mockServer.start();
+        mockServer.supportedProtocols = [
+          'http-get:*:video/mp4:*',
+          'http-get:*:audio/mpeg:*',
+        ];
 
-      final device = CastDevice(
-        id: 'uuid:cm-test2',
-        name: 'CM TV 2',
-        protocol: CastProtocol.dlna,
-        address: InternetAddress('127.0.0.1'),
-        port: 8080,
-      );
+        final device = CastDevice(
+          id: 'uuid:cm-test2',
+          name: 'CM TV 2',
+          protocol: CastProtocol.dlna,
+          address: InternetAddress('127.0.0.1'),
+          port: 8080,
+        );
 
-      final description = DlnaDeviceDescription(
-        friendlyName: 'CM TV 2',
-        udn: 'uuid:cm-test2',
-        avTransportControlUrl: mockServer.avTransportUrl,
-        renderingControlUrl: mockServer.renderingControlUrl,
-        connectionManagerControlUrl: mockServer.connectionManagerUrl,
-        locationUrl: mockServer.baseUrl,
-      );
+        final description = DlnaDeviceDescription(
+          friendlyName: 'CM TV 2',
+          udn: 'uuid:cm-test2',
+          avTransportControlUrl: mockServer.avTransportUrl,
+          renderingControlUrl: mockServer.renderingControlUrl,
+          connectionManagerControlUrl: mockServer.connectionManagerUrl,
+          locationUrl: mockServer.baseUrl,
+        );
 
-      final session = DlnaSession(
-        device: device,
-        description: description,
-      );
+        final session = DlnaSession(device: device, description: description);
 
-      final result = await session.supportsMediaType('video/webm');
-      expect(result, isFalse);
+        final result = await session.supportsMediaType('video/webm');
+        expect(result, isFalse);
 
-      session.dispose();
-      await mockServer.stop();
-    });
+        session.dispose();
+        await mockServer.stop();
+      },
+    );
   });
 }

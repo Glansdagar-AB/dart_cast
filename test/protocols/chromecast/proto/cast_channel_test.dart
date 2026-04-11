@@ -54,13 +54,14 @@ void main() {
     });
 
     test('set and get string payload fields', () {
-      final msg = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = '{"type":"PING"}';
+      final msg =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = '{"type":"PING"}';
 
       expect(msg.sourceId, 'sender-0');
       expect(msg.destinationId, 'receiver-0');
@@ -71,26 +72,28 @@ void main() {
 
     test('set and get binary payload', () {
       final data = [0x01, 0x02, 0x03, 0xFF];
-      final msg = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'test'
-        ..payloadType = CastMessage_PayloadType.BINARY
-        ..payloadBinary = data;
+      final msg =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'test'
+            ..payloadType = CastMessage_PayloadType.BINARY
+            ..payloadBinary = data;
 
       expect(msg.payloadType, CastMessage_PayloadType.BINARY);
       expect(msg.payloadBinary, data);
     });
 
     test('serialization/deserialization roundtrip with string payload', () {
-      final original = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = '{"type":"PING"}';
+      final original =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = '{"type":"PING"}';
 
       final bytes = original.writeToBuffer();
       expect(bytes, isNotEmpty);
@@ -106,13 +109,14 @@ void main() {
 
     test('serialization/deserialization roundtrip with binary payload', () {
       final binaryData = Uint8List.fromList([10, 20, 30, 40, 50]);
-      final original = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'client-123'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'urn:x-cast:com.google.cast.auth'
-        ..payloadType = CastMessage_PayloadType.BINARY
-        ..payloadBinary = binaryData;
+      final original =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'client-123'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'urn:x-cast:com.google.cast.auth'
+            ..payloadType = CastMessage_PayloadType.BINARY
+            ..payloadBinary = binaryData;
 
       final bytes = original.writeToBuffer();
       final decoded = CastMessage.fromBuffer(bytes);
@@ -123,11 +127,12 @@ void main() {
     });
 
     test('clone produces independent copy', () {
-      final original = CastMessage()
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'test'
-        ..payloadUtf8 = 'hello';
+      final original =
+          CastMessage()
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'test'
+            ..payloadUtf8 = 'hello';
 
       final copy = original.clone();
       copy.payloadUtf8 = 'world';

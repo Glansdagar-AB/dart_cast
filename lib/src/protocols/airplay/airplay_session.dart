@@ -42,9 +42,11 @@ class AirPlaySession extends CastSession {
   /// Creates an [AirPlaySession] for the given AirPlay [device].
   ///
   /// An optional [mediaTransformer] can customize media preparation.
-  AirPlaySession(super.device,
-      {this.credentials, MediaTransformer? mediaTransformer})
-      : _mediaTransformer = mediaTransformer ?? const DefaultMediaTransformer();
+  AirPlaySession(
+    super.device, {
+    this.credentials,
+    MediaTransformer? mediaTransformer,
+  }) : _mediaTransformer = mediaTransformer ?? const DefaultMediaTransformer();
 
   /// The underlying AirPlay HTTP client (available after [connect]).
   AirPlayClient? get client => _client;
@@ -58,13 +60,11 @@ class AirPlaySession extends CastSession {
   @override
   Future<void> connect() async {
     CastLogger.info(
-        'AirPlay: connecting to ${device.name} at ${device.address.address}:${device.port}');
+      'AirPlay: connecting to ${device.name} at ${device.address.address}:${device.port}',
+    );
     stateMachine.transitionTo(SessionState.connecting);
 
-    _client = AirPlayClient(
-      host: device.address.address,
-      port: device.port,
-    );
+    _client = AirPlayClient(host: device.address.address, port: device.port);
 
     try {
       await _client!.getServerInfo();
@@ -102,19 +102,18 @@ class AirPlaySession extends CastSession {
       _client = null;
       stateMachine.transitionTo(SessionState.disconnected);
       throw NeedsPairingException(
-          'AirPlay device "${device.name}" requires pairing. '
-          'Call pairSetup(pin) first.');
+        'AirPlay device "${device.name}" requires pairing. '
+        'Call pairSetup(pin) first.',
+      );
     }
 
     Socket? rawSocket;
     StreamController<Uint8List>? socketBroadcast;
     try {
       CastLogger.info(
-          'AirPlay: opening raw socket for pair-verify + HAP session');
-      rawSocket = await Socket.connect(
-        device.address.address,
-        device.port,
+        'AirPlay: opening raw socket for pair-verify + HAP session',
       );
+      rawSocket = await Socket.connect(device.address.address, device.port);
 
       // Wrap the socket's single-subscription stream in a broadcast controller.
       // This lets both pair-verify and HapSession subscribe independently.
@@ -134,7 +133,8 @@ class AirPlaySession extends CastSession {
       );
 
       CastLogger.info(
-          'AirPlay: attempting pair-verify with stored credentials');
+        'AirPlay: attempting pair-verify with stored credentials',
+      );
       final sharedSecret = await pairVerify.execute(credentials!);
 
       CastLogger.info('AirPlay: pair-verify successful, creating HAP session');
@@ -168,8 +168,9 @@ class AirPlaySession extends CastSession {
       _client = null;
       stateMachine.transitionTo(SessionState.disconnected);
       throw NeedsPairingException(
-          'AirPlay pair-verify failed. Device may need re-pairing. '
-          'Call pairSetup(pin) to re-pair.');
+        'AirPlay pair-verify failed. Device may need re-pairing. '
+        'Call pairSetup(pin) to re-pair.',
+      );
     } catch (e) {
       // Network error — don't discard credentials
       CastLogger.error('AirPlay: pair-verify network error: $e');
@@ -226,7 +227,8 @@ class AirPlaySession extends CastSession {
   Future<void> loadMedia(CastMedia media) async {
     if (_isLoadingMedia) {
       CastLogger.warning(
-          'AirPlay: loadMedia called while already loading — ignoring');
+        'AirPlay: loadMedia called while already loading — ignoring',
+      );
       return;
     }
     _isLoadingMedia = true;
@@ -256,15 +258,19 @@ class AirPlaySession extends CastSession {
 
       if (media.subtitles.isNotEmpty && media.type == CastMediaType.hls) {
         // Inject subtitles into HLS playlist via wrapper m3u8
-        playUrl =
-            _buildSubtitleWrapper(proxyUrl, media.subtitles, media.httpHeaders);
+        playUrl = _buildSubtitleWrapper(
+          proxyUrl,
+          media.subtitles,
+          media.httpHeaders,
+        );
       } else {
         playUrl = proxyUrl;
       }
 
       // Start playback on the device via encrypted channel if available
       CastLogger.info(
-          'AirPlay: sending /play with URL: ${playUrl.substring(0, playUrl.length.clamp(0, 80))}...');
+        'AirPlay: sending /play with URL: ${playUrl.substring(0, playUrl.length.clamp(0, 80))}...',
+      );
       if (_mediaController != null) {
         CastLogger.info('AirPlay: using AirPlayMediaController for /play');
         await _mediaController!.play(playUrl, startPosition: 0.0);
@@ -408,7 +414,10 @@ class AirPlaySession extends CastSession {
     String playUrl;
     if (newMedia.subtitles.isNotEmpty && newMedia.type == CastMediaType.hls) {
       playUrl = _buildSubtitleWrapper(
-          proxyUrl, newMedia.subtitles, newMedia.httpHeaders);
+        proxyUrl,
+        newMedia.subtitles,
+        newMedia.httpHeaders,
+      );
     } else {
       playUrl = proxyUrl;
     }
@@ -500,12 +509,8 @@ class AirPlaySession extends CastSession {
   /// Updates session state based on parsed playback info.
   void _updateFromPlaybackInfo(PlaybackInfo info) {
     // Update position and duration
-    updatePosition(Duration(
-      milliseconds: (info.position * 1000).round(),
-    ));
-    updateDuration(Duration(
-      milliseconds: (info.duration * 1000).round(),
-    ));
+    updatePosition(Duration(milliseconds: (info.position * 1000).round()));
+    updateDuration(Duration(milliseconds: (info.duration * 1000).round()));
 
     // Update playback state based on rate and readiness
     if (!info.readyToPlay) {
@@ -526,7 +531,8 @@ class AirPlaySession extends CastSession {
   void _ensureClient() {
     if (_client == null) {
       throw StateError(
-          'AirPlaySession is not connected. Call connect() first.');
+        'AirPlaySession is not connected. Call connect() first.',
+      );
     }
   }
 

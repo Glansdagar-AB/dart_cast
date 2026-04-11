@@ -47,7 +47,8 @@ class DlnaSoapBuilder {
     // When subtitleVariants is provided (e.g., both SRT and VTT), include
     // all variants so the TV can pick whichever format it supports.
     final subtitleElements = StringBuffer();
-    final variants = subtitleVariants ??
+    final variants =
+        subtitleVariants ??
         (subtitleUrl != null
             ? [(url: subtitleUrl, format: subtitleFormat ?? 'srt')]
             : <({String url, String format})>[]);
@@ -57,10 +58,12 @@ class DlnaSoapBuilder {
       final subMime = 'text/$subType';
       // Samsung: sec:CaptionInfoEx
       subtitleElements.write(
-          '<sec:CaptionInfoEx sec:type="$subType">$escapedSubUrl</sec:CaptionInfoEx>');
+        '<sec:CaptionInfoEx sec:type="$subType">$escapedSubUrl</sec:CaptionInfoEx>',
+      );
       // Generic: separate <res> element with subtitle MIME
       subtitleElements.write(
-          '<res protocolInfo="http-get:*:$subMime:*">$escapedSubUrl</res>');
+        '<res protocolInfo="http-get:*:$subMime:*">$escapedSubUrl</res>',
+      );
     }
 
     // Build optional <res> attributes for duration and size
@@ -173,18 +176,10 @@ class DlnaSoapBuilder {
   ///
   /// Used to query the device's supported media types.
   static String buildGetProtocolInfo() {
-    return _wrapSoap(
-      DlnaServiceType.connectionManager,
-      'GetProtocolInfo',
-      '',
-    );
+    return _wrapSoap(DlnaServiceType.connectionManager, 'GetProtocolInfo', '');
   }
 
-  static String _wrapSoap(
-    String serviceType,
-    String action,
-    String body,
-  ) {
+  static String _wrapSoap(String serviceType, String action, String body) {
     return '<?xml version="1.0" encoding="utf-8"?>'
         '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"'
         ' s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">'
@@ -311,7 +306,8 @@ class DlnaHttpClient {
 
     if (response.statusCode >= 400) {
       CastLogger.error(
-          'DLNA: SOAP $action failed: HTTP ${response.statusCode}');
+        'DLNA: SOAP $action failed: HTTP ${response.statusCode}',
+      );
       CastLogger.debug('DLNA: SOAP error body: ${response.body}');
       throw ProtocolException(
         'DLNA SOAP error: HTTP ${response.statusCode}',

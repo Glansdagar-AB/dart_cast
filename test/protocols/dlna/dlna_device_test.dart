@@ -66,10 +66,7 @@ void main() {
         expect(desc.friendlyName, equals('Living Room TV'));
         expect(desc.manufacturer, equals('Samsung'));
         expect(desc.modelName, equals('UE55'));
-        expect(
-          desc.udn,
-          equals('uuid:12345678-1234-1234-1234-123456789abc'),
-        );
+        expect(desc.udn, equals('uuid:12345678-1234-1234-1234-123456789abc'));
       });
 
       test('extracts AVTransport control URL (absolute)', () {
@@ -108,9 +105,7 @@ void main() {
         );
         expect(
           desc.renderingControlUrl,
-          equals(
-            'http://10.0.0.5:8080/MediaRenderer/RenderingControl/control',
-          ),
+          equals('http://10.0.0.5:8080/MediaRenderer/RenderingControl/control'),
         );
       });
 
@@ -156,10 +151,7 @@ void main() {
         expect(device.protocol, equals(CastProtocol.dlna));
         expect(device.address.address, equals('192.168.1.50'));
         expect(device.port, equals(49152));
-        expect(
-          device.id,
-          equals('uuid:12345678-1234-1234-1234-123456789abc'),
-        );
+        expect(device.id, equals('uuid:12345678-1234-1234-1234-123456789abc'));
         expect(
           device.metadata['avTransportControlUrl'],
           equals('http://192.168.1.50:49152/AVTransport/control'),

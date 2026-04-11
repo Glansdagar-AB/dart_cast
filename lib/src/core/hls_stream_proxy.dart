@@ -14,7 +14,7 @@ class HlsStreamHandler {
 
   /// Creates an [HlsStreamHandler] with an optional [HttpClient].
   HlsStreamHandler({HttpClient? httpClient})
-      : _httpClient = httpClient ?? HttpClient();
+    : _httpClient = httpClient ?? HttpClient();
 
   /// Fetches the HLS playlist at [m3u8Url], resolves segments, and streams
   /// them sequentially into [response].
@@ -51,8 +51,10 @@ class HlsStreamHandler {
       }
 
       // Extract segment URLs
-      final segmentUrls =
-          HlsParser.extractSegmentUrls(mediaPlaylistContent, mediaPlaylistUrl);
+      final segmentUrls = HlsParser.extractSegmentUrls(
+        mediaPlaylistContent,
+        mediaPlaylistUrl,
+      );
 
       if (segmentUrls.isEmpty) {
         response.statusCode = HttpStatus.badGateway;
@@ -101,18 +103,17 @@ class HlsStreamHandler {
   }
 
   /// Fetches a URL and returns the body as a string.
-  Future<String> _fetchString(
-    String url,
-    Map<String, String> headers,
-  ) async {
+  Future<String> _fetchString(String url, Map<String, String> headers) async {
     final uri = Uri.parse(url);
     final request = await _httpClient.openUrl('GET', uri);
     for (final entry in headers.entries) {
       request.headers.set(entry.key, entry.value);
     }
     final response = await request.close();
-    final bytes = await response
-        .fold<List<int>>(<int>[], (prev, chunk) => prev..addAll(chunk));
+    final bytes = await response.fold<List<int>>(
+      <int>[],
+      (prev, chunk) => prev..addAll(chunk),
+    );
     return utf8.decode(bytes);
   }
 

@@ -34,8 +34,10 @@ void main() {
     });
 
     test('encodes boolean values', () {
-      final result =
-          BinaryPlistEncoder.encode({'enabled': true, 'disabled': false});
+      final result = BinaryPlistEncoder.encode({
+        'enabled': true,
+        'disabled': false,
+      });
       expect(result.sublist(0, 8), equals(ascii.encode('bplist00')));
       // true = 0x09, false = 0x08
       expect(result.contains(0x09), isTrue);
@@ -68,8 +70,11 @@ void main() {
 
       // Bytes 0-5: unused (zero)
       for (int i = 0; i < 6; i++) {
-        expect(trailer.getUint8(i), equals(0),
-            reason: 'trailer byte $i should be 0');
+        expect(
+          trailer.getUint8(i),
+          equals(0),
+          reason: 'trailer byte $i should be 0',
+        );
       }
 
       // Byte 6: offset int size (should be >= 1)
@@ -225,7 +230,7 @@ void main() {
 
     test('array encoding contains 0xA marker', () {
       final result = BinaryPlistEncoder.encode({
-        'items': [1, 2, 3]
+        'items': [1, 2, 3],
       });
       expect(ascii.decode(result.sublist(0, 8)), equals('bplist00'));
       // Array marker is 0xA0 | count. For 3 items: 0xA3
@@ -277,7 +282,7 @@ void main() {
 
     test('mixed array with null has correct object count', () {
       final result = BinaryPlistEncoder.encode({
-        'items': [1, null, 'hello']
+        'items': [1, null, 'hello'],
       });
       expect(ascii.decode(result.sublist(0, 8)), equals('bplist00'));
       final trailer = ByteData.sublistView(result, result.length - 32);
@@ -380,12 +385,7 @@ void main() {
     });
 
     test('roundtrip: mixed types', () {
-      final input = {
-        'name': 'test',
-        'count': 7,
-        'ratio': 0.5,
-        'active': true,
-      };
+      final input = {'name': 'test', 'count': 7, 'ratio': 0.5, 'active': true};
       final decoded = _roundtrip(input);
       expect(decoded['name'], equals('test'));
       expect(decoded['count'], equals(7));
@@ -395,10 +395,7 @@ void main() {
 
     test('roundtrip: AirPlay SETUP response with eventPort', () {
       // Simulates what a real AirPlay SETUP response might contain
-      final input = {
-        'eventPort': 51234,
-        'timingPort': 0,
-      };
+      final input = {'eventPort': 51234, 'timingPort': 0};
       final decoded = _roundtrip(input);
       expect(decoded['eventPort'], equals(51234));
       expect(decoded['timingPort'], equals(0));

@@ -110,12 +110,14 @@ void main() {
       expect(mockServer.lastBody, isNot(contains('/synthetic/')));
 
       // Now set a subtitle
-      await session.setSubtitle(const CastSubtitle(
-        url: 'https://example.com/subs.vtt',
-        label: 'English',
-        language: 'en',
-        format: 'vtt',
-      ));
+      await session.setSubtitle(
+        const CastSubtitle(
+          url: 'https://example.com/subs.vtt',
+          label: 'English',
+          language: 'en',
+          format: 'vtt',
+        ),
+      );
 
       expect(mockServer.lastPath, equals('/play'));
       expect(mockServer.lastBody, contains('/synthetic/'));
@@ -154,38 +156,44 @@ void main() {
       await session.connect();
 
       // Should not throw
-      await session.setSubtitle(const CastSubtitle(
-        url: 'https://example.com/subs.vtt',
-        label: 'English',
-        language: 'en',
-        format: 'vtt',
-      ));
+      await session.setSubtitle(
+        const CastSubtitle(
+          url: 'https://example.com/subs.vtt',
+          label: 'English',
+          language: 'en',
+          format: 'vtt',
+        ),
+      );
 
       // Server should not have received a /play request
       expect(mockServer.lastPath, isNot(equals('/play')));
     });
 
-    test('loadMedia transitions through loading state with subtitles',
-        () async {
-      await session.connect();
+    test(
+      'loadMedia transitions through loading state with subtitles',
+      () async {
+        await session.connect();
 
-      final states = <SessionState>[];
-      session.stateStream.listen(states.add);
+        final states = <SessionState>[];
+        session.stateStream.listen(states.add);
 
-      await session.loadMedia(CastMedia(
-        url: 'https://example.com/video.m3u8',
-        type: CastMediaType.hls,
-        subtitles: [
-          const CastSubtitle(
-            url: 'https://example.com/subs.vtt',
-            label: 'English',
-            language: 'en',
-            format: 'vtt',
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+            subtitles: [
+              const CastSubtitle(
+                url: 'https://example.com/subs.vtt',
+                label: 'English',
+                language: 'en',
+                format: 'vtt',
+              ),
+            ],
           ),
-        ],
-      ));
+        );
 
-      expect(states, contains(SessionState.loading));
-    });
+        expect(states, contains(SessionState.loading));
+      },
+    );
   });
 }

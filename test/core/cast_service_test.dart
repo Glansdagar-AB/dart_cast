@@ -20,14 +20,12 @@ class MockDiscoveryProvider implements DeviceDiscoveryProvider {
   bool disposed = false;
   int stopCount = 0;
 
-  MockDiscoveryProvider({
-    required this.protocol,
-    this.emissions = const [],
-  });
+  MockDiscoveryProvider({required this.protocol, this.emissions = const []});
 
   @override
-  Stream<List<CastDevice>> startDiscovery(
-      {Duration timeout = const Duration(seconds: 10)}) {
+  Stream<List<CastDevice>> startDiscovery({
+    Duration timeout = const Duration(seconds: 10),
+  }) {
     stopped = false;
     final controller = StreamController<List<CastDevice>>();
     () async {
@@ -97,12 +95,12 @@ class MockCastSession extends CastSession {
 // ---------------------------------------------------------------------------
 
 CastDevice _device(String id, CastProtocol protocol) => CastDevice(
-      id: id,
-      name: 'Device $id',
-      protocol: protocol,
-      address: InternetAddress('192.168.1.1'),
-      port: 8008,
-    );
+  id: id,
+  name: 'Device $id',
+  protocol: protocol,
+  address: InternetAddress('192.168.1.1'),
+  port: 8008,
+);
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -124,11 +122,10 @@ void main() {
         sessionFactory: (device) => MockCastSession(device),
       );
 
-      final results = await service
-          .startDiscovery(
-            timeout: const Duration(milliseconds: 500),
-          )
-          .toList();
+      final results =
+          await service
+              .startDiscovery(timeout: const Duration(milliseconds: 500))
+              .toList();
 
       expect(results, isNotEmpty);
       expect(results.last.first.id, equals('d1'));

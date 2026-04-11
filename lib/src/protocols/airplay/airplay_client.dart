@@ -31,17 +31,17 @@ class AirPlayClient {
     required this.host,
     required this.port,
     http.Client? httpClient,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _sessionId = _generateUuid();
+  }) : _httpClient = httpClient ?? http.Client(),
+       _sessionId = _generateUuid();
 
   /// The current session ID.
   String get sessionId => _sessionId;
 
   /// Common headers included in every request.
   Map<String, String> get _headers => {
-        'User-Agent': 'MediaControl/1.0',
-        'X-Apple-Session-ID': _sessionId,
-      };
+    'User-Agent': 'MediaControl/1.0',
+    'X-Apple-Session-ID': _sessionId,
+  };
 
   /// Starts playback of a video URL on the AirPlay device.
   ///
@@ -51,10 +51,7 @@ class AirPlayClient {
     final body = 'Content-Location: $url\nStart-Position: $startPosition\n';
     final response = await _httpClient.post(
       _uri('/play'),
-      headers: {
-        ..._headers,
-        'Content-Type': 'text/parameters',
-      },
+      headers: {..._headers, 'Content-Type': 'text/parameters'},
       body: body,
     );
     _checkResponse(response, 'play');
@@ -80,10 +77,7 @@ class AirPlayClient {
 
   /// Stops playback and generates a new session ID.
   Future<void> stop() async {
-    final response = await _httpClient.post(
-      _uri('/stop'),
-      headers: _headers,
-    );
+    final response = await _httpClient.post(_uri('/stop'), headers: _headers);
     _checkResponse(response, 'stop');
     // Generate a new session ID for the next playback session
     _sessionId = _generateUuid();
@@ -111,10 +105,7 @@ class AirPlayClient {
 
   /// Gets the current scrub position as (duration, position) in seconds.
   Future<({double duration, double position})> getScrubPosition() async {
-    final response = await _httpClient.get(
-      _uri('/scrub'),
-      headers: _headers,
-    );
+    final response = await _httpClient.get(_uri('/scrub'), headers: _headers);
     _checkResponse(response, 'scrub');
     return _parseTextParameters(response.body);
   }

@@ -15,9 +15,7 @@ void main() {
         expect(result, contains('MAN: "ssdp:discover"\r\n'));
         expect(
           result,
-          contains(
-            'ST: urn:schemas-upnp-org:device:MediaRenderer:1\r\n',
-          ),
+          contains('ST: urn:schemas-upnp-org:device:MediaRenderer:1\r\n'),
         );
         expect(result, contains('MX: 3\r\n'));
         expect(result, endsWith('\r\n\r\n'));
@@ -32,7 +30,8 @@ void main() {
 
     group('parseResponse', () {
       test('parses SSDP 200 OK response extracting LOCATION', () {
-        const data = 'HTTP/1.1 200 OK\r\n'
+        const data =
+            'HTTP/1.1 200 OK\r\n'
             'CACHE-CONTROL: max-age=1800\r\n'
             'LOCATION: http://192.168.1.50:49152/description.xml\r\n'
             'ST: urn:schemas-upnp-org:device:MediaRenderer:1\r\n'
@@ -58,7 +57,8 @@ void main() {
       });
 
       test('parses NOTIFY message extracting LOCATION', () {
-        const data = 'NOTIFY * HTTP/1.1\r\n'
+        const data =
+            'NOTIFY * HTTP/1.1\r\n'
             'HOST: 239.255.255.250:1900\r\n'
             'CACHE-CONTROL: max-age=1800\r\n'
             'LOCATION: http://192.168.1.50:49152/description.xml\r\n'
@@ -87,7 +87,8 @@ void main() {
       });
 
       test('handles case-insensitive headers', () {
-        const data = 'HTTP/1.1 200 OK\r\n'
+        const data =
+            'HTTP/1.1 200 OK\r\n'
             'location: http://10.0.0.1:8080/desc.xml\r\n'
             'usn: uuid:test-uuid\r\n'
             'st: ssdp:all\r\n'

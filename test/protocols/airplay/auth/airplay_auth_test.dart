@@ -277,8 +277,9 @@ void main() {
                 type: KeyPairType.x25519,
               ),
             );
-            final sharedSecretBytes =
-                Uint8List.fromList(await sharedSecret.extractBytes());
+            final sharedSecretBytes = Uint8List.fromList(
+              await sharedSecret.extractBytes(),
+            );
 
             // Derive session key
             final hkdf = Hkdf(hmac: Hmac(Sha512()), outputLength: 32);
@@ -287,8 +288,9 @@ void main() {
               nonce: utf8.encode('Pair-Verify-Encrypt-Salt'),
               info: utf8.encode('Pair-Verify-Encrypt-Info'),
             );
-            final sessionKey =
-                Uint8List.fromList(await sessionKeyObj.extractBytes());
+            final sessionKey = Uint8List.fromList(
+              await sessionKeyObj.extractBytes(),
+            );
 
             // Build device info: deviceX25519PublicKey | deviceId | clientX25519PublicKey
             final deviceIdBytes = utf8.encode('test-device');

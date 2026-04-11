@@ -39,9 +39,10 @@ void main() {
         },
       );
 
-      final results = await provider
-          .startDiscovery(timeout: const Duration(milliseconds: 500))
-          .toList();
+      final results =
+          await provider
+              .startDiscovery(timeout: const Duration(milliseconds: 500))
+              .toList();
 
       expect(results, isNotEmpty);
       final devices = results.last;
@@ -54,34 +55,37 @@ void main() {
       provider.dispose();
     });
 
-    test('includes devices regardless of features bitmask (AirPlay 2 compat)',
-        () async {
-      final provider = AirPlayDiscoveryProvider(
-        mdnsLookup: (serviceType) {
-          return Stream.fromIterable([
-            const MdnsServiceInfo(
-              name: 'AirPlay2 TV',
-              host: '192.168.1.70',
-              port: 7000,
-              txtRecords: {
-                'deviceid': 'ap-tv',
-                'model': 'TCL_TV',
-                'features': '0x7F8AD0,0xBCF46', // AirPlay 2 — bit 0 not set
-              },
-            ),
-          ]);
-        },
-      );
+    test(
+      'includes devices regardless of features bitmask (AirPlay 2 compat)',
+      () async {
+        final provider = AirPlayDiscoveryProvider(
+          mdnsLookup: (serviceType) {
+            return Stream.fromIterable([
+              const MdnsServiceInfo(
+                name: 'AirPlay2 TV',
+                host: '192.168.1.70',
+                port: 7000,
+                txtRecords: {
+                  'deviceid': 'ap-tv',
+                  'model': 'TCL_TV',
+                  'features': '0x7F8AD0,0xBCF46', // AirPlay 2 — bit 0 not set
+                },
+              ),
+            ]);
+          },
+        );
 
-      final results = await provider
-          .startDiscovery(timeout: const Duration(milliseconds: 500))
-          .toList();
+        final results =
+            await provider
+                .startDiscovery(timeout: const Duration(milliseconds: 500))
+                .toList();
 
-      // AirPlay 2 devices should NOT be filtered — features bitmask is unreliable
-      expect(results.last.where((d) => d.id == 'ap-tv'), isNotEmpty);
+        // AirPlay 2 devices should NOT be filtered — features bitmask is unreliable
+        expect(results.last.where((d) => d.id == 'ap-tv'), isNotEmpty);
 
-      provider.dispose();
-    });
+        provider.dispose();
+      },
+    );
 
     test('includes devices with empty features', () async {
       final provider = AirPlayDiscoveryProvider(
@@ -91,18 +95,16 @@ void main() {
               name: 'No Features',
               host: '192.168.1.71',
               port: 7000,
-              txtRecords: {
-                'deviceid': 'ap-nofeat',
-                'model': 'Unknown',
-              },
+              txtRecords: {'deviceid': 'ap-nofeat', 'model': 'Unknown'},
             ),
           ]);
         },
       );
 
-      final results = await provider
-          .startDiscovery(timeout: const Duration(milliseconds: 500))
-          .toList();
+      final results =
+          await provider
+              .startDiscovery(timeout: const Duration(milliseconds: 500))
+              .toList();
 
       // Devices without features should still be included
       expect(results.last.where((d) => d.id == 'ap-nofeat'), isNotEmpty);
@@ -118,27 +120,22 @@ void main() {
               name: 'ATV',
               host: '192.168.1.60',
               port: 7000,
-              txtRecords: {
-                'deviceid': 'ap-1',
-                'features': '0x5A7FFFF7',
-              },
+              txtRecords: {'deviceid': 'ap-1', 'features': '0x5A7FFFF7'},
             ),
             const MdnsServiceInfo(
               name: 'ATV-dup',
               host: '192.168.1.61',
               port: 7000,
-              txtRecords: {
-                'deviceid': 'ap-1',
-                'features': '0x5A7FFFF7',
-              },
+              txtRecords: {'deviceid': 'ap-1', 'features': '0x5A7FFFF7'},
             ),
           ]);
         },
       );
 
-      final results = await provider
-          .startDiscovery(timeout: const Duration(milliseconds: 500))
-          .toList();
+      final results =
+          await provider
+              .startDiscovery(timeout: const Duration(milliseconds: 500))
+              .toList();
 
       expect(results, isNotEmpty);
       expect(results.last, hasLength(1));
@@ -159,12 +156,14 @@ void main() {
       provider.stopDiscovery();
 
       // Adding after stop should not cause issues
-      controller.add(const MdnsServiceInfo(
-        name: 'Late',
-        host: '192.168.1.99',
-        port: 7000,
-        txtRecords: {'deviceid': 'late-1', 'features': '0x5A7FFFF7'},
-      ));
+      controller.add(
+        const MdnsServiceInfo(
+          name: 'Late',
+          host: '192.168.1.99',
+          port: 7000,
+          txtRecords: {'deviceid': 'late-1', 'features': '0x5A7FFFF7'},
+        ),
+      );
 
       await controller.close();
     });

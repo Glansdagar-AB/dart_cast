@@ -204,15 +204,12 @@ void main() {
               'mediaSessionId': 1,
               'playerState': 'PLAYING',
               'currentTime': 42.361,
-              'volume': {
-                'level': 1.0,
-                'muted': false,
-              },
+              'volume': {'level': 1.0, 'muted': false},
               'media': {
                 'contentId': 'http://example.com/video.m3u8',
                 'duration': 1440.5,
               },
-            }
+            },
           ],
         };
 
@@ -235,7 +232,7 @@ void main() {
               'playerState': 'IDLE',
               'idleReason': 'FINISHED',
               'currentTime': 0.0,
-            }
+            },
           ],
         };
 
@@ -246,10 +243,7 @@ void main() {
       });
 
       test('returns null when status array is empty', () {
-        final payload = {
-          'type': 'MEDIA_STATUS',
-          'status': [],
-        };
+        final payload = {'type': 'MEDIA_STATUS', 'status': []};
 
         final status = CastMediaChannel.parseMediaStatus(payload);
         expect(status, isNull);
@@ -269,7 +263,7 @@ void main() {
               'mediaSessionId': 1,
               'playerState': 'PLAYING',
               'currentTime': 10.0,
-            }
+            },
           ],
         };
 

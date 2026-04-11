@@ -129,7 +129,8 @@ class MockDlnaServer {
           final message = utf8.decode(datagram.data);
           if (message.contains('M-SEARCH') &&
               message.contains('ssdp:discover')) {
-            final response = 'HTTP/1.1 200 OK\r\n'
+            final response =
+                'HTTP/1.1 200 OK\r\n'
                 'CACHE-CONTROL: max-age=1800\r\n'
                 'LOCATION: $descriptionUrl\r\n'
                 'SERVER: Mock/1.0 UPnP/1.0 MockDLNA/1.0\r\n'
@@ -181,81 +182,85 @@ class MockDlnaServer {
 
     switch (action) {
       case 'SetAVTransportURI':
-        request.response.write(_soapResponse(
-          'SetAVTransportURIResponse',
-          DlnaServiceType.avTransport,
-          '',
-        ));
+        request.response.write(
+          _soapResponse(
+            'SetAVTransportURIResponse',
+            DlnaServiceType.avTransport,
+            '',
+          ),
+        );
       case 'Play':
         transportState = 'PLAYING';
-        request.response.write(_soapResponse(
-          'PlayResponse',
-          DlnaServiceType.avTransport,
-          '',
-        ));
+        request.response.write(
+          _soapResponse('PlayResponse', DlnaServiceType.avTransport, ''),
+        );
       case 'Pause':
         transportState = 'PAUSED_PLAYBACK';
-        request.response.write(_soapResponse(
-          'PauseResponse',
-          DlnaServiceType.avTransport,
-          '',
-        ));
+        request.response.write(
+          _soapResponse('PauseResponse', DlnaServiceType.avTransport, ''),
+        );
       case 'Stop':
         transportState = 'STOPPED';
         positionSeconds = 0.0;
-        request.response.write(_soapResponse(
-          'StopResponse',
-          DlnaServiceType.avTransport,
-          '',
-        ));
+        request.response.write(
+          _soapResponse('StopResponse', DlnaServiceType.avTransport, ''),
+        );
       case 'Seek':
         // Parse the target time from the body
-        final targetMatch = RegExp(r'<Target>(\d{2}):(\d{2}):(\d{2})</Target>')
-            .firstMatch(body);
+        final targetMatch = RegExp(
+          r'<Target>(\d{2}):(\d{2}):(\d{2})</Target>',
+        ).firstMatch(body);
         if (targetMatch != null) {
           final h = int.parse(targetMatch.group(1)!);
           final m = int.parse(targetMatch.group(2)!);
           final s = int.parse(targetMatch.group(3)!);
           positionSeconds = (h * 3600 + m * 60 + s).toDouble();
         }
-        request.response.write(_soapResponse(
-          'SeekResponse',
-          DlnaServiceType.avTransport,
-          '',
-        ));
+        request.response.write(
+          _soapResponse('SeekResponse', DlnaServiceType.avTransport, ''),
+        );
       case 'GetPositionInfo':
-        request.response.write(_soapResponse(
-          'GetPositionInfoResponse',
-          DlnaServiceType.avTransport,
-          '<Track>1</Track>'
-              '<TrackDuration>${_formatTime(durationSeconds)}</TrackDuration>'
-              '<RelTime>${_formatTime(positionSeconds)}</RelTime>',
-        ));
+        request.response.write(
+          _soapResponse(
+            'GetPositionInfoResponse',
+            DlnaServiceType.avTransport,
+            '<Track>1</Track>'
+                '<TrackDuration>${_formatTime(durationSeconds)}</TrackDuration>'
+                '<RelTime>${_formatTime(positionSeconds)}</RelTime>',
+          ),
+        );
       case 'GetTransportInfo':
-        request.response.write(_soapResponse(
-          'GetTransportInfoResponse',
-          DlnaServiceType.avTransport,
-          '<CurrentTransportState>$transportState</CurrentTransportState>'
-              '<CurrentTransportStatus>OK</CurrentTransportStatus>'
-              '<CurrentSpeed>1</CurrentSpeed>',
-        ));
+        request.response.write(
+          _soapResponse(
+            'GetTransportInfoResponse',
+            DlnaServiceType.avTransport,
+            '<CurrentTransportState>$transportState</CurrentTransportState>'
+                '<CurrentTransportStatus>OK</CurrentTransportStatus>'
+                '<CurrentSpeed>1</CurrentSpeed>',
+          ),
+        );
       case 'SetVolume':
-        final volMatch =
-            RegExp(r'<DesiredVolume>(\d+)</DesiredVolume>').firstMatch(body);
+        final volMatch = RegExp(
+          r'<DesiredVolume>(\d+)</DesiredVolume>',
+        ).firstMatch(body);
         if (volMatch != null) {
           volume = int.parse(volMatch.group(1)!);
         }
-        request.response.write(_soapResponse(
-          'SetVolumeResponse',
-          DlnaServiceType.renderingControl,
-          '',
-        ));
+        request.response.write(
+          _soapResponse(
+            'SetVolumeResponse',
+            DlnaServiceType.renderingControl,
+            '',
+          ),
+        );
       case 'GetVolume':
-        request.response.write(_soapResponse(
-          'GetVolumeResponse',
-          DlnaServiceType.renderingControl,
-          '<CurrentVolume>$volume</CurrentVolume>',
-        ));
+        request.response.write(
+          _soapResponse(
+            'GetVolumeResponse',
+            DlnaServiceType.renderingControl,
+            '<CurrentVolume>$volume</CurrentVolume>',
+          ),
+        );
       default:
         request.response.statusCode = 500;
         request.response.write('Unknown action: $action');

@@ -123,8 +123,10 @@ class TsKeyframeScanner {
     // Deduplicate (a packet might match both methods)
     final unique = offsets.toSet().toList()..sort();
 
-    CastLogger.debug('TsKeyframeScanner: found ${unique.length} keyframes in '
-        '${(fileLength / 1024 / 1024).toStringAsFixed(1)}MB file');
+    CastLogger.debug(
+      'TsKeyframeScanner: found ${unique.length} keyframes in '
+      '${(fileLength / 1024 / 1024).toStringAsFixed(1)}MB file',
+    );
 
     return unique;
   }
@@ -248,12 +250,13 @@ class TsKeyframeScanner {
                     if (ptsDtsFlags >= 2) {
                       final ptsOffset = payloadStart + 9;
                       if (ptsOffset + 5 <= pos + 188) {
-                        pts = ((chunk[ptsOffset] >> 1) & 0x07)
-                                    .toUnsigned(64) <<
+                        pts =
+                            ((chunk[ptsOffset] >> 1) & 0x07).toUnsigned(64) <<
                                 30 |
                             (chunk[ptsOffset + 1]).toUnsigned(64) << 22 |
-                            ((chunk[ptsOffset + 2] >> 1) & 0x7F)
-                                    .toUnsigned(64) <<
+                            ((chunk[ptsOffset + 2] >> 1) & 0x7F).toUnsigned(
+                                  64,
+                                ) <<
                                 15 |
                             (chunk[ptsOffset + 3]).toUnsigned(64) << 7 |
                             ((chunk[ptsOffset + 4] >> 1) & 0x7F).toUnsigned(64);
@@ -301,10 +304,11 @@ class TsKeyframeScanner {
     unique.sort((a, b) => a.offset.compareTo(b.offset));
 
     CastLogger.debug(
-        'TsKeyframeScanner: found ${unique.length} keyframes with PTS in '
-        '${(fileLength / 1024 / 1024).toStringAsFixed(1)}MB file '
-        '(PTS range: ${(unique.first.pts / 90000).toStringAsFixed(3)}s - '
-        '${(unique.last.pts / 90000).toStringAsFixed(3)}s)');
+      'TsKeyframeScanner: found ${unique.length} keyframes with PTS in '
+      '${(fileLength / 1024 / 1024).toStringAsFixed(1)}MB file '
+      '(PTS range: ${(unique.first.pts / 90000).toStringAsFixed(3)}s - '
+      '${(unique.last.pts / 90000).toStringAsFixed(3)}s)',
+    );
 
     return unique;
   }
@@ -348,7 +352,8 @@ class TsKeyframeScanner {
         // Check for PES header: 0x00 0x00 0x01
         if (chunk[payloadStart] != 0x00 ||
             chunk[payloadStart + 1] != 0x00 ||
-            chunk[payloadStart + 2] != 0x01) continue;
+            chunk[payloadStart + 2] != 0x01)
+          continue;
 
         final streamId = chunk[payloadStart + 3];
         // Video stream IDs: 0xE0-0xEF
@@ -362,14 +367,17 @@ class TsKeyframeScanner {
         final ptsOffset = payloadStart + 9;
         if (ptsOffset + 5 > pos + 188) continue;
 
-        final pts = ((chunk[ptsOffset] >> 1) & 0x07).toUnsigned(64) << 30 |
+        final pts =
+            ((chunk[ptsOffset] >> 1) & 0x07).toUnsigned(64) << 30 |
             (chunk[ptsOffset + 1]).toUnsigned(64) << 22 |
             ((chunk[ptsOffset + 2] >> 1) & 0x7F).toUnsigned(64) << 15 |
             (chunk[ptsOffset + 3]).toUnsigned(64) << 7 |
             ((chunk[ptsOffset + 4] >> 1) & 0x7F).toUnsigned(64);
 
-        CastLogger.info('TsKeyframeScanner: first video PTS = $pts '
-            '(${(pts / 90000).toStringAsFixed(3)}s)');
+        CastLogger.info(
+          'TsKeyframeScanner: first video PTS = $pts '
+          '(${(pts / 90000).toStringAsFixed(3)}s)',
+        );
         return pts;
       }
     } finally {
@@ -463,7 +471,8 @@ class TsKeyframeScanner {
         result.setRange(0, 188, patPacket);
         result.setRange(188, 376, pmtPacket);
         CastLogger.info(
-            'TsKeyframeScanner: extracted PAT+PMT (376 bytes, PMT PID=$pmtPid)');
+          'TsKeyframeScanner: extracted PAT+PMT (376 bytes, PMT PID=$pmtPid)',
+        );
         return result;
       } else {
         CastLogger.info('TsKeyframeScanner: extracted PAT only (188 bytes)');

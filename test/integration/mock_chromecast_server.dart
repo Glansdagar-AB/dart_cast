@@ -105,12 +105,14 @@ class MockChromecastServer {
     String sourceId = 'receiver-0',
     String destinationId = 'sender-0',
   }) {
-    _incomingController.add(MockCastMessage(
-      namespace: namespace,
-      sourceId: sourceId,
-      destinationId: destinationId,
-      payload: payload,
-    ));
+    _incomingController.add(
+      MockCastMessage(
+        namespace: namespace,
+        sourceId: sourceId,
+        destinationId: destinationId,
+        payload: payload,
+      ),
+    );
   }
 
   /// Clears recorded sent messages.
@@ -203,26 +205,23 @@ class MockChromecastServer {
   }
 
   Map<String, dynamic> _buildReceiverStatus() => {
-        'type': 'RECEIVER_STATUS',
-        'requestId': 1,
-        'status': {
-          'applications': [
-            {
-              'appId': 'CC1AD845',
-              'displayName': 'Default Media Receiver',
-              'sessionId': sessionId,
-              'transportId': transportId,
-              'namespaces': [
-                {'name': 'urn:x-cast:com.google.cast.media'},
-              ],
-            }
+    'type': 'RECEIVER_STATUS',
+    'requestId': 1,
+    'status': {
+      'applications': [
+        {
+          'appId': 'CC1AD845',
+          'displayName': 'Default Media Receiver',
+          'sessionId': sessionId,
+          'transportId': transportId,
+          'namespaces': [
+            {'name': 'urn:x-cast:com.google.cast.media'},
           ],
-          'volume': {
-            'level': volumeLevel,
-            'muted': false,
-          },
         },
-      };
+      ],
+      'volume': {'level': volumeLevel, 'muted': false},
+    },
+  };
 
   Map<String, dynamic> _buildMediaStatus({String? idleReason}) {
     final statusEntry = <String, dynamic>{

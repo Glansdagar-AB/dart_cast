@@ -89,7 +89,8 @@ class HapHttpResponse {
   String get bodyText => utf8.decode(body);
 
   @override
-  String toString() => 'HapHttpResponse($statusCode $reasonPhrase, '
+  String toString() =>
+      'HapHttpResponse($statusCode $reasonPhrase, '
       '${body.length} bytes)';
 }
 
@@ -122,11 +123,12 @@ class HapSession {
 
   /// DACP-ID header value — random hex string, persistent across session.
   /// Used by pyatv in all RTSP exchanges.
-  late final String _dacpId = Random.secure()
-      .nextInt(0x7FFFFFFF)
-      .toRadixString(16)
-      .padLeft(16, '0')
-      .toUpperCase();
+  late final String _dacpId =
+      Random.secure()
+          .nextInt(0x7FFFFFFF)
+          .toRadixString(16)
+          .padLeft(16, '0')
+          .toUpperCase();
 
   /// Active-Remote header value — random integer, persistent across session.
   late final int _activeRemote = Random.secure().nextInt(0x7FFFFFFF);
@@ -189,11 +191,11 @@ class HapSession {
     String? sessionId,
     Uint8List? sharedSecret,
     Stream<Uint8List>? dataStream,
-  })  : _socket = socket,
-        _outputKey = outputKey,
-        _inputKey = inputKey,
-        _sharedSecret = sharedSecret,
-        _sessionId = sessionId ?? _generateUuid() {
+  }) : _socket = socket,
+       _outputKey = outputKey,
+       _inputKey = inputKey,
+       _sharedSecret = sharedSecret,
+       _sessionId = sessionId ?? _generateUuid() {
     _setupSocketListener(dataStream);
   }
 
@@ -239,9 +241,10 @@ class HapSession {
     int offset = 0;
 
     while (offset < data.length) {
-      final end = (offset + frameLength < data.length)
-          ? offset + frameLength
-          : data.length;
+      final end =
+          (offset + frameLength < data.length)
+              ? offset + frameLength
+              : data.length;
       final chunk = data.sublist(offset, end);
 
       // 2-byte little-endian length as AAD
@@ -304,12 +307,15 @@ class HapSession {
 
       final lengthBytes = buffered.sublist(offset, offset + 2);
       final encrypted = buffered.sublist(
-          offset + 2, offset + 2 + blockLength + authTagLength);
+        offset + 2,
+        offset + 2 + blockLength + authTagLength,
+      );
 
       // Split into ciphertext and mac
       final ciphertext = encrypted.sublist(0, blockLength);
-      final mac =
-          Mac(encrypted.sublist(blockLength, blockLength + authTagLength));
+      final mac = Mac(
+        encrypted.sublist(blockLength, blockLength + authTagLength),
+      );
 
       // Build nonce
       final nonce = _buildNonce(_inputCounter);
@@ -317,11 +323,7 @@ class HapSession {
 
       // Decrypt
       final algorithm = Chacha20.poly1305Aead();
-      final secretBox = SecretBox(
-        ciphertext,
-        nonce: nonce,
-        mac: mac,
-      );
+      final secretBox = SecretBox(ciphertext, nonce: nonce, mac: mac);
       final plaintext = await algorithm.decrypt(
         secretBox,
         secretKey: SecretKey(_inputKey),
@@ -353,8 +355,10 @@ class HapSession {
     String fullPath = path;
     if (queryParameters != null && queryParameters.isNotEmpty) {
       final queryString = queryParameters.entries
-          .map((e) =>
-              '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .map(
+            (e) =>
+                '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}',
+          )
           .join('&');
       fullPath = '$path?$queryString';
     }
@@ -378,15 +382,17 @@ class HapSession {
     buffer.write('\r\n');
 
     final headerBytes = utf8.encode(buffer.toString());
-    final requestBytes = body != null && body.isNotEmpty
-        ? Uint8List.fromList([...headerBytes, ...body])
-        : Uint8List.fromList(headerBytes);
+    final requestBytes =
+        body != null && body.isNotEmpty
+            ? Uint8List.fromList([...headerBytes, ...body])
+            : Uint8List.fromList(headerBytes);
 
     // Encrypt and send
     CastLogger.debug('HAP session: encrypting ${requestBytes.length} bytes');
     final encrypted = await encrypt(requestBytes);
     CastLogger.debug(
-        'HAP session: sending ${encrypted.length} encrypted bytes');
+      'HAP session: sending ${encrypted.length} encrypted bytes',
+    );
     _socket.add(encrypted);
     await _socket.flush();
     CastLogger.debug('HAP session: waiting for encrypted response...');
@@ -394,7 +400,8 @@ class HapSession {
     // Read response
     final responseBytes = await _readEncryptedResponse();
     CastLogger.debug(
-        'HAP session: received ${responseBytes.length} decrypted response bytes');
+      'HAP session: received ${responseBytes.length} decrypted response bytes',
+    );
     return _parseHttpResponse(responseBytes);
   }
 
@@ -434,16 +441,19 @@ class HapSession {
     buffer.write('\r\n');
 
     final headerBytes = utf8.encode(buffer.toString());
-    final requestBytes = body != null && body.isNotEmpty
-        ? Uint8List.fromList([...headerBytes, ...body])
-        : Uint8List.fromList(headerBytes);
+    final requestBytes =
+        body != null && body.isNotEmpty
+            ? Uint8List.fromList([...headerBytes, ...body])
+            : Uint8List.fromList(headerBytes);
 
     // Encrypt and send
     CastLogger.debug(
-        'HAP session: encrypting ${requestBytes.length} RTSP bytes');
+      'HAP session: encrypting ${requestBytes.length} RTSP bytes',
+    );
     final encrypted = await encrypt(requestBytes);
     CastLogger.debug(
-        'HAP session: sending ${encrypted.length} encrypted RTSP bytes');
+      'HAP session: sending ${encrypted.length} encrypted RTSP bytes',
+    );
     _socket.add(encrypted);
     await _socket.flush();
     CastLogger.debug('HAP session: waiting for encrypted RTSP response...');
@@ -451,7 +461,8 @@ class HapSession {
     // Read response
     final responseBytes = await _readEncryptedResponse();
     CastLogger.debug(
-        'HAP session: received ${responseBytes.length} decrypted RTSP response bytes');
+      'HAP session: received ${responseBytes.length} decrypted RTSP response bytes',
+    );
     return _parseHttpResponse(responseBytes);
   }
 
@@ -494,7 +505,8 @@ class HapSession {
       body: setupBodyBytes,
     );
     CastLogger.info(
-        'HAP session: RTSP SETUP response: ${setupResp.statusCode} body(${setupResp.body.length}B)');
+      'HAP session: RTSP SETUP response: ${setupResp.statusCode} body(${setupResp.body.length}B)',
+    );
 
     // Parse eventPort from the binary plist response body
     int? eventPort;
@@ -508,8 +520,9 @@ class HapSession {
         }
       } catch (e) {
         CastLogger.debug(
-            'HAP session: SETUP response body: ${setupResp.body.length} bytes '
-            '(could not decode as bplist: $e)');
+          'HAP session: SETUP response body: ${setupResp.body.length} bytes '
+          '(could not decode as bplist: $e)',
+        );
       }
     }
 
@@ -519,7 +532,8 @@ class HapSession {
         await _setupEventChannel(eventPort);
       } catch (e) {
         CastLogger.warning(
-            'HAP session: event channel setup failed: $e — proceeding anyway');
+          'HAP session: event channel setup failed: $e — proceeding anyway',
+        );
       }
     }
 
@@ -531,20 +545,23 @@ class HapSession {
     CastLogger.info('HAP session: POST /feedback');
     final feedbackResp = await sendRtspRequest('POST', '/feedback');
     CastLogger.info(
-        'HAP session: /feedback response: ${feedbackResp.statusCode}');
+      'HAP session: /feedback response: ${feedbackResp.statusCode}',
+    );
 
     // RECORD
     CastLogger.info('HAP session: RTSP RECORD');
     final recordResp = await sendRtspRequest('RECORD', _rtspUri!);
     CastLogger.info(
-        'HAP session: RTSP RECORD response: ${recordResp.statusCode} body: ${recordResp.bodyText}');
+      'HAP session: RTSP RECORD response: ${recordResp.statusCode} body: ${recordResp.bodyText}',
+    );
 
     if (recordResp.statusCode == 200) {
       _rtspSessionSetUp = true;
     } else {
       CastLogger.warning(
-          'HAP session: RECORD failed (${recordResp.statusCode}), '
-          'proceeding anyway — /play may still work');
+        'HAP session: RECORD failed (${recordResp.statusCode}), '
+        'proceeding anyway — /play may still work',
+      );
       _rtspSessionSetUp = true;
     }
   }
@@ -560,7 +577,8 @@ class HapSession {
   /// so we retry up to 5 times with a 1-second delay between attempts.
   Future<void> _setupEventChannel(int eventPort) async {
     CastLogger.info(
-        'HAP session: setting up event channel on $host:$eventPort');
+      'HAP session: setting up event channel on $host:$eventPort',
+    );
 
     // Derive event-specific encryption keys
     final eventKeys = await deriveEventKeys(_sharedSecret!);
@@ -571,21 +589,25 @@ class HapSession {
     for (int attempt = 1; attempt <= 5; attempt++) {
       try {
         CastLogger.debug(
-            'HAP session: event channel connection attempt $attempt/5');
+          'HAP session: event channel connection attempt $attempt/5',
+        );
         eventSocket = await Socket.connect(
           host,
           eventPort,
           timeout: const Duration(seconds: 5),
         );
         CastLogger.info(
-            'HAP session: event channel connected on attempt $attempt');
+          'HAP session: event channel connected on attempt $attempt',
+        );
         break;
       } on SocketException catch (e) {
         CastLogger.debug(
-            'HAP session: event channel attempt $attempt failed: $e');
+          'HAP session: event channel attempt $attempt failed: $e',
+        );
         if (attempt == 5) {
           throw HapSessionException(
-              'Failed to connect event channel after 5 attempts: $e');
+            'Failed to connect event channel after 5 attempts: $e',
+          );
         }
         await Future<void>.delayed(const Duration(seconds: 1));
       }
@@ -624,11 +646,13 @@ class HapSession {
 
           final text = utf8.decode(data, allowMalformed: true);
           CastLogger.debug(
-              'HAP session: event channel received ${data.length} bytes: '
-              '${text.length > 200 ? text.substring(0, 200) : text}');
+            'HAP session: event channel received ${data.length} bytes: '
+            '${text.length > 200 ? text.substring(0, 200) : text}',
+          );
 
           // Respond with 200 OK
-          const response = 'HTTP/1.1 200 OK\r\n'
+          const response =
+              'HTTP/1.1 200 OK\r\n'
               'Content-Length: 0\r\n'
               '\r\n';
           final responseBytes = Uint8List.fromList(utf8.encode(response));
@@ -718,8 +742,8 @@ class HapSession {
       try {
         await _dataArrived!.future.timeout(
           remaining,
-          onTimeout: () =>
-              throw HapSessionException('Timed out waiting for response'),
+          onTimeout:
+              () => throw HapSessionException('Timed out waiting for response'),
         );
       } on HapSessionException {
         rethrow;
@@ -760,8 +784,8 @@ class HapSession {
       if (remaining.isNegative) break;
       await _dataArrived!.future.timeout(
         remaining,
-        onTimeout: () =>
-            throw HapSessionException('Timed out waiting for data'),
+        onTimeout:
+            () => throw HapSessionException('Timed out waiting for data'),
       );
     }
 
@@ -778,9 +802,10 @@ class HapSession {
     final bodyStart = headerEnd + 4; // Skip \r\n\r\n
 
     // Check for Content-Length
-    final contentLengthMatch =
-        RegExp(r'content-length:\s*(\d+)', caseSensitive: false)
-            .firstMatch(headerStr);
+    final contentLengthMatch = RegExp(
+      r'content-length:\s*(\d+)',
+      caseSensitive: false,
+    ).firstMatch(headerStr);
     if (contentLengthMatch != null) {
       final contentLength = int.parse(contentLengthMatch.group(1)!);
       return data.length >= bodyStart + contentLength;
@@ -831,11 +856,13 @@ class HapSession {
 
     final statusLine = lines.first;
     // Accept both HTTP/1.1 and RTSP/1.0 status lines
-    final statusMatch =
-        RegExp(r'(?:HTTP|RTSP)/\d+\.\d+\s+(\d+)\s*(.*)').firstMatch(statusLine);
+    final statusMatch = RegExp(
+      r'(?:HTTP|RTSP)/\d+\.\d+\s+(\d+)\s*(.*)',
+    ).firstMatch(statusLine);
     if (statusMatch == null) {
       throw HapSessionException(
-          'Invalid HTTP/RTSP response status line: $statusLine');
+        'Invalid HTTP/RTSP response status line: $statusLine',
+      );
     }
 
     final statusCode = int.parse(statusMatch.group(1)!);
@@ -853,9 +880,10 @@ class HapSession {
     }
 
     // Extract body
-    final body = bodyStart < data.length
-        ? Uint8List.fromList(data.sublist(bodyStart))
-        : Uint8List(0);
+    final body =
+        bodyStart < data.length
+            ? Uint8List.fromList(data.sublist(bodyStart))
+            : Uint8List(0);
 
     return HapHttpResponse(
       statusCode: statusCode,

@@ -34,8 +34,8 @@ class CastService {
   CastService({
     List<DeviceDiscoveryProvider>? discoveryProviders,
     SessionFactory? sessionFactory,
-  })  : _discoveryManager = DiscoveryManager(discoveryProviders ?? []),
-        _sessionFactory = sessionFactory;
+  }) : _discoveryManager = DiscoveryManager(discoveryProviders ?? []),
+       _sessionFactory = sessionFactory;
 
   /// Starts discovering cast devices on the local network.
   ///
@@ -66,7 +66,8 @@ class CastService {
   /// Sets [lastDevice] to the connected device for later [reconnect].
   Future<CastSession> connect(CastDevice device) async {
     CastLogger.info(
-        'CastService: connecting to ${device.name} (${device.protocol})');
+      'CastService: connecting to ${device.name} (${device.protocol})',
+    );
 
     // Auto-disconnect previous session
     if (_activeSession != null) {
@@ -74,7 +75,8 @@ class CastService {
         await _activeSession!.disconnect();
       } catch (e) {
         CastLogger.warning(
-            'CastService: error disconnecting previous session: $e');
+          'CastService: error disconnecting previous session: $e',
+        );
       }
     }
 
@@ -124,7 +126,7 @@ class CastService {
 
   CastSession _createSession(CastDevice device) {
     if (_sessionFactory != null) {
-      return _sessionFactory!(device);
+      return _sessionFactory(device);
     }
     throw StateError(
       'No sessionFactory provided. Supply a sessionFactory in the '

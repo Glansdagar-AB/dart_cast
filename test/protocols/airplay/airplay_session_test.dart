@@ -96,10 +96,12 @@ void main() {
     group('play()', () {
       test('maps to rate(1)', () async {
         await session.connect();
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         // Force to paused state for play() to work
         session.stateMachine.forceState(SessionState.paused);
@@ -114,10 +116,12 @@ void main() {
     group('pause()', () {
       test('maps to rate(0)', () async {
         await session.connect();
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         await session.pause();
 
@@ -129,10 +133,12 @@ void main() {
     group('seek()', () {
       test('maps to scrub(seconds)', () async {
         await session.connect();
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         await session.seek(const Duration(minutes: 5));
 
@@ -144,10 +150,12 @@ void main() {
     group('stop()', () {
       test('sends stop and transitions to idle', () async {
         await session.connect();
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         // Wait for polling to transition to playing state
         await session.stateStream
@@ -169,20 +177,19 @@ void main() {
         final positions = <Duration>[];
         session.positionStream.listen(positions.add);
 
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         // Wait for at least one position update
         await session.positionStream.first.timeout(const Duration(seconds: 5));
 
         expect(positions, isNotEmpty);
         // Position should be ~123.456789 seconds based on mock server
-        expect(
-          positions.first.inSeconds,
-          greaterThanOrEqualTo(123),
-        );
+        expect(positions.first.inSeconds, greaterThanOrEqualTo(123));
       });
 
       test('emits duration on durationStream', () async {
@@ -191,10 +198,12 @@ void main() {
         final durations = <Duration>[];
         session.durationStream.listen(durations.add);
 
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         // Wait for at least one duration update
         await session.durationStream.first.timeout(const Duration(seconds: 5));
@@ -210,10 +219,12 @@ void main() {
         final positions = <Duration>[];
         session.positionStream.listen(positions.add);
 
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         // Wait for a poll to occur
         await session.positionStream.first.timeout(const Duration(seconds: 5));
@@ -230,10 +241,12 @@ void main() {
     group('state transitions from playback-info', () {
       test('rate 1.0 maps to playing state', () async {
         await session.connect();
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         // Wait for poll — mock server returns rate=1.0
         await session.stateStream
@@ -245,10 +258,12 @@ void main() {
 
       test('rate 0.0 maps to paused state', () async {
         await session.connect();
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         // Wait for initial poll to reach playing
         await session.stateStream
@@ -270,10 +285,12 @@ void main() {
     group('disconnect()', () {
       test('stops polling and transitions to disconnected', () async {
         await session.connect();
-        await session.loadMedia(CastMedia(
-          url: 'https://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        await session.loadMedia(
+          CastMedia(
+            url: 'https://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
 
         await session.disconnect();
 
@@ -282,13 +299,15 @@ void main() {
     });
 
     group('setVolume()', () {
-      test('stores volume locally (AirPlay 1 has no volume endpoint)',
-          () async {
-        await session.connect();
+      test(
+        'stores volume locally (AirPlay 1 has no volume endpoint)',
+        () async {
+          await session.connect();
 
-        // Should not throw — just stores locally
-        await session.setVolume(0.5);
-      });
+          // Should not throw — just stores locally
+          await session.setVolume(0.5);
+        },
+      );
     });
   });
 }

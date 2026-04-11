@@ -42,78 +42,82 @@ void main() {
       }
     });
 
-    test('connect throws NeedsPairingException on 403 without credentials',
-        () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      server.listen((request) {
-        // Return 403 for /server-info by returning it as AirPlayClientException
-        if (request.uri.path == '/server-info') {
-          request.response
-            ..statusCode = 403
-            ..close();
-        } else {
-          request.response
-            ..statusCode = 200
-            ..close();
-        }
-      });
+    test(
+      'connect throws NeedsPairingException on 403 without credentials',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.listen((request) {
+          // Return 403 for /server-info by returning it as AirPlayClientException
+          if (request.uri.path == '/server-info') {
+            request.response
+              ..statusCode = 403
+              ..close();
+          } else {
+            request.response
+              ..statusCode = 200
+              ..close();
+          }
+        });
 
-      final device = CastDevice(
-        id: 'test',
-        name: 'Test Device',
-        protocol: CastProtocol.airplay,
-        address: InternetAddress.loopbackIPv4,
-        port: server.port,
-      );
-      final session = AirPlaySession(device);
-
-      try {
-        await expectLater(
-          session.connect(),
-          throwsA(isA<NeedsPairingException>()),
+        final device = CastDevice(
+          id: 'test',
+          name: 'Test Device',
+          protocol: CastProtocol.airplay,
+          address: InternetAddress.loopbackIPv4,
+          port: server.port,
         );
+        final session = AirPlaySession(device);
+
+        try {
+          await expectLater(
+            session.connect(),
+            throwsA(isA<NeedsPairingException>()),
+          );
+          expect(session.state, equals(SessionState.disconnected));
+        } finally {
+          session.dispose();
+          await server.close();
+        }
+      },
+    );
+
+    test(
+      'connect transitions to disconnected on 403 without credentials',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        server.listen((request) {
+          if (request.uri.path == '/server-info') {
+            request.response
+              ..statusCode = 403
+              ..close();
+          } else {
+            request.response
+              ..statusCode = 200
+              ..close();
+          }
+        });
+
+        final device = CastDevice(
+          id: 'test',
+          name: 'Test Device',
+          protocol: CastProtocol.airplay,
+          address: InternetAddress.loopbackIPv4,
+          port: server.port,
+        );
+        final session = AirPlaySession(device);
+
+        try {
+          await session.connect();
+        } on NeedsPairingException {
+          // Expected
+        }
+
         expect(session.state, equals(SessionState.disconnected));
-      } finally {
+
         session.dispose();
         await server.close();
-      }
-    });
-
-    test('connect transitions to disconnected on 403 without credentials',
-        () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-      server.listen((request) {
-        if (request.uri.path == '/server-info') {
-          request.response
-            ..statusCode = 403
-            ..close();
-        } else {
-          request.response
-            ..statusCode = 200
-            ..close();
-        }
-      });
-
-      final device = CastDevice(
-        id: 'test',
-        name: 'Test Device',
-        protocol: CastProtocol.airplay,
-        address: InternetAddress.loopbackIPv4,
-        port: server.port,
-      );
-      final session = AirPlaySession(device);
-
-      try {
-        await session.connect();
-      } on NeedsPairingException {
-        // Expected
-      }
-
-      expect(session.state, equals(SessionState.disconnected));
-
-      session.dispose();
-      await server.close();
-    });
+      },
+    );
 
     test('connect transitions to disconnected on network error', () async {
       // Use a port that nothing is listening on

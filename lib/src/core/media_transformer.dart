@@ -12,10 +12,7 @@ class TransformedMedia {
   /// wrapping in an HLS playlist.
   final CastMediaType effectiveType;
 
-  const TransformedMedia({
-    required this.proxyUrl,
-    required this.effectiveType,
-  });
+  const TransformedMedia({required this.proxyUrl, required this.effectiveType});
 }
 
 /// Transforms [CastMedia] into a proxy URL ready for casting.
@@ -68,9 +65,10 @@ class DefaultMediaTransformer implements MediaTransformer {
   @override
   Future<TransformedMedia> transform(CastMedia media, MediaProxy proxy) async {
     // Register media with proxy
-    final proxyUrl = media.isLocalFile
-        ? proxy.registerFile(media.url)
-        : proxy.registerMedia(media.url, headers: media.httpHeaders);
+    final proxyUrl =
+        media.isLocalFile
+            ? proxy.registerFile(media.url)
+            : proxy.registerMedia(media.url, headers: media.httpHeaders);
 
     var effectiveType = media.type;
 
@@ -80,9 +78,10 @@ class DefaultMediaTransformer implements MediaTransformer {
     if (media.type == CastMediaType.mpegTs &&
         wrapRemoteTs &&
         !media.isLocalFile) {
-      final durationSecs = media.duration?.inMilliseconds != null
-          ? media.duration!.inMilliseconds / 1000.0
-          : null;
+      final durationSecs =
+          media.duration?.inMilliseconds != null
+              ? media.duration!.inMilliseconds / 1000.0
+              : null;
 
       final hlsUrl = proxy.wrapInHlsPlaylist(proxyUrl, duration: durationSecs);
       return TransformedMedia(

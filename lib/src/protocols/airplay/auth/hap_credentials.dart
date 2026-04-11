@@ -31,12 +31,12 @@ class HapCredentials {
 
   /// Serializes credentials to a JSON-compatible map.
   Map<String, dynamic> toJson() => {
-        'clientPrivateKey': _bytesToHex(clientPrivateKey),
-        'clientPublicKey': _bytesToHex(clientPublicKey),
-        'clientId': clientId,
-        'devicePublicKey': _bytesToHex(devicePublicKey),
-        'deviceId': deviceId,
-      };
+    'clientPrivateKey': _bytesToHex(clientPrivateKey),
+    'clientPublicKey': _bytesToHex(clientPublicKey),
+    'clientId': clientId,
+    'devicePublicKey': _bytesToHex(devicePublicKey),
+    'deviceId': deviceId,
+  };
 
   /// Deserializes credentials from a JSON map.
   factory HapCredentials.fromJson(Map<String, dynamic> json) {

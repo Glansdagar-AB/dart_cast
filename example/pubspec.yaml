@@ -3,7 +3,7 @@ description: Example app demonstrating dart_cast usage.
 publish_to: none
 
 environment:
-  sdk: ^3.0.0
+  sdk: ^3.7.0
   flutter: ">=3.0.0"
 
 dependencies:

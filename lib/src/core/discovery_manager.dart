@@ -23,7 +23,7 @@ class DiscoveryManager {
 
   /// Creates a [DiscoveryManager] with the given discovery [providers].
   DiscoveryManager(List<DeviceDiscoveryProvider> providers)
-      : _providers = List.unmodifiable(providers);
+    : _providers = List.unmodifiable(providers);
 
   /// Starts discovery on matching providers and returns a merged stream.
   ///
@@ -33,8 +33,10 @@ class DiscoveryManager {
     Set<CastProtocol>? protocols,
     Duration timeout = const Duration(seconds: 10),
   }) {
-    assert(_providers.isNotEmpty,
-        'No discovery providers registered. Pass providers to DiscoveryManager or CastService.');
+    assert(
+      _providers.isNotEmpty,
+      'No discovery providers registered. Pass providers to DiscoveryManager or CastService.',
+    );
 
     // Stop any previous discovery
     stopDiscovery();
@@ -45,13 +47,15 @@ class DiscoveryManager {
     // Detect local IP to filter out self-discovery
     _detectLocalAddress().catchError((_) {});
 
-    final matchingProviders = protocols == null
-        ? _providers
-        : _providers.where((p) => protocols.contains(p.protocol)).toList();
+    final matchingProviders =
+        protocols == null
+            ? _providers
+            : _providers.where((p) => protocols.contains(p.protocol)).toList();
 
     CastLogger.info(
-        'Discovery: starting with ${matchingProviders.length} provider(s), '
-        'timeout=${timeout.inSeconds}s');
+      'Discovery: starting with ${matchingProviders.length} provider(s), '
+      'timeout=${timeout.inSeconds}s',
+    );
 
     for (var i = 0; i < matchingProviders.length; i++) {
       final provider = matchingProviders[i];
@@ -70,7 +74,8 @@ class DiscoveryManager {
         },
         onError: (Object error) {
           CastLogger.warning(
-              'Discovery: provider ${provider.protocol} error: $error');
+            'Discovery: provider ${provider.protocol} error: $error',
+          );
         },
       );
       _subscriptions.add(subscription);
@@ -115,7 +120,8 @@ class DiscoveryManager {
     // Filter out self (same IP as this device)
     if (_localAddress != null && device.address.address == _localAddress) {
       CastLogger.debug(
-          'Filtering self-device: ${device.name} (${device.address.address})');
+        'Filtering self-device: ${device.name} (${device.address.address})',
+      );
       return true;
     }
 
@@ -126,7 +132,8 @@ class DiscoveryManager {
       for (final prefix in computerModels) {
         if (model.contains(prefix)) {
           CastLogger.debug(
-              'Filtering computer AirPlay receiver: ${device.name} ($model)');
+            'Filtering computer AirPlay receiver: ${device.name} ($model)',
+          );
           return true;
         }
       }

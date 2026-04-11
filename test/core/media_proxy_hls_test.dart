@@ -171,10 +171,7 @@ void main() {
           final request = await client.getUrl(Uri.parse(playlistUrl));
           final response = await request.close();
           await response.drain<void>();
-          expect(
-            response.headers.contentType.toString(),
-            contains('mpegURL'),
-          );
+          expect(response.headers.contentType.toString(), contains('mpegURL'));
         } finally {
           client.close();
         }
@@ -244,22 +241,23 @@ void main() {
 
       // Dummy file → fallback to single-segment → VERSION:3 (not VERSION:4)
       test(
-          'playlist does NOT contain #EXT-X-VERSION:4 (no keyframes → fallback)',
-          () async {
-        final tmp = await _createTempFile(1024 * 1024);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            totalDuration: 60.0,
-          );
-          final content = await _fetchString(playlistUrl);
-          expect(content, isNot(contains('#EXT-X-VERSION:4')));
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
+        'playlist does NOT contain #EXT-X-VERSION:4 (no keyframes → fallback)',
+        () async {
+          final tmp = await _createTempFile(1024 * 1024);
+          try {
+            final fileProxyUrl = proxy.registerFile(tmp.file.path);
+            final playlistUrl = proxy.wrapLocalFileAsHls(
+              fileProxyUrl,
+              tmp.file.path,
+              totalDuration: 60.0,
+            );
+            final content = await _fetchString(playlistUrl);
+            expect(content, isNot(contains('#EXT-X-VERSION:4')));
+          } finally {
+            await tmp.dir.delete(recursive: true);
+          }
+        },
+      );
 
       test('playlist contains #EXT-X-PLAYLIST-TYPE:VOD', () async {
         final tmp = await _createTempFile(1024 * 1024);
@@ -295,79 +293,88 @@ void main() {
 
       // Dummy file → fallback → no byte-range segments
       test(
-          'playlist does NOT contain #EXT-X-BYTERANGE (no keyframes → fallback)',
-          () async {
-        final tmp = await _createTempFile(1024 * 1024);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            totalDuration: 60.0,
-          );
-          final content = await _fetchString(playlistUrl);
-          expect(content, isNot(contains('#EXT-X-BYTERANGE:')));
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
+        'playlist does NOT contain #EXT-X-BYTERANGE (no keyframes → fallback)',
+        () async {
+          final tmp = await _createTempFile(1024 * 1024);
+          try {
+            final fileProxyUrl = proxy.registerFile(tmp.file.path);
+            final playlistUrl = proxy.wrapLocalFileAsHls(
+              fileProxyUrl,
+              tmp.file.path,
+              totalDuration: 60.0,
+            );
+            final content = await _fetchString(playlistUrl);
+            expect(content, isNot(contains('#EXT-X-BYTERANGE:')));
+          } finally {
+            await tmp.dir.delete(recursive: true);
+          }
+        },
+      );
 
       // Single-segment fallback: EXTINF duration comes from totalDuration
-      test('EXTINF uses provided totalDuration in single-segment fallback',
-          () async {
-        const dur = 60.0;
-        final tmp = await _createTempFile(1024 * 1024);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            totalDuration: dur,
-          );
-          final content = await _fetchString(playlistUrl);
+      test(
+        'EXTINF uses provided totalDuration in single-segment fallback',
+        () async {
+          const dur = 60.0;
+          final tmp = await _createTempFile(1024 * 1024);
+          try {
+            final fileProxyUrl = proxy.registerFile(tmp.file.path);
+            final playlistUrl = proxy.wrapLocalFileAsHls(
+              fileProxyUrl,
+              tmp.file.path,
+              totalDuration: dur,
+            );
+            final content = await _fetchString(playlistUrl);
 
-          final extinfRegex = RegExp(r'#EXTINF:([\d.]+),');
-          final match = extinfRegex.firstMatch(content);
-          expect(match, isNotNull);
-          final extinfDur = double.parse(match!.group(1)!);
-          expect(extinfDur, closeTo(dur, 0.01));
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
+            final extinfRegex = RegExp(r'#EXTINF:([\d.]+),');
+            final match = extinfRegex.firstMatch(content);
+            expect(match, isNotNull);
+            final extinfDur = double.parse(match!.group(1)!);
+            expect(extinfDur, closeTo(dur, 0.01));
+          } finally {
+            await tmp.dir.delete(recursive: true);
+          }
+        },
+      );
 
       // Single-segment fallback: file proxy URL appears in the segment line
-      test('file proxy URL appears in segment line (single-segment fallback)',
-          () async {
-        final tmp = await _createTempFile(1024 * 1024);
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
+      test(
+        'file proxy URL appears in segment line (single-segment fallback)',
+        () async {
+          final tmp = await _createTempFile(1024 * 1024);
+          try {
+            final fileProxyUrl = proxy.registerFile(tmp.file.path);
+            final playlistUrl = proxy.wrapLocalFileAsHls(
+              fileProxyUrl,
+              tmp.file.path,
+              totalDuration: 60.0,
+            );
+            final content = await _fetchString(playlistUrl);
+            expect(content, contains(fileProxyUrl));
+          } finally {
+            await tmp.dir.delete(recursive: true);
+          }
+        },
+      );
+
+      test(
+        'falls back to wrapInHlsPlaylist when file does not exist',
+        () async {
+          final missingPath = '/nonexistent/path/file.ts';
+          final fakeFileProxyUrl = '${proxy.baseUrl}/file/fakefile';
           final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            totalDuration: 60.0,
+            fakeFileProxyUrl,
+            missingPath,
           );
+
+          // Falls back to single-segment plain HLS playlist
           final content = await _fetchString(playlistUrl);
-          expect(content, contains(fileProxyUrl));
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
-
-      test('falls back to wrapInHlsPlaylist when file does not exist',
-          () async {
-        final missingPath = '/nonexistent/path/file.ts';
-        final fakeFileProxyUrl = '${proxy.baseUrl}/file/fakefile';
-        final playlistUrl =
-            proxy.wrapLocalFileAsHls(fakeFileProxyUrl, missingPath);
-
-        // Falls back to single-segment plain HLS playlist
-        final content = await _fetchString(playlistUrl);
-        expect(content, startsWith('#EXTM3U'));
-        expect(content, contains(fakeFileProxyUrl));
-        // Should NOT contain byte-range tags since it's a plain playlist
-        expect(content, isNot(contains('#EXT-X-BYTERANGE:')));
-      });
+          expect(content, startsWith('#EXTM3U'));
+          expect(content, contains(fakeFileProxyUrl));
+          // Should NOT contain byte-range tags since it's a plain playlist
+          expect(content, isNot(contains('#EXT-X-BYTERANGE:')));
+        },
+      );
 
       test('two calls produce different proxy URLs', () async {
         final tmp = await _createTempFile(1024 * 1024);
@@ -464,51 +471,58 @@ void main() {
 
           final extinfCount = '#EXTINF:'.allMatches(content).length;
           // Expect 5 segments (one per keyframe boundary at 0, 9400, 18800, 28200, 37600)
-          expect(extinfCount, greaterThan(1),
-              reason: 'keyframe file should produce multiple segments');
+          expect(
+            extinfCount,
+            greaterThan(1),
+            reason: 'keyframe file should produce multiple segments',
+          );
         } finally {
           await tmp.dir.delete(recursive: true);
         }
       });
 
-      test('playlist contains #EXT-X-VERSION:3 (virtual segment URLs)',
-          () async {
-        final tmp = await makeKfFile();
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: segmentSec,
-            totalDuration: totalDuration,
-          );
-          final content = await _fetchString(playlistUrl);
-          expect(content, contains('#EXT-X-VERSION:3'));
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
+      test(
+        'playlist contains #EXT-X-VERSION:3 (virtual segment URLs)',
+        () async {
+          final tmp = await makeKfFile();
+          try {
+            final fileProxyUrl = proxy.registerFile(tmp.file.path);
+            final playlistUrl = proxy.wrapLocalFileAsHls(
+              fileProxyUrl,
+              tmp.file.path,
+              segmentSeconds: segmentSec,
+              totalDuration: totalDuration,
+            );
+            final content = await _fetchString(playlistUrl);
+            expect(content, contains('#EXT-X-VERSION:3'));
+          } finally {
+            await tmp.dir.delete(recursive: true);
+          }
+        },
+      );
 
-      test('playlist contains virtual segment URLs with ?start=&end= params',
-          () async {
-        final tmp = await makeKfFile();
-        try {
-          final fileProxyUrl = proxy.registerFile(tmp.file.path);
-          final playlistUrl = proxy.wrapLocalFileAsHls(
-            fileProxyUrl,
-            tmp.file.path,
-            segmentSeconds: segmentSec,
-            totalDuration: totalDuration,
-          );
-          final content = await _fetchString(playlistUrl);
-          expect(content, contains('?start='));
-          expect(content, contains('&end='));
-          // Should NOT use EXT-X-BYTERANGE (Chromecast doesn't support it)
-          expect(content, isNot(contains('#EXT-X-BYTERANGE:')));
-        } finally {
-          await tmp.dir.delete(recursive: true);
-        }
-      });
+      test(
+        'playlist contains virtual segment URLs with ?start=&end= params',
+        () async {
+          final tmp = await makeKfFile();
+          try {
+            final fileProxyUrl = proxy.registerFile(tmp.file.path);
+            final playlistUrl = proxy.wrapLocalFileAsHls(
+              fileProxyUrl,
+              tmp.file.path,
+              segmentSeconds: segmentSec,
+              totalDuration: totalDuration,
+            );
+            final content = await _fetchString(playlistUrl);
+            expect(content, contains('?start='));
+            expect(content, contains('&end='));
+            // Should NOT use EXT-X-BYTERANGE (Chromecast doesn't support it)
+            expect(content, isNot(contains('#EXT-X-BYTERANGE:')));
+          } finally {
+            await tmp.dir.delete(recursive: true);
+          }
+        },
+      );
 
       test('playlist contains #EXT-X-PLAYLIST-TYPE:VOD', () async {
         final tmp = await makeKfFile();
@@ -560,21 +574,30 @@ void main() {
           final matches = segRegex.allMatches(content).toList();
 
           expect(matches, isNotEmpty);
-          expect(int.parse(matches.first.group(1)!), 0,
-              reason: 'First segment must start at 0');
+          expect(
+            int.parse(matches.first.group(1)!),
+            0,
+            reason: 'First segment must start at 0',
+          );
 
           // Each segment's start must be the previous segment's end + 1
           for (int i = 1; i < matches.length; i++) {
             final prevEnd = int.parse(matches[i - 1].group(2)!);
             final curStart = int.parse(matches[i].group(1)!);
-            expect(curStart, prevEnd + 1,
-                reason: 'Segments must be contiguous');
+            expect(
+              curStart,
+              prevEnd + 1,
+              reason: 'Segments must be contiguous',
+            );
           }
 
           // Last segment must end at file size - 1
           final lastEnd = int.parse(matches.last.group(2)!);
-          expect(lastEnd, fileSize - 1,
-              reason: 'Last segment must reach end of file');
+          expect(
+            lastEnd,
+            fileSize - 1,
+            reason: 'Last segment must reach end of file',
+          );
         } finally {
           await tmp.dir.delete(recursive: true);
         }
@@ -623,13 +646,17 @@ void main() {
           final content = await _fetchString(playlistUrl);
 
           final segRegex = RegExp(r'\?start=(\d+)&end=(\d+)');
-          final offsets = segRegex
-              .allMatches(content)
-              .map((m) => int.parse(m.group(1)!))
-              .toList();
+          final offsets =
+              segRegex
+                  .allMatches(content)
+                  .map((m) => int.parse(m.group(1)!))
+                  .toList();
 
-          expect(offsets, expectedOffsets,
-              reason: 'Segment start offsets must match keyframe byte offsets');
+          expect(
+            offsets,
+            expectedOffsets,
+            reason: 'Segment start offsets must match keyframe byte offsets',
+          );
         } finally {
           await tmp.dir.delete(recursive: true);
         }
@@ -648,10 +675,11 @@ void main() {
           final content = await _fetchString(playlistUrl);
 
           final extinfRegex = RegExp(r'#EXTINF:([\d.]+),');
-          final durations = extinfRegex
-              .allMatches(content)
-              .map((m) => double.parse(m.group(1)!))
-              .toList();
+          final durations =
+              extinfRegex
+                  .allMatches(content)
+                  .map((m) => double.parse(m.group(1)!))
+                  .toList();
 
           final sum = durations.fold<double>(0.0, (a, b) => a + b);
           expect(sum, closeTo(totalDuration, 0.01));
@@ -673,17 +701,24 @@ void main() {
           final content = await _fetchString(playlistUrl);
 
           // Segment URL lines (non-tag, non-empty lines)
-          final lines = content
-              .split('\n')
-              .where((l) => l.isNotEmpty && !l.startsWith('#'))
-              .toList();
+          final lines =
+              content
+                  .split('\n')
+                  .where((l) => l.isNotEmpty && !l.startsWith('#'))
+                  .toList();
 
           expect(lines, isNotEmpty);
           for (final line in lines) {
-            expect(line.trim(), startsWith(fileProxyUrl),
-                reason: 'Each segment must use the file proxy URL');
-            expect(line.trim(), contains('?start='),
-                reason: 'Each segment must have start query param');
+            expect(
+              line.trim(),
+              startsWith(fileProxyUrl),
+              reason: 'Each segment must use the file proxy URL',
+            );
+            expect(
+              line.trim(),
+              contains('?start='),
+              reason: 'Each segment must have start query param',
+            );
           }
         } finally {
           await tmp.dir.delete(recursive: true);

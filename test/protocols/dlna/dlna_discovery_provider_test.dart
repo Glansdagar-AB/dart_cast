@@ -93,9 +93,10 @@ class FakeRawDatagramSocket implements RawDatagramSocket {
   Stream<RawSocketEvent> asBroadcastStream({
     void Function(StreamSubscription<RawSocketEvent>)? onListen,
     void Function(StreamSubscription<RawSocketEvent>)? onCancel,
-  }) =>
-      _controller.stream
-          .asBroadcastStream(onListen: onListen, onCancel: onCancel);
+  }) => _controller.stream.asBroadcastStream(
+    onListen: onListen,
+    onCancel: onCancel,
+  );
   @override
   Stream<E> asyncExpand<E>(Stream<E>? Function(RawSocketEvent) convert) =>
       _controller.stream.asyncExpand(convert);
@@ -107,9 +108,9 @@ class FakeRawDatagramSocket implements RawDatagramSocket {
   @override
   Future<bool> contains(Object? needle) => _controller.stream.contains(needle);
   @override
-  Stream<RawSocketEvent> distinct(
-          [bool Function(RawSocketEvent, RawSocketEvent)? equals]) =>
-      _controller.stream.distinct(equals);
+  Stream<RawSocketEvent> distinct([
+    bool Function(RawSocketEvent, RawSocketEvent)? equals,
+  ]) => _controller.stream.distinct(equals);
   @override
   Future<E> drain<E>([E? futureValue]) => _controller.stream.drain(futureValue);
   @override
@@ -124,9 +125,10 @@ class FakeRawDatagramSocket implements RawDatagramSocket {
   @override
   Future<RawSocketEvent> get first => _controller.stream.first;
   @override
-  Future<RawSocketEvent> firstWhere(bool Function(RawSocketEvent) test,
-          {RawSocketEvent Function()? orElse}) =>
-      _controller.stream.firstWhere(test, orElse: orElse);
+  Future<RawSocketEvent> firstWhere(
+    bool Function(RawSocketEvent) test, {
+    RawSocketEvent Function()? orElse,
+  }) => _controller.stream.firstWhere(test, orElse: orElse);
   @override
   Future<S> fold<S>(S initialValue, S Function(S, RawSocketEvent) combine) =>
       _controller.stream.fold(initialValue, combine);
@@ -134,9 +136,10 @@ class FakeRawDatagramSocket implements RawDatagramSocket {
   Future forEach(void Function(RawSocketEvent) action) =>
       _controller.stream.forEach(action);
   @override
-  Stream<RawSocketEvent> handleError(Function onError,
-          {bool Function(dynamic)? test}) =>
-      _controller.stream.handleError(onError, test: test);
+  Stream<RawSocketEvent> handleError(
+    Function onError, {
+    bool Function(dynamic)? test,
+  }) => _controller.stream.handleError(onError, test: test);
   @override
   bool get isBroadcast => _controller.stream.isBroadcast;
   @override
@@ -147,9 +150,10 @@ class FakeRawDatagramSocket implements RawDatagramSocket {
   @override
   Future<RawSocketEvent> get last => _controller.stream.last;
   @override
-  Future<RawSocketEvent> lastWhere(bool Function(RawSocketEvent) test,
-          {RawSocketEvent Function()? orElse}) =>
-      _controller.stream.lastWhere(test, orElse: orElse);
+  Future<RawSocketEvent> lastWhere(
+    bool Function(RawSocketEvent) test, {
+    RawSocketEvent Function()? orElse,
+  }) => _controller.stream.lastWhere(test, orElse: orElse);
   @override
   Future<int> get length => _controller.stream.length;
   @override
@@ -160,14 +164,15 @@ class FakeRawDatagramSocket implements RawDatagramSocket {
       _controller.stream.pipe(streamConsumer);
   @override
   Future<RawSocketEvent> reduce(
-          RawSocketEvent Function(RawSocketEvent, RawSocketEvent) combine) =>
-      _controller.stream.reduce(combine);
+    RawSocketEvent Function(RawSocketEvent, RawSocketEvent) combine,
+  ) => _controller.stream.reduce(combine);
   @override
   Future<RawSocketEvent> get single => _controller.stream.single;
   @override
-  Future<RawSocketEvent> singleWhere(bool Function(RawSocketEvent) test,
-          {RawSocketEvent Function()? orElse}) =>
-      _controller.stream.singleWhere(test, orElse: orElse);
+  Future<RawSocketEvent> singleWhere(
+    bool Function(RawSocketEvent) test, {
+    RawSocketEvent Function()? orElse,
+  }) => _controller.stream.singleWhere(test, orElse: orElse);
   @override
   Stream<RawSocketEvent> skip(int count) => _controller.stream.skip(count);
   @override
@@ -179,17 +184,18 @@ class FakeRawDatagramSocket implements RawDatagramSocket {
   Stream<RawSocketEvent> takeWhile(bool Function(RawSocketEvent) test) =>
       _controller.stream.takeWhile(test);
   @override
-  Stream<RawSocketEvent> timeout(Duration timeLimit,
-          {void Function(EventSink<RawSocketEvent>)? onTimeout}) =>
-      _controller.stream.timeout(timeLimit, onTimeout: onTimeout);
+  Stream<RawSocketEvent> timeout(
+    Duration timeLimit, {
+    void Function(EventSink<RawSocketEvent>)? onTimeout,
+  }) => _controller.stream.timeout(timeLimit, onTimeout: onTimeout);
   @override
   Future<List<RawSocketEvent>> toList() => _controller.stream.toList();
   @override
   Future<Set<RawSocketEvent>> toSet() => _controller.stream.toSet();
   @override
   Stream<S> transform<S>(
-          StreamTransformer<RawSocketEvent, S> streamTransformer) =>
-      _controller.stream.transform(streamTransformer);
+    StreamTransformer<RawSocketEvent, S> streamTransformer,
+  ) => _controller.stream.transform(streamTransformer);
   @override
   Stream<RawSocketEvent> where(bool Function(RawSocketEvent) test) =>
       _controller.stream.where(test);
@@ -322,7 +328,8 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
       // Same device twice
-      final response = 'HTTP/1.1 200 OK\r\n'
+      final response =
+          'HTTP/1.1 200 OK\r\n'
           'LOCATION: http://192.168.1.100:8080/description.xml\r\n'
           'USN: uuid:test-123::urn:schemas-upnp-org:device:MediaRenderer:1\r\n'
           '\r\n';

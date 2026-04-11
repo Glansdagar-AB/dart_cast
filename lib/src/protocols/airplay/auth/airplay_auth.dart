@@ -34,17 +34,15 @@ class AirPlayPairSetup {
   void startPinDisplay() {
     CastLogger.info('AirPlay auth: requesting PIN display (fire-and-forget)');
     _httpClient
-        .post(
-      _uri('/pair-pin-start'),
-      headers: _defaultHeaders,
-      body: '',
-    )
+        .post(_uri('/pair-pin-start'), headers: _defaultHeaders, body: '')
         .then((response) {
-      CastLogger.info(
-          'AirPlay auth: pair-pin-start response: ${response.statusCode}');
-    }).catchError((Object e) {
-      CastLogger.debug('AirPlay auth: pair-pin-start error (expected): $e');
-    });
+          CastLogger.info(
+            'AirPlay auth: pair-pin-start response: ${response.statusCode}',
+          );
+        })
+        .catchError((Object e) {
+          CastLogger.debug('AirPlay auth: pair-pin-start error (expected): $e');
+        });
   }
 
   /// Runs the full pair-setup flow with the given [pin].
@@ -71,7 +69,8 @@ class AirPlayPairSetup {
     final salt = Uint8List.fromList(m2[Tlv8.tagSalt]!);
     final serverPublicKey = Uint8List.fromList(m2[Tlv8.tagPublicKey]!);
     CastLogger.info(
-        'AirPlay auth: M2 received salt(${salt.length}B) pubkey(${serverPublicKey.length}B)');
+      'AirPlay auth: M2 received salt(${salt.length}B) pubkey(${serverPublicKey.length}B)',
+    );
 
     // -- M3: SRP client public key + proof --
     CastLogger.info('AirPlay auth: pair-setup M3 (SRP exchange)');
@@ -109,7 +108,8 @@ class AirPlayPairSetup {
     // -- Process M6: Decrypt device credentials --
     final deviceEncryptedData = Uint8List.fromList(m6[Tlv8.tagEncryptedData]!);
     CastLogger.info(
-        'AirPlay auth: M6 received (${deviceEncryptedData.length}B encrypted)');
+      'AirPlay auth: M6 received (${deviceEncryptedData.length}B encrypted)',
+    );
 
     final credentials = await srp.step4(
       encryptedData: deviceEncryptedData,
@@ -117,17 +117,15 @@ class AirPlayPairSetup {
     );
 
     CastLogger.info(
-        'AirPlay auth: pair-setup complete for device ${credentials.deviceId}');
+      'AirPlay auth: pair-setup complete for device ${credentials.deviceId}',
+    );
     return credentials;
   }
 
   Future<Uint8List> _postPairSetup(Uint8List body) async {
     final response = await _httpClient.post(
       _uri('/pair-setup'),
-      headers: {
-        ..._defaultHeaders,
-        'Content-Type': 'application/octet-stream',
-      },
+      headers: {..._defaultHeaders, 'Content-Type': 'application/octet-stream'},
       body: body,
     );
     if (response.statusCode != 200) {
@@ -147,18 +145,14 @@ class AirPlayPairSetup {
     }
   }
 
-  Uri _uri(String path) => Uri(
-        scheme: 'http',
-        host: host,
-        port: port,
-        path: path,
-      );
+  Uri _uri(String path) =>
+      Uri(scheme: 'http', host: host, port: port, path: path);
 
   Map<String, String> get _defaultHeaders => {
-        'User-Agent': 'AirPlay/320.20',
-        'Connection': 'keep-alive',
-        'X-Apple-HKP': '3',
-      };
+    'User-Agent': 'AirPlay/320.20',
+    'Connection': 'keep-alive',
+    'X-Apple-HKP': '3',
+  };
 
   /// Closes the underlying HTTP client.
   void close() => _httpClient.close();
@@ -207,8 +201,8 @@ class AirPlayPairVerify {
     required this.host,
     required this.port,
     http.Client? httpClient,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _socket = null;
+  }) : _httpClient = httpClient ?? http.Client(),
+       _socket = null;
 
   /// Persistent socket listener state (for raw-socket mode).
   StreamSubscription<Uint8List>? _socketSubscription;
@@ -225,8 +219,8 @@ class AirPlayPairVerify {
     required this.host,
     required this.port,
     Stream<Uint8List>? dataStream,
-  })  : _socket = socket,
-        _httpClient = null {
+  }) : _socket = socket,
+       _httpClient = null {
     // Listen on the provided dataStream (broadcast wrapper) or socket directly.
     final source = dataStream ?? socket;
     _socketSubscription = source.listen(
@@ -272,9 +266,11 @@ class AirPlayPairVerify {
 
     final deviceX25519PublicKey = Uint8List.fromList(m2[Tlv8.tagPublicKey]!);
     final encryptedData = Uint8List.fromList(m2[Tlv8.tagEncryptedData]!);
-    CastLogger.info('AirPlay auth: pair-verify M2 received '
-        '(pubkey ${deviceX25519PublicKey.length}B, '
-        'encrypted ${encryptedData.length}B)');
+    CastLogger.info(
+      'AirPlay auth: pair-verify M2 received '
+      '(pubkey ${deviceX25519PublicKey.length}B, '
+      'encrypted ${encryptedData.length}B)',
+    );
 
     // -- Compute shared secret --
     final sharedSecret = await x25519.sharedSecretKey(
@@ -284,8 +280,9 @@ class AirPlayPairVerify {
         type: KeyPairType.x25519,
       ),
     );
-    final sharedSecretBytes =
-        Uint8List.fromList(await sharedSecret.extractBytes());
+    final sharedSecretBytes = Uint8List.fromList(
+      await sharedSecret.extractBytes(),
+    );
 
     // Derive session key via HKDF
     final hkdf = Hkdf(hmac: Hmac(Sha512()), outputLength: 32);
@@ -327,7 +324,8 @@ class AirPlayPairVerify {
     final valid = await ed25519.verify(deviceInfo, signature: sig);
     if (!valid) {
       throw AirPlayAuthException(
-          'pair-verify: device signature verification failed');
+        'pair-verify: device signature verification failed',
+      );
     }
     CastLogger.info('AirPlay auth: pair-verify device signature verified');
 
@@ -384,14 +382,11 @@ class AirPlayPairVerify {
 
   Future<Uint8List> _postPairVerify(Uint8List body) async {
     if (_socket != null) {
-      return _rawHttpPost(_socket!, '/pair-verify', body);
+      return _rawHttpPost(_socket, '/pair-verify', body);
     }
     final response = await _httpClient!.post(
       _uri('/pair-verify'),
-      headers: {
-        ..._defaultHeaders,
-        'Content-Type': 'application/octet-stream',
-      },
+      headers: {..._defaultHeaders, 'Content-Type': 'application/octet-stream'},
       body: body,
     );
     if (response.statusCode != 200) {
@@ -407,7 +402,10 @@ class AirPlayPairVerify {
   /// Uses the persistent socket listener set up in [withSocket] to avoid
   /// "Stream has already been listened to" errors on subsequent calls.
   Future<Uint8List> _rawHttpPost(
-      Socket socket, String path, Uint8List body) async {
+    Socket socket,
+    String path,
+    Uint8List body,
+  ) async {
     // Build raw HTTP request
     final request = StringBuffer();
     request.write('POST $path HTTP/1.1\r\n');
@@ -480,8 +478,10 @@ class AirPlayPairVerify {
     if (headerEnd == -1) return 0;
     final headerStr = utf8.decode(data.sublist(0, headerEnd));
     final bodyStart = headerEnd + 4;
-    final clMatch = RegExp(r'content-length:\s*(\d+)', caseSensitive: false)
-        .firstMatch(headerStr);
+    final clMatch = RegExp(
+      r'content-length:\s*(\d+)',
+      caseSensitive: false,
+    ).firstMatch(headerStr);
     if (clMatch != null) {
       final contentLength = int.parse(clMatch.group(1)!);
       return bodyStart + contentLength;
@@ -516,8 +516,10 @@ class AirPlayPairVerify {
     final statusCode = int.parse(statusMatch.group(1)!);
 
     // Parse Content-Length
-    final clMatch = RegExp(r'content-length:\s*(\d+)', caseSensitive: false)
-        .firstMatch(headerStr);
+    final clMatch = RegExp(
+      r'content-length:\s*(\d+)',
+      caseSensitive: false,
+    ).firstMatch(headerStr);
     if (clMatch != null) {
       final contentLength = int.parse(clMatch.group(1)!);
       if (data.length < bodyStart + contentLength)
@@ -549,9 +551,7 @@ class AirPlayPairVerify {
   void _checkError(Map<int, List<int>> tlv, String step) {
     if (tlv.containsKey(Tlv8.tagError)) {
       final errorCode = tlv[Tlv8.tagError]!.first;
-      throw AirPlayAuthException(
-        'pair-verify $step error: code $errorCode',
-      );
+      throw AirPlayAuthException('pair-verify $step error: code $errorCode');
     }
   }
 
@@ -591,12 +591,8 @@ class AirPlayPairVerify {
     return Uint8List.fromList(plaintext);
   }
 
-  Uri _uri(String path) => Uri(
-        scheme: 'http',
-        host: host,
-        port: port,
-        path: path,
-      );
+  Uri _uri(String path) =>
+      Uri(scheme: 'http', host: host, port: port, path: path);
 
   /// Releases the socket listener so the socket can be handed off to
   /// [HapSession]. Must be called after [execute] completes and before
@@ -620,10 +616,10 @@ class AirPlayPairVerify {
   }
 
   Map<String, String> get _defaultHeaders => {
-        'User-Agent': 'AirPlay/320.20',
-        'Connection': 'keep-alive',
-        'X-Apple-HKP': '3',
-      };
+    'User-Agent': 'AirPlay/320.20',
+    'Connection': 'keep-alive',
+    'X-Apple-HKP': '3',
+  };
 }
 
 /// Exception thrown during AirPlay HAP authentication.

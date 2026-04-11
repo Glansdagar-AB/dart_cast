@@ -116,8 +116,10 @@ class MockAirPlayServer {
 
   void _handlePlaybackInfo(HttpRequest request) {
     request.response.statusCode = HttpStatus.ok;
-    request.response.headers.contentType =
-        ContentType('text', 'x-apple-plist+xml');
+    request.response.headers.contentType = ContentType(
+      'text',
+      'x-apple-plist+xml',
+    );
     request.response.write('''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -142,8 +144,10 @@ class MockAirPlayServer {
 
   void _handleServerInfo(HttpRequest request) {
     request.response.statusCode = HttpStatus.ok;
-    request.response.headers.contentType =
-        ContentType('text', 'x-apple-plist+xml');
+    request.response.headers.contentType = ContentType(
+      'text',
+      'x-apple-plist+xml',
+    );
     request.response.write('''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

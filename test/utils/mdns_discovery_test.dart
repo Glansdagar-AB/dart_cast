@@ -15,7 +15,7 @@ void main() {
           txtRecords: {
             'fn': 'Living Room TV',
             'md': 'Chromecast',
-            'id': 'abc-123'
+            'id': 'abc-123',
           },
         );
 
@@ -30,7 +30,7 @@ void main() {
           txtRecords: {
             'fn': 'Living Room TV',
             'md': 'Chromecast',
-            'id': 'abc-123'
+            'id': 'abc-123',
           },
         );
 
@@ -45,7 +45,7 @@ void main() {
           txtRecords: {
             'fn': 'Living Room TV',
             'md': 'Chromecast Ultra',
-            'id': 'abc-123'
+            'id': 'abc-123',
           },
         );
 
@@ -62,7 +62,7 @@ void main() {
           txtRecords: {
             'deviceid': 'AA:BB:CC:DD:EE:FF',
             'features': '0x5A7FFFF7,0x1E',
-            'model': 'AppleTV3,2'
+            'model': 'AppleTV3,2',
           },
         );
 
@@ -125,7 +125,7 @@ void main() {
           txtRecords: {
             'fn': 'Living Room TV',
             'md': 'Chromecast',
-            'id': 'abc-123'
+            'id': 'abc-123',
           },
         );
 

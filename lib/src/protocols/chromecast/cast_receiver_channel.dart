@@ -134,10 +134,7 @@ class CastReceiverChannel {
 
   /// Builds a GET_STATUS message with an instance-scoped request ID.
   String buildGetStatusWithId() {
-    return jsonEncode({
-      'type': 'GET_STATUS',
-      'requestId': nextRequestId(),
-    });
+    return jsonEncode({'type': 'GET_STATUS', 'requestId': nextRequestId()});
   }
 
   /// Builds a STOP message with an instance-scoped request ID.

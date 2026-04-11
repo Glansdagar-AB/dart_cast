@@ -18,8 +18,9 @@ void main() {
     test('getLocalIpAddress with targetDeviceIp prefers same subnet', () async {
       // We can't control interfaces in a unit test, but we can verify the
       // method doesn't crash and returns a valid result
-      final ip =
-          await NetworkUtils.getLocalIpAddress(targetDeviceIp: '192.168.1.100');
+      final ip = await NetworkUtils.getLocalIpAddress(
+        targetDeviceIp: '192.168.1.100',
+      );
       if (ip != null) {
         expect(ip, isNot('127.0.0.1'));
         expect(InternetAddress.tryParse(ip), isNotNull);
@@ -72,16 +73,20 @@ void main() {
     test('formatDuration produces HH:MM:SS', () {
       expect(NetworkUtils.formatDuration(Duration.zero), '00:00:00');
       expect(NetworkUtils.formatDuration(Duration(seconds: 5)), '00:00:05');
-      expect(NetworkUtils.formatDuration(Duration(minutes: 3, seconds: 15)),
-          '00:03:15');
+      expect(
+        NetworkUtils.formatDuration(Duration(minutes: 3, seconds: 15)),
+        '00:03:15',
+      );
       expect(
         NetworkUtils.formatDuration(
-            Duration(hours: 1, minutes: 30, seconds: 45)),
+          Duration(hours: 1, minutes: 30, seconds: 45),
+        ),
         '01:30:45',
       );
       expect(
         NetworkUtils.formatDuration(
-            Duration(hours: 12, minutes: 0, seconds: 0)),
+          Duration(hours: 12, minutes: 0, seconds: 0),
+        ),
         '12:00:00',
       );
     });
@@ -89,8 +94,10 @@ void main() {
     test('parseDuration parses HH:MM:SS', () {
       expect(NetworkUtils.parseDuration('00:00:00'), Duration.zero);
       expect(NetworkUtils.parseDuration('00:00:05'), Duration(seconds: 5));
-      expect(NetworkUtils.parseDuration('00:03:15'),
-          Duration(minutes: 3, seconds: 15));
+      expect(
+        NetworkUtils.parseDuration('00:03:15'),
+        Duration(minutes: 3, seconds: 15),
+      );
       expect(
         NetworkUtils.parseDuration('01:30:45'),
         Duration(hours: 1, minutes: 30, seconds: 45),

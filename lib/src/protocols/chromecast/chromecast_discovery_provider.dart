@@ -19,7 +19,7 @@ class ChromecastDiscoveryProvider implements DeviceDiscoveryProvider {
   ///
   /// An optional [mdnsLookup] can be provided for testing.
   ChromecastDiscoveryProvider({MdnsLookup? mdnsLookup})
-      : _mdnsLookup = mdnsLookup ?? _defaultMdnsLookup;
+    : _mdnsLookup = mdnsLookup ?? _defaultMdnsLookup;
 
   @override
   CastProtocol get protocol => CastProtocol.chromecast;
@@ -39,7 +39,8 @@ class ChromecastDiscoveryProvider implements DeviceDiscoveryProvider {
         final device = info.toChromecastDevice();
         if (!_devices.containsKey(device.id)) {
           CastLogger.info(
-              'Chromecast: found "${device.name}" at ${device.address.address}:${device.port}');
+            'Chromecast: found "${device.name}" at ${device.address.address}:${device.port}',
+          );
           _devices[device.id] = device;
           if (_controller?.isClosed == false) {
             _controller!.add(_devices.values.toList());

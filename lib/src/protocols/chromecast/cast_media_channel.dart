@@ -31,14 +31,14 @@ class CastMediaTrack {
 
   /// Converts to a Chromecast track JSON object.
   Map<String, dynamic> toJson() => {
-        'trackId': trackId,
-        'type': 'TEXT',
-        'subtype': 'SUBTITLES',
-        'trackContentId': url,
-        'trackContentType': 'text/vtt',
-        'name': name,
-        'language': language,
-      };
+    'trackId': trackId,
+    'type': 'TEXT',
+    'subtype': 'SUBTITLES',
+    'trackContentId': url,
+    'trackContentType': 'text/vtt',
+    'name': name,
+    'language': language,
+  };
 }
 
 /// Parsed media status from a MEDIA_STATUS message.
@@ -112,7 +112,7 @@ class CastMediaChannel {
     if (title != null) metadata['title'] = title;
     if (imageUrl != null) {
       metadata['images'] = [
-        {'url': imageUrl}
+        {'url': imageUrl},
       ];
     }
     media['metadata'] = metadata;
@@ -190,10 +190,7 @@ class CastMediaChannel {
 
   /// Builds a GET_STATUS command.
   String buildGetStatus() {
-    return jsonEncode({
-      'type': 'GET_STATUS',
-      'requestId': nextRequestId(),
-    });
+    return jsonEncode({'type': 'GET_STATUS', 'requestId': nextRequestId()});
   }
 
   /// Builds an EDIT_TRACKS_INFO command for subtitle switching.

@@ -89,9 +89,7 @@ class Tlv8 {
 
     while (offset < data.length) {
       if (offset + 1 >= data.length) {
-        throw FormatException(
-          'TLV8: unexpected end of data at offset $offset',
-        );
+        throw FormatException('TLV8: unexpected end of data at offset $offset');
       }
 
       final tag = data[offset];

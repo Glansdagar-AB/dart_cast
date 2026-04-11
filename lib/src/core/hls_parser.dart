@@ -5,10 +5,7 @@ class HlsParser {
   HlsParser._();
 
   /// Tags where the URI appears on the next line (Pattern A).
-  static const _nextLineUriTags = [
-    '#EXT-X-STREAM-INF:',
-    '#EXTINF:',
-  ];
+  static const _nextLineUriTags = ['#EXT-X-STREAM-INF:', '#EXTINF:'];
 
   /// Tags where the URI is a quoted attribute (Pattern B).
   static const _attributeUriTags = [
@@ -145,10 +142,7 @@ class HlsParser {
     final originalUri = match.group(1)!;
     final resolved = resolveUrl(originalUri, baseUrl);
     final proxied = _buildProxyUrl(proxyBaseUrl, token, resolved);
-    return line.replaceFirst(
-      'URI="$originalUri"',
-      'URI="$proxied"',
-    );
+    return line.replaceFirst('URI="$originalUri"', 'URI="$proxied"');
   }
 
   /// Extract segment URLs from a media playlist.

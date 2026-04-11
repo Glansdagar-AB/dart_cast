@@ -64,18 +64,20 @@ class SubtitleConverter {
         // Replace VTT dot timestamps with SRT comma timestamps
         // Only target the millisecond separator, not other dots.
         // Also expand MM:SS.mmm to 00:MM:SS,mmm for SRT compatibility.
-        srt.writeln(line.replaceAllMapped(
-          RegExp(r'(\d{2}:\d{2}:\d{2})\.(\d{3})|(\d{2}:\d{2})\.(\d{3})'),
-          (m) {
-            if (m[1] != null) {
-              // HH:MM:SS.mmm → HH:MM:SS,mmm
-              return '${m[1]},${m[2]}';
-            } else {
-              // MM:SS.mmm → 00:MM:SS,mmm
-              return '00:${m[3]},${m[4]}';
-            }
-          },
-        ));
+        srt.writeln(
+          line.replaceAllMapped(
+            RegExp(r'(\d{2}:\d{2}:\d{2})\.(\d{3})|(\d{2}:\d{2})\.(\d{3})'),
+            (m) {
+              if (m[1] != null) {
+                // HH:MM:SS.mmm → HH:MM:SS,mmm
+                return '${m[1]},${m[2]}';
+              } else {
+                // MM:SS.mmm → 00:MM:SS,mmm
+                return '00:${m[3]},${m[4]}';
+              }
+            },
+          ),
+        );
       } else {
         srt.writeln(line);
       }
@@ -228,9 +230,6 @@ $dialogues''';
   static String injectTimestampMap(String vtt, int mpegTsPts) {
     final header = 'X-TIMESTAMP-MAP=MPEGTS:$mpegTsPts,LOCAL:00:00:00.000';
     // Insert after WEBVTT header line
-    return vtt.replaceFirst(
-      RegExp(r'(WEBVTT[^\n]*\n)'),
-      '\$1$header\n',
-    );
+    return vtt.replaceFirst(RegExp(r'(WEBVTT[^\n]*\n)'), '\$1$header\n');
   }
 }

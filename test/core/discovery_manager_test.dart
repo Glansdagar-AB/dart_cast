@@ -26,8 +26,9 @@ class MockDiscoveryProvider implements DeviceDiscoveryProvider {
   });
 
   @override
-  Stream<List<CastDevice>> startDiscovery(
-      {Duration timeout = const Duration(seconds: 10)}) {
+  Stream<List<CastDevice>> startDiscovery({
+    Duration timeout = const Duration(seconds: 10),
+  }) {
     stopped = false;
     _controller = StreamController<List<CastDevice>>();
     var index = 0;
@@ -71,8 +72,11 @@ void main() {
   group('DiscoveryManager', () {
     test('merges devices from multiple providers', () async {
       final dlnaDevice = _device('dlna-1', 'DLNA TV', CastProtocol.dlna);
-      final chromecastDevice =
-          _device('cc-1', 'Chromecast', CastProtocol.chromecast);
+      final chromecastDevice = _device(
+        'cc-1',
+        'Chromecast',
+        CastProtocol.chromecast,
+      );
 
       final dlnaProvider = MockDiscoveryProvider(
         protocol: CastProtocol.dlna,
@@ -128,8 +132,11 @@ void main() {
 
     test('filters by protocol', () async {
       final dlnaDevice = _device('dlna-1', 'DLNA TV', CastProtocol.dlna);
-      final chromecastDevice =
-          _device('cc-1', 'Chromecast', CastProtocol.chromecast);
+      final chromecastDevice = _device(
+        'cc-1',
+        'Chromecast',
+        CastProtocol.chromecast,
+      );
 
       final dlnaProvider = MockDiscoveryProvider(
         protocol: CastProtocol.dlna,
@@ -216,9 +223,10 @@ void main() {
       );
 
       final manager = DiscoveryManager([provider]);
-      final results = await manager
-          .startDiscovery(timeout: const Duration(milliseconds: 200))
-          .toList();
+      final results =
+          await manager
+              .startDiscovery(timeout: const Duration(milliseconds: 200))
+              .toList();
 
       expect(results, isNotEmpty);
 

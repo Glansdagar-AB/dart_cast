@@ -215,10 +215,7 @@ void main() {
         final message = utf8.encode('test message for signing');
         final signature = await ed25519.sign(message, keyPair: keyPair);
 
-        final valid = await ed25519.verify(
-          message,
-          signature: signature,
-        );
+        final valid = await ed25519.verify(message, signature: signature);
         expect(valid, isTrue);
       });
 
@@ -365,10 +362,7 @@ void main() {
         final srp = HapSrp();
         await srp.step1();
 
-        expect(
-          () async => await srp.step3('client-id'),
-          throwsStateError,
-        );
+        expect(() async => await srp.step3('client-id'), throwsStateError);
       });
     });
 
@@ -377,10 +371,8 @@ void main() {
         final srp = HapSrp();
 
         expect(
-          () async => await srp.step4(
-            encryptedData: Uint8List(32),
-            clientId: 'test',
-          ),
+          () async =>
+              await srp.step4(encryptedData: Uint8List(32), clientId: 'test'),
           throwsStateError,
         );
       });
@@ -422,8 +414,9 @@ void main() {
         // pairVerify should fail during decryption of the invalid M2 payload
         await expectLater(
           HapSrp.pairVerify(
-            deviceX25519PublicKey:
-                Uint8List.fromList(deviceX25519PublicKey.bytes),
+            deviceX25519PublicKey: Uint8List.fromList(
+              deviceX25519PublicKey.bytes,
+            ),
             encryptedData: invalidEncryptedData,
             credentials: credentials,
           ),
@@ -473,8 +466,9 @@ void main() {
           keyPair: deviceX25519KeyPair,
           remotePublicKey: clientX25519PublicKey,
         );
-        final sharedSecretBytes =
-            Uint8List.fromList(await sharedSecret.extractBytes());
+        final sharedSecretBytes = Uint8List.fromList(
+          await sharedSecret.extractBytes(),
+        );
 
         // Derive session key
         final hkdf = Hkdf(hmac: Hmac(Sha512()), outputLength: 32);
@@ -483,8 +477,9 @@ void main() {
           nonce: utf8.encode('Pair-Verify-Encrypt-Salt'),
           info: utf8.encode('Pair-Verify-Encrypt-Info'),
         );
-        final sessionKey =
-            Uint8List.fromList(await sessionKeyObj.extractBytes());
+        final sessionKey = Uint8List.fromList(
+          await sessionKeyObj.extractBytes(),
+        );
 
         // Build device info with WRONG client public key (tampered)
         final deviceIdBytes = utf8.encode('test-device');
@@ -495,8 +490,10 @@ void main() {
         ]);
 
         // Sign the wrong info (signature won't match actual exchange)
-        final wrongSignature =
-            await ed25519.sign(wrongInfo, keyPair: deviceEdKeyPair);
+        final wrongSignature = await ed25519.sign(
+          wrongInfo,
+          keyPair: deviceEdKeyPair,
+        );
 
         // Build challenge sub-TLV with the wrong signature
         final challengeTlvBuilder = BytesBuilder();
@@ -528,8 +525,9 @@ void main() {
         // verifies that the method properly exercises the decrypt path.
         await expectLater(
           HapSrp.pairVerify(
-            deviceX25519PublicKey:
-                Uint8List.fromList(deviceX25519PublicKey.bytes),
+            deviceX25519PublicKey: Uint8List.fromList(
+              deviceX25519PublicKey.bytes,
+            ),
             encryptedData: encryptedChallenge,
             credentials: credentials,
           ),
@@ -564,8 +562,9 @@ void main() {
         // Too-short ciphertext (less than 16 bytes for MAC)
         await expectLater(
           HapSrp.pairVerify(
-            deviceX25519PublicKey:
-                Uint8List.fromList(deviceX25519PublicKey.bytes),
+            deviceX25519PublicKey: Uint8List.fromList(
+              deviceX25519PublicKey.bytes,
+            ),
             encryptedData: Uint8List(10),
             credentials: credentials,
           ),

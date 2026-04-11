@@ -85,11 +85,11 @@ class ChromecastSession extends CastSession {
   ChromecastSession({
     required CastDevice device,
     MediaTransformer? mediaTransformer,
-  })  : _channel = _RealChannelAdapter(),
-        _proxy = MediaProxy(),
-        _mediaTransformer =
-            mediaTransformer ?? const TsHlsMediaTransformer(wrapRemoteTs: true),
-        super(device);
+  }) : _channel = _RealChannelAdapter(),
+       _proxy = MediaProxy(),
+       _mediaTransformer =
+           mediaTransformer ?? const TsHlsMediaTransformer(wrapRemoteTs: true),
+       super(device);
 
   /// Creates a [ChromecastSession] with mock dependencies for testing.
   ///
@@ -104,11 +104,11 @@ class ChromecastSession extends CastSession {
     required dynamic channel,
     MediaProxy? proxy,
     MediaTransformer? mediaTransformer,
-  })  : _channel = _MockChannelAdapter(channel),
-        _proxy = proxy ?? MediaProxy(),
-        _mediaTransformer =
-            mediaTransformer ?? const TsHlsMediaTransformer(wrapRemoteTs: true),
-        super(device);
+  }) : _channel = _MockChannelAdapter(channel),
+       _proxy = proxy ?? MediaProxy(),
+       _mediaTransformer =
+           mediaTransformer ?? const TsHlsMediaTransformer(wrapRemoteTs: true),
+       super(device);
 
   // ---------------------------------------------------------------------------
   // Connect lifecycle
@@ -122,7 +122,8 @@ class ChromecastSession extends CastSession {
   @override
   Future<void> connect() async {
     CastLogger.info(
-        'Chromecast: connecting to ${device.name} at ${device.address.address}:${device.port}');
+      'Chromecast: connecting to ${device.name} at ${device.address.address}:${device.port}',
+    );
     stateMachine.transitionTo(SessionState.connecting);
 
     // 1. TLS connect
@@ -182,7 +183,8 @@ class ChromecastSession extends CastSession {
     );
 
     CastLogger.info(
-        'Chromecast: connected to ${device.name}, transportId=$_transportId');
+      'Chromecast: connected to ${device.name}, transportId=$_transportId',
+    );
     stateMachine.transitionTo(SessionState.connected);
   }
 
@@ -198,7 +200,8 @@ class ChromecastSession extends CastSession {
 
     if (_isLoadingMedia) {
       CastLogger.warning(
-          'Chromecast: loadMedia called while already loading — ignoring');
+        'Chromecast: loadMedia called while already loading — ignoring',
+      );
       return;
     }
     _isLoadingMedia = true;
@@ -229,21 +232,26 @@ class ChromecastSession extends CastSession {
     // fetch them with CORS headers (Access-Control-Allow-Origin) and any
     // custom headers the caller attached to the media.
     CastLogger.info(
-        'Chromecast: loading ${media.subtitles.length} subtitle track(s)');
+      'Chromecast: loading ${media.subtitles.length} subtitle track(s)',
+    );
     final subtitles = <CastMediaTrack>[];
     for (var i = 0; i < media.subtitles.length; i++) {
       final sub = media.subtitles[i];
       // Proxy subtitle URL so Chromecast can fetch it with CORS headers.
       // Uses registerSubtitle to handle both file:// and http:// URLs,
       // with automatic SRT-to-VTT conversion.
-      final proxySubUrl =
-          _proxy.registerSubtitle(sub.url, headers: media.httpHeaders);
-      subtitles.add(CastMediaTrack(
-        trackId: i + 1,
-        url: proxySubUrl,
-        name: sub.label,
-        language: sub.language,
-      ));
+      final proxySubUrl = _proxy.registerSubtitle(
+        sub.url,
+        headers: media.httpHeaders,
+      );
+      subtitles.add(
+        CastMediaTrack(
+          trackId: i + 1,
+          url: proxySubUrl,
+          name: sub.label,
+          language: sub.language,
+        ),
+      );
     }
 
     // Send LOAD
@@ -252,14 +260,16 @@ class ChromecastSession extends CastSession {
       contentType: contentType,
       title: media.title,
       imageUrl: media.imageUrl,
-      startPosition: media.startPosition != null
-          ? media.startPosition!.inMilliseconds / 1000.0
-          : null,
+      startPosition:
+          media.startPosition != null
+              ? media.startPosition!.inMilliseconds / 1000.0
+              : null,
       subtitles: subtitles.isNotEmpty ? subtitles : null,
     );
 
     CastLogger.info(
-        'Chromecast: LOAD contentId=$proxyUrl contentType=$contentType');
+      'Chromecast: LOAD contentId=$proxyUrl contentType=$contentType',
+    );
 
     final completer = Completer<void>();
     _waitForMediaStatus(completer);
@@ -279,7 +289,8 @@ class ChromecastSession extends CastSession {
         _mediaStatusSubscription = null;
         stateMachine.transitionTo(SessionState.idle);
         throw TimeoutException(
-            'Chromecast loadMedia timed out after 15 seconds');
+          'Chromecast loadMedia timed out after 15 seconds',
+        );
       },
     );
   }
@@ -314,8 +325,10 @@ class ChromecastSession extends CastSession {
   Future<void> seek(Duration position) async {
     _requireMediaSession();
     final seconds = position.inMilliseconds / 1000.0;
-    CastLogger.info('Chromecast: SEEK to ${seconds.toStringAsFixed(1)}s '
-        '(${position.inMinutes}:${(position.inSeconds % 60).toString().padLeft(2, '0')})');
+    CastLogger.info(
+      'Chromecast: SEEK to ${seconds.toStringAsFixed(1)}s '
+      '(${position.inMinutes}:${(position.inSeconds % 60).toString().padLeft(2, '0')})',
+    );
     _sendMediaCommand(_mediaChannel.buildSeek(_mediaSessionId!, seconds));
   }
 
@@ -339,11 +352,13 @@ class ChromecastSession extends CastSession {
     _requireMediaSession();
     if (subtitle == null) {
       _sendMediaCommand(
-          _mediaChannel.buildEditTracksInfo(_mediaSessionId!, []));
+        _mediaChannel.buildEditTracksInfo(_mediaSessionId!, []),
+      );
     } else {
       // Activate track ID 1 (conventionally the first subtitle track)
       _sendMediaCommand(
-          _mediaChannel.buildEditTracksInfo(_mediaSessionId!, [1]));
+        _mediaChannel.buildEditTracksInfo(_mediaSessionId!, [1]),
+      );
     }
   }
 
@@ -423,7 +438,8 @@ class ChromecastSession extends CastSession {
   void _onSocketLost() {
     if (stateMachine.state == SessionState.disconnected) return;
     CastLogger.warning(
-        'Chromecast: socket lost, transitioning to disconnected');
+      'Chromecast: socket lost, transitioning to disconnected',
+    );
     _stopHeartbeat();
     _stopPositionPolling();
     _mediaStatusSubscription?.cancel();
@@ -445,17 +461,14 @@ class ChromecastSession extends CastSession {
   }
 
   void _startHeartbeat() {
-    _heartbeatTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) {
-        _channel.sendMessage(
-          namespace: CastReceiverChannel.heartbeatNamespace,
-          sourceId: _senderId,
-          destinationId: _receiverId,
-          payload: CastReceiverChannel.buildPing(),
-        );
-      },
-    );
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _channel.sendMessage(
+        namespace: CastReceiverChannel.heartbeatNamespace,
+        sourceId: _senderId,
+        destinationId: _receiverId,
+        payload: CastReceiverChannel.buildPing(),
+      );
+    });
   }
 
   void _stopHeartbeat() {
@@ -468,17 +481,14 @@ class ChromecastSession extends CastSession {
   /// position, duration, and state.
   void _startPositionPolling() {
     _stopPositionPolling();
-    _positionPollTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) {
-        if (_isPolling || _mediaSessionId == null || _transportId == null) {
-          return;
-        }
-        _isPolling = true;
-        _sendMediaCommand(_mediaChannel.buildGetStatus());
-        _isPolling = false;
-      },
-    );
+    _positionPollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_isPolling || _mediaSessionId == null || _transportId == null) {
+        return;
+      }
+      _isPolling = true;
+      _sendMediaCommand(_mediaChannel.buildGetStatus());
+      _isPolling = false;
+    });
   }
 
   /// Stops the position polling timer.
@@ -524,15 +534,11 @@ class ChromecastSession extends CastSession {
     _mediaSessionId = status.mediaSessionId;
 
     // Update position
-    updatePosition(Duration(
-      milliseconds: (status.currentTime * 1000).round(),
-    ));
+    updatePosition(Duration(milliseconds: (status.currentTime * 1000).round()));
 
     // Update duration
     if (status.duration != null) {
-      updateDuration(Duration(
-        milliseconds: (status.duration! * 1000).round(),
-      ));
+      updateDuration(Duration(milliseconds: (status.duration! * 1000).round()));
     }
 
     // Note: MEDIA_STATUS volume is the stream-level volume (usually 1.0),

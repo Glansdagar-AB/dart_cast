@@ -36,7 +36,8 @@ Future<void> _sendResponse(
   String reasonPhrase, {
   String body = '',
 }) async {
-  final resp = 'HTTP/1.1 $statusCode $reasonPhrase\r\n'
+  final resp =
+      'HTTP/1.1 $statusCode $reasonPhrase\r\n'
       'Content-Length: ${body.length}\r\n'
       '\r\n'
       '$body';
@@ -155,31 +156,30 @@ void main() {
 
       // The body is a binary plist — URL should appear somewhere in the raw bytes
       expect(receivedRequest, isNotNull);
-      expect(
-        receivedRequest!,
-        contains('https://example.com/video.m3u8'),
-      );
+      expect(receivedRequest!, contains('https://example.com/video.m3u8'));
     });
 
-    test('does NOT call setupRtspSession (no RTSP/1.0 line in request)',
-        () async {
-      String? receivedRequest;
+    test(
+      'does NOT call setupRtspSession (no RTSP/1.0 line in request)',
+      () async {
+        String? receivedRequest;
 
-      server.listen((sock) async {
-        final srvSess = _serverSession(sock, server.port);
-        try {
-          final data = await srvSess.readDecryptedData();
-          receivedRequest = utf8.decode(data, allowMalformed: true);
-          await _sendResponse(srvSess, sock, 200, 'OK');
-        } catch (_) {}
-      });
+        server.listen((sock) async {
+          final srvSess = _serverSession(sock, server.port);
+          try {
+            final data = await srvSess.readDecryptedData();
+            receivedRequest = utf8.decode(data, allowMalformed: true);
+            await _sendResponse(srvSess, sock, 200, 'OK');
+          } catch (_) {}
+        });
 
-      await controller.playV1('https://example.com/video.m3u8', 0.0);
+        await controller.playV1('https://example.com/video.m3u8', 0.0);
 
-      expect(receivedRequest, isNotNull);
-      // V1 play goes straight to HTTP/1.1, no RTSP/1.0 setup request
-      expect(receivedRequest!, isNot(contains('RTSP/1.0')));
-    });
+        expect(receivedRequest, isNotNull);
+        // V1 play goes straight to HTTP/1.1, no RTSP/1.0 setup request
+        expect(receivedRequest!, isNot(contains('RTSP/1.0')));
+      },
+    );
   });
 
   group('AirPlayMediaController.playV1Text()', () {
@@ -223,26 +223,30 @@ void main() {
       );
     });
 
-    test('body is "Content-Location: <url>\\nStart-Position: <pos>\\n"',
-        () async {
-      String? receivedRequest;
+    test(
+      'body is "Content-Location: <url>\\nStart-Position: <pos>\\n"',
+      () async {
+        String? receivedRequest;
 
-      server.listen((sock) async {
-        final srvSess = _serverSession(sock, server.port);
-        try {
-          final data = await srvSess.readDecryptedData();
-          receivedRequest = utf8.decode(data, allowMalformed: true);
-          await _sendResponse(srvSess, sock, 200, 'OK');
-        } catch (_) {}
-      });
+        server.listen((sock) async {
+          final srvSess = _serverSession(sock, server.port);
+          try {
+            final data = await srvSess.readDecryptedData();
+            receivedRequest = utf8.decode(data, allowMalformed: true);
+            await _sendResponse(srvSess, sock, 200, 'OK');
+          } catch (_) {}
+        });
 
-      await controller.playV1Text('https://example.com/video.m3u8', 0.25);
+        await controller.playV1Text('https://example.com/video.m3u8', 0.25);
 
-      expect(receivedRequest, isNotNull);
-      expect(receivedRequest!,
-          contains('Content-Location: https://example.com/video.m3u8'));
-      expect(receivedRequest!, contains('Start-Position: 0.25'));
-    });
+        expect(receivedRequest, isNotNull);
+        expect(
+          receivedRequest!,
+          contains('Content-Location: https://example.com/video.m3u8'),
+        );
+        expect(receivedRequest!, contains('Start-Position: 0.25'));
+      },
+    );
   });
 
   group('AirPlayMediaController.playV2()', () {
@@ -265,73 +269,76 @@ void main() {
       await server.close();
     });
 
-    test('calls setupRtspSession first (sends RTSP SETUP before /play)',
-        () async {
-      final requestLog = <String>[];
+    test(
+      'calls setupRtspSession first (sends RTSP SETUP before /play)',
+      () async {
+        final requestLog = <String>[];
 
-      server.listen((sock) async {
-        final srvSess = _serverSession(sock, server.port);
-        // Handle multiple requests from the same connection
-        while (true) {
-          try {
-            final data = await srvSess.readDecryptedData(
-              timeout: const Duration(milliseconds: 200),
-            );
-            final req = utf8.decode(data, allowMalformed: true);
-            requestLog.add(req);
+        server.listen((sock) async {
+          final srvSess = _serverSession(sock, server.port);
+          // Handle multiple requests from the same connection
+          while (true) {
+            try {
+              final data = await srvSess.readDecryptedData(
+                timeout: const Duration(milliseconds: 200),
+              );
+              final req = utf8.decode(data, allowMalformed: true);
+              requestLog.add(req);
 
-            if (req.contains('SETUP')) {
-              // RTSP SETUP response
-              final resp =
-                  'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
-              final enc = await srvSess.encrypt(
-                Uint8List.fromList(utf8.encode(resp)),
-              );
-              sock.add(enc);
-              await sock.flush();
-            } else if (req.contains('POST /feedback') ||
-                req.contains('POST /rate')) {
-              // feedback / rate
-              final resp = req.contains('RTSP')
-                  ? 'RTSP/1.0 200 OK\r\nCSeq: 2\r\nContent-Length: 0\r\n\r\n'
-                  : 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n';
-              final enc = await srvSess.encrypt(
-                Uint8List.fromList(utf8.encode(resp)),
-              );
-              sock.add(enc);
-              await sock.flush();
-            } else if (req.contains('RECORD')) {
-              final resp =
-                  'RTSP/1.0 200 OK\r\nCSeq: 3\r\nContent-Length: 0\r\n\r\n';
-              final enc = await srvSess.encrypt(
-                Uint8List.fromList(utf8.encode(resp)),
-              );
-              sock.add(enc);
-              await sock.flush();
-            } else if (req.contains('POST /play')) {
-              await _sendResponse(srvSess, sock, 200, 'OK');
+              if (req.contains('SETUP')) {
+                // RTSP SETUP response
+                final resp =
+                    'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
+                final enc = await srvSess.encrypt(
+                  Uint8List.fromList(utf8.encode(resp)),
+                );
+                sock.add(enc);
+                await sock.flush();
+              } else if (req.contains('POST /feedback') ||
+                  req.contains('POST /rate')) {
+                // feedback / rate
+                final resp =
+                    req.contains('RTSP')
+                        ? 'RTSP/1.0 200 OK\r\nCSeq: 2\r\nContent-Length: 0\r\n\r\n'
+                        : 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n';
+                final enc = await srvSess.encrypt(
+                  Uint8List.fromList(utf8.encode(resp)),
+                );
+                sock.add(enc);
+                await sock.flush();
+              } else if (req.contains('RECORD')) {
+                final resp =
+                    'RTSP/1.0 200 OK\r\nCSeq: 3\r\nContent-Length: 0\r\n\r\n';
+                final enc = await srvSess.encrypt(
+                  Uint8List.fromList(utf8.encode(resp)),
+                );
+                sock.add(enc);
+                await sock.flush();
+              } else if (req.contains('POST /play')) {
+                await _sendResponse(srvSess, sock, 200, 'OK');
+              }
+            } catch (_) {
+              break;
             }
-          } catch (_) {
-            break;
           }
-        }
-      });
+        });
 
-      await controller.playV2('https://example.com/video.m3u8', 0.0);
+        await controller.playV2('https://example.com/video.m3u8', 0.0);
 
-      // There should have been a SETUP request before the /play
-      final setupReqs = requestLog.where((r) => r.contains('SETUP')).toList();
-      final playReqs =
-          requestLog.where((r) => r.contains('POST /play')).toList();
+        // There should have been a SETUP request before the /play
+        final setupReqs = requestLog.where((r) => r.contains('SETUP')).toList();
+        final playReqs =
+            requestLog.where((r) => r.contains('POST /play')).toList();
 
-      expect(setupReqs, isNotEmpty, reason: 'Expected RTSP SETUP to be sent');
-      expect(playReqs, isNotEmpty, reason: 'Expected POST /play to be sent');
+        expect(setupReqs, isNotEmpty, reason: 'Expected RTSP SETUP to be sent');
+        expect(playReqs, isNotEmpty, reason: 'Expected POST /play to be sent');
 
-      // SETUP must appear before /play in the log
-      final setupIdx = requestLog.indexWhere((r) => r.contains('SETUP'));
-      final playIdx = requestLog.indexWhere((r) => r.contains('POST /play'));
-      expect(setupIdx, lessThan(playIdx));
-    });
+        // SETUP must appear before /play in the log
+        final setupIdx = requestLog.indexWhere((r) => r.contains('SETUP'));
+        final playIdx = requestLog.indexWhere((r) => r.contains('POST /play'));
+        expect(setupIdx, lessThan(playIdx));
+      },
+    );
 
     test('sends User-Agent: AirPlay/550.10 on /play request', () async {
       String? playRequest;
@@ -348,8 +355,9 @@ void main() {
             if (req.contains('SETUP')) {
               final resp =
                   'RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 0\r\n\r\n';
-              final enc =
-                  await srvSess.encrypt(Uint8List.fromList(utf8.encode(resp)));
+              final enc = await srvSess.encrypt(
+                Uint8List.fromList(utf8.encode(resp)),
+              );
               sock.add(enc);
               await sock.flush();
             } else if (req.contains('RTSP/1.0')) {
@@ -357,8 +365,9 @@ void main() {
               final cseq = cseqMatch?.group(1) ?? '1';
               final resp =
                   'RTSP/1.0 200 OK\r\nCSeq: $cseq\r\nContent-Length: 0\r\n\r\n';
-              final enc =
-                  await srvSess.encrypt(Uint8List.fromList(utf8.encode(resp)));
+              final enc = await srvSess.encrypt(
+                Uint8List.fromList(utf8.encode(resp)),
+              );
               sock.add(enc);
               await sock.flush();
             } else if (req.contains('POST /play')) {
@@ -396,8 +405,9 @@ void main() {
               final cseq = cseqMatch?.group(1) ?? '1';
               final resp =
                   'RTSP/1.0 200 OK\r\nCSeq: $cseq\r\nContent-Length: 0\r\n\r\n';
-              final enc =
-                  await srvSess.encrypt(Uint8List.fromList(utf8.encode(resp)));
+              final enc = await srvSess.encrypt(
+                Uint8List.fromList(utf8.encode(resp)),
+              );
               sock.add(enc);
               await sock.flush();
             } else if (req.contains('POST /play')) {
@@ -436,8 +446,9 @@ void main() {
               final cseq = cseqMatch?.group(1) ?? '1';
               final resp =
                   'RTSP/1.0 200 OK\r\nCSeq: $cseq\r\nContent-Length: 0\r\n\r\n';
-              final enc =
-                  await srvSess.encrypt(Uint8List.fromList(utf8.encode(resp)));
+              final enc = await srvSess.encrypt(
+                Uint8List.fromList(utf8.encode(resp)),
+              );
               sock.add(enc);
               await sock.flush();
             } else if (req.contains('POST /play')) {
@@ -456,10 +467,7 @@ void main() {
 
       expect(playRequest, isNotNull);
       // The binary plist body will contain the URL as a UTF-8 string
-      expect(
-        playRequest!,
-        contains('https://example.com/video.m3u8'),
-      );
+      expect(playRequest!, contains('https://example.com/video.m3u8'));
     });
   });
 
@@ -749,7 +757,8 @@ void main() {
           receivedRequest = utf8.decode(data, allowMalformed: true);
 
           // Return a minimal XML plist as the body
-          const plistBody = '<?xml version="1.0" encoding="UTF-8"?>\n'
+          const plistBody =
+              '<?xml version="1.0" encoding="UTF-8"?>\n'
               '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
               '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
               '<plist version="1.0"><dict>'
@@ -775,7 +784,8 @@ void main() {
         try {
           await srvSess.readDecryptedData();
 
-          const plistBody = '<?xml version="1.0" encoding="UTF-8"?>\n'
+          const plistBody =
+              '<?xml version="1.0" encoding="UTF-8"?>\n'
               '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
               '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
               '<plist version="1.0"><dict>'

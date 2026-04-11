@@ -26,10 +26,7 @@ class AirPlayMediaController {
   final AirPlayFeatures features;
 
   /// Creates an [AirPlayMediaController].
-  AirPlayMediaController({
-    required this.session,
-    required this.features,
-  });
+  AirPlayMediaController({required this.session, required this.features});
 
   // ---------------------------------------------------------------------------
   // Play commands
@@ -135,7 +132,8 @@ class AirPlayMediaController {
     // Try V1 binary plist first
     var resp = await playV1(url, startPosition);
     CastLogger.debug(
-        'AirPlayMediaController: playV1 response: ${resp.statusCode}');
+      'AirPlayMediaController: playV1 response: ${resp.statusCode}',
+    );
     if (resp.statusCode == 200) {
       CastLogger.info('AirPlayMediaController: playV1 accepted');
       return;
@@ -145,7 +143,8 @@ class AirPlayMediaController {
       // Try V1 text/parameters
       resp = await playV1Text(url, startPosition);
       CastLogger.debug(
-          'AirPlayMediaController: playV1Text response: ${resp.statusCode}');
+        'AirPlayMediaController: playV1Text response: ${resp.statusCode}',
+      );
       if (resp.statusCode == 200) {
         CastLogger.info('AirPlayMediaController: playV1Text accepted');
         return;
@@ -156,7 +155,8 @@ class AirPlayMediaController {
       // Try V2 with RTSP
       resp = await playV2(url, startPosition);
       CastLogger.debug(
-          'AirPlayMediaController: playV2 response: ${resp.statusCode}');
+        'AirPlayMediaController: playV2 response: ${resp.statusCode}',
+      );
       if (resp.statusCode == 200) {
         CastLogger.info('AirPlayMediaController: playV2 accepted');
         return;
@@ -233,11 +233,7 @@ class AirPlayMediaController {
     String path, {
     Map<String, String>? queryParameters,
   }) async {
-    await session.sendRequest(
-      method,
-      path,
-      queryParameters: queryParameters,
-    );
+    await session.sendRequest(method, path, queryParameters: queryParameters);
   }
 
   static final _random = Random.secure();

@@ -8,10 +8,8 @@ import 'dlna_device.dart';
 import 'ssdp_discovery.dart';
 
 /// Function type for creating a UDP socket for SSDP discovery.
-typedef RawDatagramSocketFactory = Future<RawDatagramSocket> Function(
-  dynamic host,
-  int port,
-);
+typedef RawDatagramSocketFactory =
+    Future<RawDatagramSocket> Function(dynamic host, int port);
 
 /// Function type for fetching a URL and returning its body.
 typedef HttpFetcher = Future<String> Function(String url);
@@ -36,8 +34,8 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
   DlnaDiscoveryProvider({
     RawDatagramSocketFactory? socketFactory,
     HttpFetcher? httpFetcher,
-  })  : _socketFactory = socketFactory ?? RawDatagramSocket.bind,
-        _httpFetcher = httpFetcher ?? _defaultHttpFetch;
+  }) : _socketFactory = socketFactory ?? RawDatagramSocket.bind,
+       _httpFetcher = httpFetcher ?? _defaultHttpFetch;
 
   @override
   CastProtocol get protocol => CastProtocol.dlna;
@@ -78,7 +76,8 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
       final address = InternetAddress(SsdpConstants.multicastAddress);
 
       CastLogger.info(
-          'DLNA: sending M-SEARCH to ${SsdpConstants.multicastAddress}:${SsdpConstants.multicastPort}');
+        'DLNA: sending M-SEARCH to ${SsdpConstants.multicastAddress}:${SsdpConstants.multicastPort}',
+      );
       _socket!.send(data, address, SsdpConstants.multicastPort);
 
       // Send again after a short delay for reliability
@@ -112,14 +111,16 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
     if (_devices.containsKey(uuid)) return;
 
     CastLogger.debug(
-        'DLNA: SSDP response from $uuid, fetching description at $location');
+      'DLNA: SSDP response from $uuid, fetching description at $location',
+    );
 
     try {
       final xml = await _httpFetcher(location);
       final description = DlnaDeviceDescription.parse(xml, location);
       final device = description.toCastDevice();
       CastLogger.info(
-          'DLNA: found device "${device.name}" at ${device.address.address}:${device.port}');
+        'DLNA: found device "${device.name}" at ${device.address.address}:${device.port}',
+      );
       _devices[uuid] = device;
 
       if (_controller?.isClosed == false) {
@@ -127,7 +128,8 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
       }
     } catch (e) {
       CastLogger.warning(
-          'DLNA: failed to fetch description for $uuid at $location: $e');
+        'DLNA: failed to fetch description for $uuid at $location: $e',
+      );
     }
   }
 
@@ -153,11 +155,8 @@ class DlnaDiscoveryProvider implements DeviceDiscoveryProvider {
     try {
       final request = await client.getUrl(Uri.parse(url));
       final response = await request.close();
-      final body = await response
-          .transform(
-            const SystemEncoding().decoder,
-          )
-          .join();
+      final body =
+          await response.transform(const SystemEncoding().decoder).join();
       return body;
     } finally {
       client.close();

@@ -28,12 +28,14 @@ class MockCastV2Channel {
     required String destinationId,
     required String payload,
   }) {
-    sentMessages.add(MockSentMessage(
-      namespace: namespace,
-      sourceId: sourceId,
-      destinationId: destinationId,
-      payload: jsonDecode(payload) as Map<String, dynamic>,
-    ));
+    sentMessages.add(
+      MockSentMessage(
+        namespace: namespace,
+        sourceId: sourceId,
+        destinationId: destinationId,
+        payload: jsonDecode(payload) as Map<String, dynamic>,
+      ),
+    );
   }
 
   Future<void> connect(String host, {int port = 8009}) async {
@@ -52,12 +54,14 @@ class MockCastV2Channel {
     required String destinationId,
     required Map<String, dynamic> payload,
   }) {
-    _incomingController.add(MockReceivedMessage(
-      namespace: namespace,
-      sourceId: sourceId,
-      destinationId: destinationId,
-      payload: payload,
-    ));
+    _incomingController.add(
+      MockReceivedMessage(
+        namespace: namespace,
+        sourceId: sourceId,
+        destinationId: destinationId,
+        payload: payload,
+      ),
+    );
   }
 
   /// Clear recorded messages.
@@ -262,10 +266,7 @@ void main() {
         expect(loadMsg, isNotNull);
         expect(loadMsg.destinationId, 'web-4');
         // Should use a proxy URL (real MediaProxy produces http://<ip>:<port>/stream/<token>)
-        expect(
-          loadMsg.payload['media']['contentId'],
-          contains('/stream/'),
-        );
+        expect(loadMsg.payload['media']['contentId'], contains('/stream/'));
       });
 
       test('sends LOAD message after starting proxy', () async {
@@ -310,10 +311,12 @@ void main() {
         await connectFuture;
 
         // Load media
-        final loadFuture = session.loadMedia(CastMedia(
-          url: 'http://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        final loadFuture = session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
         await Future<void>.delayed(Duration.zero);
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
@@ -398,10 +401,12 @@ void main() {
         );
         await connectFuture;
 
-        final loadFuture = session.loadMedia(CastMedia(
-          url: 'http://example.com/video.m3u8',
-          type: CastMediaType.hls,
-        ));
+        final loadFuture = session.loadMedia(
+          CastMedia(
+            url: 'http://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          ),
+        );
         await Future<void>.delayed(Duration.zero);
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
@@ -457,8 +462,9 @@ void main() {
 
       test('PAUSED state transitions to paused', () async {
         // State is already PLAYING from setUp's loadMedia.
-        final stateFuture =
-            session.stateStream.firstWhere((s) => s == SessionState.paused);
+        final stateFuture = session.stateStream.firstWhere(
+          (s) => s == SessionState.paused,
+        );
 
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
@@ -476,8 +482,9 @@ void main() {
 
       test('IDLE with FINISHED transitions to idle', () async {
         // State is already PLAYING from setUp's loadMedia.
-        final stateFuture =
-            session.stateStream.firstWhere((s) => s == SessionState.idle);
+        final stateFuture = session.stateStream.firstWhere(
+          (s) => s == SessionState.idle,
+        );
 
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
@@ -627,11 +634,14 @@ void main() {
         await firstLoad;
 
         // Only one LOAD message should have been sent
-        final loadMessages = mockChannel.sentMessages
-            .where((m) =>
-                m.namespace == CastMediaChannel.mediaNamespace &&
-                m.payload['type'] == 'LOAD')
-            .toList();
+        final loadMessages =
+            mockChannel.sentMessages
+                .where(
+                  (m) =>
+                      m.namespace == CastMediaChannel.mediaNamespace &&
+                      m.payload['type'] == 'LOAD',
+                )
+                .toList();
         expect(loadMessages, hasLength(1));
       });
 
@@ -666,11 +676,14 @@ void main() {
         await secondLoad;
 
         // Two LOAD messages
-        final loadMessages = mockChannel.sentMessages
-            .where((m) =>
-                m.namespace == CastMediaChannel.mediaNamespace &&
-                m.payload['type'] == 'LOAD')
-            .toList();
+        final loadMessages =
+            mockChannel.sentMessages
+                .where(
+                  (m) =>
+                      m.namespace == CastMediaChannel.mediaNamespace &&
+                      m.payload['type'] == 'LOAD',
+                )
+                .toList();
         expect(loadMessages, hasLength(2));
       });
     });
@@ -740,12 +753,9 @@ Map<String, dynamic> _receiverStatusPayload({
           'namespaces': [
             {'name': 'urn:x-cast:com.google.cast.media'},
           ],
-        }
+        },
       ],
-      'volume': {
-        'level': 0.5,
-        'muted': false,
-      },
+      'volume': {'level': 0.5, 'muted': false},
     },
   };
 }
@@ -765,9 +775,7 @@ Map<String, dynamic> _mediaStatusPayload({
   };
 
   if (duration != null) {
-    statusEntry['media'] = {
-      'duration': duration,
-    };
+    statusEntry['media'] = {'duration': duration};
   }
 
   if (idleReason != null) {

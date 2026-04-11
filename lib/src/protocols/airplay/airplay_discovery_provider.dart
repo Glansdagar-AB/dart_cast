@@ -21,7 +21,7 @@ class AirPlayDiscoveryProvider implements DeviceDiscoveryProvider {
   ///
   /// An optional [mdnsLookup] can be provided for testing.
   AirPlayDiscoveryProvider({MdnsLookup? mdnsLookup})
-      : _mdnsLookup = mdnsLookup ?? _defaultMdnsLookup;
+    : _mdnsLookup = mdnsLookup ?? _defaultMdnsLookup;
 
   @override
   CastProtocol get protocol => CastProtocol.airplay;
@@ -48,7 +48,8 @@ class AirPlayDiscoveryProvider implements DeviceDiscoveryProvider {
         final device = info.toAirplayDevice();
         if (!_devices.containsKey(device.id)) {
           CastLogger.info(
-              'AirPlay: found "${device.name}" at ${device.address.address}:${device.port} $features');
+            'AirPlay: found "${device.name}" at ${device.address.address}:${device.port} $features',
+          );
           _devices[device.id] = device;
           if (_controller?.isClosed == false) {
             _controller!.add(_devices.values.toList());

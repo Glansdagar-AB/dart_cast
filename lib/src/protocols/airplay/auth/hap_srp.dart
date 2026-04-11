@@ -58,9 +58,7 @@ class HapSrp {
   ///
   /// If [privateKeyOverride] is provided, it is used as the client private key
   /// instead of generating a random one. This is only for testing.
-  Future<Uint8List> step1({
-    Uint8List? privateKeyOverride,
-  }) async {
+  Future<Uint8List> step1({Uint8List? privateKeyOverride}) async {
     if (privateKeyOverride != null) {
       _privateKey = _bytesToBigInt(privateKeyOverride);
     } else {
@@ -106,10 +104,9 @@ class HapSrp {
     final g = _SrpParams.g;
 
     // u = H(A | B) — "scrambling parameter"
-    final u = _bytesToBigInt(await _hash([
-      ..._bigIntToBytes(A, 384),
-      ..._bigIntToBytes(B, 384),
-    ]));
+    final u = _bytesToBigInt(
+      await _hash([..._bigIntToBytes(A, 384), ..._bigIntToBytes(B, 384)]),
+    );
 
     if (u == BigInt.zero) {
       throw StateError('SRP: scrambling parameter u is zero');
@@ -120,10 +117,9 @@ class HapSrp {
     final x = _bytesToBigInt(await _hash([...salt, ...identityHash]));
 
     // Compute k = H(N | pad(g))
-    final k = _bytesToBigInt(await _hash([
-      ..._bigIntToBytes(N, 384),
-      ..._bigIntToBytes(g, 384),
-    ]));
+    final k = _bytesToBigInt(
+      await _hash([..._bigIntToBytes(N, 384), ..._bigIntToBytes(g, 384)]),
+    );
 
     // S = (B - k * g^x mod N)^(a + u * x) mod N
     final gx = g.modPow(x, N);
@@ -283,8 +279,10 @@ class HapSrp {
 
     // Verify the device signature
     final ed25519 = Ed25519();
-    final devicePubKey =
-        SimplePublicKey(devicePublicKey, type: KeyPairType.ed25519);
+    final devicePubKey = SimplePublicKey(
+      devicePublicKey,
+      type: KeyPairType.ed25519,
+    );
     final sig = Signature(deviceSignature, publicKey: devicePubKey);
     final valid = await ed25519.verify(deviceInfo, signature: sig);
     if (!valid) {
@@ -328,8 +326,9 @@ class HapSrp {
         type: KeyPairType.x25519,
       ),
     );
-    final sharedSecretBytes =
-        Uint8List.fromList(await sharedSecret.extractBytes());
+    final sharedSecretBytes = Uint8List.fromList(
+      await sharedSecret.extractBytes(),
+    );
 
     // Derive the session encryption key for decrypting M2
     final sessionKey = await _hkdfDeriveStatic(
@@ -458,11 +457,7 @@ class HapSrp {
     required Uint8List nonce,
     required Uint8List plaintext,
   }) async {
-    return _chachaEncryptStatic(
-      key: key,
-      nonce: nonce,
-      plaintext: plaintext,
-    );
+    return _chachaEncryptStatic(key: key, nonce: nonce, plaintext: plaintext);
   }
 
   static Future<Uint8List> _chachaEncryptStatic({
@@ -477,8 +472,10 @@ class HapSrp {
       nonce: nonce,
     );
     // Return ciphertext + MAC (16 bytes) concatenated
-    return Uint8List.fromList(
-        [...secretBox.cipherText, ...secretBox.mac.bytes]);
+    return Uint8List.fromList([
+      ...secretBox.cipherText,
+      ...secretBox.mac.bytes,
+    ]);
   }
 
   Future<Uint8List> _chachaDecrypt({
@@ -486,11 +483,7 @@ class HapSrp {
     required Uint8List nonce,
     required Uint8List ciphertext,
   }) async {
-    return _chachaDecryptStatic(
-      key: key,
-      nonce: nonce,
-      ciphertext: ciphertext,
-    );
+    return _chachaDecryptStatic(key: key, nonce: nonce, ciphertext: ciphertext);
   }
 
   static Future<Uint8List> _chachaDecryptStatic({

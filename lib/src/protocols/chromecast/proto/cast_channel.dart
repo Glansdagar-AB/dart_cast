@@ -30,11 +30,15 @@ class CastMessage_ProtocolVersion extends ProtobufEnum {
 /// `CastMessage.PayloadType` enum.
 class CastMessage_PayloadType extends ProtobufEnum {
   // ignore: constant_identifier_names
-  static const CastMessage_PayloadType STRING =
-      CastMessage_PayloadType._(0, 'STRING');
+  static const CastMessage_PayloadType STRING = CastMessage_PayloadType._(
+    0,
+    'STRING',
+  );
   // ignore: constant_identifier_names
-  static const CastMessage_PayloadType BINARY =
-      CastMessage_PayloadType._(1, 'BINARY');
+  static const CastMessage_PayloadType BINARY = CastMessage_PayloadType._(
+    1,
+    'BINARY',
+  );
 
   static const List<CastMessage_PayloadType> values = [STRING, BINARY];
 
@@ -68,9 +72,10 @@ class CastMessage extends GeneratedMessage {
   factory CastMessage() => CastMessage._();
 
   /// Deserialise from protobuf bytes.
-  factory CastMessage.fromBuffer(List<int> bytes,
-          [ExtensionRegistry registry = ExtensionRegistry.EMPTY]) =>
-      CastMessage._()..mergeFromBuffer(bytes, registry);
+  factory CastMessage.fromBuffer(
+    List<int> bytes, [
+    ExtensionRegistry registry = ExtensionRegistry.EMPTY,
+  ]) => CastMessage._()..mergeFromBuffer(bytes, registry);
 
   CastMessage._() : super();
 
@@ -80,32 +85,33 @@ class CastMessage extends GeneratedMessage {
   @override
   CastMessage clone() => CastMessage._()..mergeFromMessage(this);
 
-  static final BuilderInfo _i = BuilderInfo(
-    'CastMessage',
-    package: const PackageName('extensions.api.cast_channel'),
-    createEmptyInstance: CastMessage._,
-  )
-    ..e<CastMessage_ProtocolVersion>(
-      1,
-      'protocolVersion',
-      PbFieldType.QE,
-      defaultOrMaker: CastMessage_ProtocolVersion.CASTV2_1_0,
-      valueOf: CastMessage_ProtocolVersion.valueOf,
-      enumValues: CastMessage_ProtocolVersion.values,
-    )
-    ..aQS(2, 'sourceId')
-    ..aQS(3, 'destinationId')
-    ..aQS(4, 'namespace')
-    ..e<CastMessage_PayloadType>(
-      5,
-      'payloadType',
-      PbFieldType.QE,
-      defaultOrMaker: CastMessage_PayloadType.STRING,
-      valueOf: CastMessage_PayloadType.valueOf,
-      enumValues: CastMessage_PayloadType.values,
-    )
-    ..aOS(6, 'payloadUtf8')
-    ..a<List<int>>(7, 'payloadBinary', PbFieldType.OY);
+  static final BuilderInfo _i =
+      BuilderInfo(
+          'CastMessage',
+          package: const PackageName('extensions.api.cast_channel'),
+          createEmptyInstance: CastMessage._,
+        )
+        ..e<CastMessage_ProtocolVersion>(
+          1,
+          'protocolVersion',
+          PbFieldType.QE,
+          defaultOrMaker: CastMessage_ProtocolVersion.CASTV2_1_0,
+          valueOf: CastMessage_ProtocolVersion.valueOf,
+          enumValues: CastMessage_ProtocolVersion.values,
+        )
+        ..aQS(2, 'sourceId')
+        ..aQS(3, 'destinationId')
+        ..aQS(4, 'namespace')
+        ..e<CastMessage_PayloadType>(
+          5,
+          'payloadType',
+          PbFieldType.QE,
+          defaultOrMaker: CastMessage_PayloadType.STRING,
+          valueOf: CastMessage_PayloadType.valueOf,
+          enumValues: CastMessage_PayloadType.values,
+        )
+        ..aOS(6, 'payloadUtf8')
+        ..a<List<int>>(7, 'payloadBinary', PbFieldType.OY);
 
   @override
   BuilderInfo get info_ => _i;

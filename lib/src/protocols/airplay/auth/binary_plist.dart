@@ -22,7 +22,8 @@ class BinaryPlistDecoder {
       return result;
     }
     throw ArgumentError(
-        'Binary plist root object is not a dict: ${result.runtimeType}');
+      'Binary plist root object is not a dict: ${result.runtimeType}',
+    );
   }
 
   /// Decodes a binary plist [Uint8List] into any supported Dart object.
@@ -119,7 +120,8 @@ class BinaryPlistDecoder {
         return _readDict(offset, objectInfo);
       default:
         throw ArgumentError(
-            'Unsupported binary plist object type: 0x${objectType.toRadixString(16)} at offset $offset');
+          'Unsupported binary plist object type: 0x${objectType.toRadixString(16)} at offset $offset',
+        );
     }
   }
 
@@ -170,8 +172,10 @@ class BinaryPlistDecoder {
   /// Reads an ASCII string.
   String _readAsciiString(int offset, int sizeInfo) {
     final (count, dataStart) = _readSizeAndDataStart(offset, sizeInfo);
-    return ascii.decode(_data.sublist(dataStart, dataStart + count),
-        allowInvalid: true);
+    return ascii.decode(
+      _data.sublist(dataStart, dataStart + count),
+      allowInvalid: true,
+    );
   }
 
   /// Reads a UTF-16 BE string.
@@ -189,8 +193,10 @@ class BinaryPlistDecoder {
     final (count, refsStart) = _readSizeAndDataStart(offset, sizeInfo);
     final result = <Object?>[];
     for (int i = 0; i < count; i++) {
-      final ref =
-          _readUnsignedInt(refsStart + i * _objectRefSize, _objectRefSize);
+      final ref = _readUnsignedInt(
+        refsStart + i * _objectRefSize,
+        _objectRefSize,
+      );
       result.add(_readObject(ref));
     }
     return result;
@@ -204,10 +210,14 @@ class BinaryPlistDecoder {
 
     final result = <String, dynamic>{};
     for (int i = 0; i < count; i++) {
-      final keyRef =
-          _readUnsignedInt(keyRefsStart + i * _objectRefSize, _objectRefSize);
-      final valRef =
-          _readUnsignedInt(valRefsStart + i * _objectRefSize, _objectRefSize);
+      final keyRef = _readUnsignedInt(
+        keyRefsStart + i * _objectRefSize,
+        _objectRefSize,
+      );
+      final valRef = _readUnsignedInt(
+        valRefsStart + i * _objectRefSize,
+        _objectRefSize,
+      );
       final key = _readObject(keyRef);
       final value = _readObject(valRef);
       result[key.toString()] = value;
@@ -485,7 +495,10 @@ class BinaryPlistEncoder {
   ///
   /// Format: 0xDN (N = count) followed by N key refs then N value refs.
   void _writeDict(
-      Map<String, dynamic> dict, BytesBuilder builder, int objectRefSize) {
+    Map<String, dynamic> dict,
+    BytesBuilder builder,
+    int objectRefSize,
+  ) {
     _writeSizeHeader(0xD0, dict.length, builder);
 
     // Write key references first, then value references.

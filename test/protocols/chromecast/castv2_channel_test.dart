@@ -38,13 +38,14 @@ void main() {
 
   group('CastMessage protobuf serialization roundtrip', () {
     test('string payload message roundtrip', () {
-      final msg = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = '{"type":"PING"}';
+      final msg =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = '{"type":"PING"}';
 
       final bytes = msg.writeToBuffer();
       final decoded = CastMessage.fromBuffer(bytes);
@@ -58,13 +59,14 @@ void main() {
 
   group('Full message framing', () {
     test('frameMessage produces length prefix + protobuf bytes', () {
-      final msg = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'test'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = 'hello';
+      final msg =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'test'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = 'hello';
 
       final framed = CastV2Channel.frameMessage(msg);
       final protobufBytes = msg.writeToBuffer();
@@ -84,13 +86,14 @@ void main() {
 
   group('Message stream parsing', () {
     test('parseMessages extracts single message from complete frame', () async {
-      final msg = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = '{"type":"PING"}';
+      final msg =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = '{"type":"PING"}';
 
       final framed = CastV2Channel.frameMessage(msg);
 
@@ -107,13 +110,14 @@ void main() {
     });
 
     test('parseMessages handles message split across chunks', () async {
-      final msg = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = '{"type":"PING"}';
+      final msg =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'urn:x-cast:com.google.cast.tp.heartbeat'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = '{"type":"PING"}';
 
       final framed = CastV2Channel.frameMessage(msg);
 
@@ -136,21 +140,23 @@ void main() {
     });
 
     test('parseMessages handles multiple messages in one chunk', () async {
-      final msg1 = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'test'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = 'first';
+      final msg1 =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'test'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = 'first';
 
-      final msg2 = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-1'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'test'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = 'second';
+      final msg2 =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-1'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'test'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = 'second';
 
       final framed1 = CastV2Channel.frameMessage(msg1);
       final framed2 = CastV2Channel.frameMessage(msg2);
@@ -170,13 +176,14 @@ void main() {
     });
 
     test('parseMessages handles length header split across chunks', () async {
-      final msg = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 'sender-0'
-        ..destinationId = 'receiver-0'
-        ..namespace_ = 'test'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = 'hello';
+      final msg =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 'sender-0'
+            ..destinationId = 'receiver-0'
+            ..namespace_ = 'test'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = 'hello';
 
       final framed = CastV2Channel.frameMessage(msg);
 
@@ -197,13 +204,14 @@ void main() {
     });
 
     test('parseMessages handles byte-by-byte delivery', () async {
-      final msg = CastMessage()
-        ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
-        ..sourceId = 's'
-        ..destinationId = 'd'
-        ..namespace_ = 'n'
-        ..payloadType = CastMessage_PayloadType.STRING
-        ..payloadUtf8 = 'x';
+      final msg =
+          CastMessage()
+            ..protocolVersion = CastMessage_ProtocolVersion.CASTV2_1_0
+            ..sourceId = 's'
+            ..destinationId = 'd'
+            ..namespace_ = 'n'
+            ..payloadType = CastMessage_PayloadType.STRING
+            ..payloadUtf8 = 'x';
 
       final framed = CastV2Channel.frameMessage(msg);
 

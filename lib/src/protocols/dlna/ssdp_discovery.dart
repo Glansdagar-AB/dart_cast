@@ -12,12 +12,7 @@ class SsdpResponse {
   /// All headers from the response, keyed in lowercase.
   final Map<String, String> headers;
 
-  SsdpResponse({
-    this.location,
-    this.usn,
-    this.st,
-    this.headers = const {},
-  });
+  SsdpResponse({this.location, this.usn, this.st, this.headers = const {}});
 }
 
 /// Constants for SSDP multicast discovery.

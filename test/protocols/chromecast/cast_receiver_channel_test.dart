@@ -104,8 +104,10 @@ void main() {
 
     group('buildSetVolume', () {
       test('produces correct JSON with volume level and muted', () {
-        final json =
-            CastReceiverChannel.buildSetVolume(level: 0.5, muted: false);
+        final json = CastReceiverChannel.buildSetVolume(
+          level: 0.5,
+          muted: false,
+        );
         final decoded = jsonDecode(json) as Map<String, dynamic>;
         expect(decoded['type'], 'SET_VOLUME');
         expect(decoded['volume']['level'], 0.5);
@@ -138,12 +140,9 @@ void main() {
                 'displayName': 'Default Media Receiver',
                 'sessionId': 'abc-123',
                 'transportId': 'transport-456',
-              }
+              },
             ],
-            'volume': {
-              'level': 0.48,
-              'muted': false,
-            },
+            'volume': {'level': 0.48, 'muted': false},
           },
         };
 
@@ -178,24 +177,15 @@ void main() {
 
     group('isPong', () {
       test('returns true for PONG message', () {
-        expect(
-          CastReceiverChannel.isPong({'type': 'PONG'}),
-          isTrue,
-        );
+        expect(CastReceiverChannel.isPong({'type': 'PONG'}), isTrue);
       });
 
       test('returns false for non-PONG message', () {
-        expect(
-          CastReceiverChannel.isPong({'type': 'PING'}),
-          isFalse,
-        );
+        expect(CastReceiverChannel.isPong({'type': 'PING'}), isFalse);
       });
 
       test('returns false for message without type', () {
-        expect(
-          CastReceiverChannel.isPong({'data': 'test'}),
-          isFalse,
-        );
+        expect(CastReceiverChannel.isPong({'data': 'test'}), isFalse);
       });
     });
   });

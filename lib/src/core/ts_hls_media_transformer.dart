@@ -59,9 +59,10 @@ class TsHlsMediaTransformer extends DefaultMediaTransformer {
       proxy.setPatPmt(patPmt);
     }
 
-    final durationSecs = media.duration?.inMilliseconds != null
-        ? media.duration!.inMilliseconds / 1000.0
-        : null;
+    final durationSecs =
+        media.duration?.inMilliseconds != null
+            ? media.duration!.inMilliseconds / 1000.0
+            : null;
 
     // Always use chunked HLS with keyframe-aligned segments.
     // Falls back to single-segment if the file has ≤1 keyframe.

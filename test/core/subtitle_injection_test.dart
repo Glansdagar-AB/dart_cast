@@ -28,8 +28,10 @@ void main() {
           await request.response.close();
         } else if (path == '/master.m3u8') {
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('application', 'vnd.apple.mpegurl');
+          request.response.headers.contentType = ContentType(
+            'application',
+            'vnd.apple.mpegurl',
+          );
           request.response.write(
             '#EXTM3U\n'
             '#EXT-X-STREAM-INF:BANDWIDTH=2000000\n'
@@ -51,84 +53,84 @@ void main() {
     test('registerSubtitlePlaylist returns a synthetic URL', () async {
       await proxy.start();
 
-      final url = proxy.registerSubtitlePlaylist(
-        '$upstreamBaseUrl/subs.vtt',
-      );
+      final url = proxy.registerSubtitlePlaylist('$upstreamBaseUrl/subs.vtt');
 
       expect(url, startsWith(proxy.baseUrl!));
       expect(url, contains('/synthetic/'));
     });
 
-    test('registerSubtitlePlaylist serves a valid HLS playlist wrapping VTT',
-        () async {
-      await proxy.start();
+    test(
+      'registerSubtitlePlaylist serves a valid HLS playlist wrapping VTT',
+      () async {
+        await proxy.start();
 
-      final url = proxy.registerSubtitlePlaylist(
-        '$upstreamBaseUrl/subs.vtt',
-      );
+        final url = proxy.registerSubtitlePlaylist('$upstreamBaseUrl/subs.vtt');
 
-      final client = HttpClient();
-      try {
-        final request = await client.getUrl(Uri.parse(url));
-        final response = await request.close();
-        expect(response.statusCode, HttpStatus.ok);
+        final client = HttpClient();
+        try {
+          final request = await client.getUrl(Uri.parse(url));
+          final response = await request.close();
+          expect(response.statusCode, HttpStatus.ok);
 
-        final body = await response.transform(utf8.decoder).join();
-        expect(body, contains('#EXTM3U'));
-        expect(body, contains('#EXT-X-TARGETDURATION:99999'));
-        expect(body, contains('#EXTINF:99999.0,'));
-        expect(body, contains('#EXT-X-ENDLIST'));
-        // Should contain a proxy URL for the VTT file
-        expect(body, contains('/stream/'));
-      } finally {
-        client.close();
-      }
-    });
+          final body = await response.transform(utf8.decoder).join();
+          expect(body, contains('#EXTM3U'));
+          expect(body, contains('#EXT-X-TARGETDURATION:99999'));
+          expect(body, contains('#EXTINF:99999.0,'));
+          expect(body, contains('#EXT-X-ENDLIST'));
+          // Should contain a proxy URL for the VTT file
+          expect(body, contains('/stream/'));
+        } finally {
+          client.close();
+        }
+      },
+    );
 
-    test('registerSubtitleWrapper creates master playlist with subtitle tracks',
-        () async {
-      await proxy.start();
+    test(
+      'registerSubtitleWrapper creates master playlist with subtitle tracks',
+      () async {
+        await proxy.start();
 
-      final originalProxyUrl = proxy.registerMedia(
-        '$upstreamBaseUrl/master.m3u8',
-      );
-      final subPlaylistUrl = proxy.registerSubtitlePlaylist(
-        '$upstreamBaseUrl/subs.vtt',
-      );
+        final originalProxyUrl = proxy.registerMedia(
+          '$upstreamBaseUrl/master.m3u8',
+        );
+        final subPlaylistUrl = proxy.registerSubtitlePlaylist(
+          '$upstreamBaseUrl/subs.vtt',
+        );
 
-      final wrapperUrl = proxy.registerSubtitleWrapper(
-        originalM3u8ProxyUrl: originalProxyUrl,
-        subtitleEntries: [
-          (name: 'English', language: 'en', url: subPlaylistUrl),
-        ],
-      );
+        final wrapperUrl = proxy.registerSubtitleWrapper(
+          originalM3u8ProxyUrl: originalProxyUrl,
+          subtitleEntries: [
+            (name: 'English', language: 'en', url: subPlaylistUrl),
+          ],
+        );
 
-      expect(wrapperUrl, startsWith(proxy.baseUrl!));
-      expect(wrapperUrl, contains('/synthetic/'));
+        expect(wrapperUrl, startsWith(proxy.baseUrl!));
+        expect(wrapperUrl, contains('/synthetic/'));
 
-      final client = HttpClient();
-      try {
-        final request = await client.getUrl(Uri.parse(wrapperUrl));
-        final response = await request.close();
-        expect(response.statusCode, HttpStatus.ok);
+        final client = HttpClient();
+        try {
+          final request = await client.getUrl(Uri.parse(wrapperUrl));
+          final response = await request.close();
+          expect(response.statusCode, HttpStatus.ok);
 
-        final body = await response.transform(utf8.decoder).join();
-        expect(body, contains('#EXTM3U'));
-        expect(body, contains('#EXT-X-MEDIA:TYPE=SUBTITLES'));
-        expect(body, contains('GROUP-ID="subs"'));
-        expect(body, contains('NAME="English"'));
-        expect(body, contains('LANGUAGE="en"'));
-        expect(body, contains('DEFAULT=YES'));
-        expect(body, contains('#EXT-X-STREAM-INF:BANDWIDTH=1280000'));
-        expect(body, contains('SUBTITLES="subs"'));
-        // Should reference the original proxy URL
-        expect(body, contains(originalProxyUrl));
-        // Should reference the subtitle playlist URL
-        expect(body, contains(subPlaylistUrl));
-      } finally {
-        client.close();
-      }
-    });
+          final body = await response.transform(utf8.decoder).join();
+          expect(body, contains('#EXTM3U'));
+          expect(body, contains('#EXT-X-MEDIA:TYPE=SUBTITLES'));
+          expect(body, contains('GROUP-ID="subs"'));
+          expect(body, contains('NAME="English"'));
+          expect(body, contains('LANGUAGE="en"'));
+          expect(body, contains('DEFAULT=YES'));
+          expect(body, contains('#EXT-X-STREAM-INF:BANDWIDTH=1280000'));
+          expect(body, contains('SUBTITLES="subs"'));
+          // Should reference the original proxy URL
+          expect(body, contains(originalProxyUrl));
+          // Should reference the subtitle playlist URL
+          expect(body, contains(subPlaylistUrl));
+        } finally {
+          client.close();
+        }
+      },
+    );
 
     test('registerSubtitleWrapper with multiple subtitle tracks', () async {
       await proxy.start();
@@ -136,12 +138,8 @@ void main() {
       final originalProxyUrl = proxy.registerMedia(
         '$upstreamBaseUrl/master.m3u8',
       );
-      final subEn = proxy.registerSubtitlePlaylist(
-        '$upstreamBaseUrl/subs.vtt',
-      );
-      final subJa = proxy.registerSubtitlePlaylist(
-        '$upstreamBaseUrl/subs.vtt',
-      );
+      final subEn = proxy.registerSubtitlePlaylist('$upstreamBaseUrl/subs.vtt');
+      final subJa = proxy.registerSubtitlePlaylist('$upstreamBaseUrl/subs.vtt');
 
       final wrapperUrl = proxy.registerSubtitleWrapper(
         originalM3u8ProxyUrl: originalProxyUrl,
@@ -192,9 +190,7 @@ void main() {
     test('cleanupPreviousMedia clears synthetic content', () async {
       await proxy.start();
 
-      final url = proxy.registerSubtitlePlaylist(
-        '$upstreamBaseUrl/subs.vtt',
-      );
+      final url = proxy.registerSubtitlePlaylist('$upstreamBaseUrl/subs.vtt');
 
       // Verify it works first
       final client = HttpClient();
@@ -220,9 +216,7 @@ void main() {
     test('synthetic content served via HTTP/1.0 without CORS', () async {
       await proxy.start();
 
-      final url = proxy.registerSubtitlePlaylist(
-        '$upstreamBaseUrl/subs.vtt',
-      );
+      final url = proxy.registerSubtitlePlaylist('$upstreamBaseUrl/subs.vtt');
 
       final client = HttpClient();
       try {
@@ -241,9 +235,7 @@ void main() {
     test('synthetic content has correct Content-Type for m3u8', () async {
       await proxy.start();
 
-      final url = proxy.registerSubtitlePlaylist(
-        '$upstreamBaseUrl/subs.vtt',
-      );
+      final url = proxy.registerSubtitlePlaylist('$upstreamBaseUrl/subs.vtt');
 
       final client = HttpClient();
       try {
@@ -251,10 +243,7 @@ void main() {
         final response = await request.close();
         await response.drain<void>();
 
-        expect(
-          response.headers.contentType.toString(),
-          contains('mpegURL'),
-        );
+        expect(response.headers.contentType.toString(), contains('mpegURL'));
       } finally {
         client.close();
       }

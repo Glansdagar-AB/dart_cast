@@ -7,7 +7,8 @@ import 'package:test/test.dart';
 void main() {
   group('HlsParser.extractSegmentUrls', () {
     test('parses segment URLs from a media playlist', () {
-      const content = '#EXTM3U\n'
+      const content =
+          '#EXTM3U\n'
           '#EXT-X-TARGETDURATION:10\n'
           '#EXTINF:9.009,\n'
           'segment000.ts\n'
@@ -29,7 +30,8 @@ void main() {
     });
 
     test('resolves absolute segment URLs', () {
-      const content = '#EXTM3U\n'
+      const content =
+          '#EXTM3U\n'
           '#EXT-X-TARGETDURATION:10\n'
           '#EXTINF:9.009,\n'
           'https://cdn2.example.com/seg000.ts\n'
@@ -45,7 +47,8 @@ void main() {
     });
 
     test('handles EXT-X-BYTERANGE between EXTINF and segment URI', () {
-      const content = '#EXTM3U\n'
+      const content =
+          '#EXTM3U\n'
           '#EXT-X-TARGETDURATION:10\n'
           '#EXTINF:9.009,\n'
           '#EXT-X-BYTERANGE:500000@0\n'
@@ -62,7 +65,8 @@ void main() {
     });
 
     test('returns empty list for playlist with no segments', () {
-      const content = '#EXTM3U\n'
+      const content =
+          '#EXTM3U\n'
           '#EXT-X-TARGETDURATION:10\n'
           '#EXT-X-ENDLIST\n';
 
@@ -75,7 +79,8 @@ void main() {
     });
 
     test('handles empty lines between entries', () {
-      const content = '#EXTM3U\n'
+      const content =
+          '#EXTM3U\n'
           '\n'
           '#EXT-X-TARGETDURATION:10\n'
           '\n'
@@ -97,7 +102,8 @@ void main() {
 
   group('HlsParser.extractVariants', () {
     test('parses variant streams from a master playlist', () {
-      const content = '#EXTM3U\n'
+      const content =
+          '#EXTM3U\n'
           '#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720\n'
           '720p/playlist.m3u8\n'
           '#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080\n'
@@ -113,18 +119,25 @@ void main() {
       expect(variants, hasLength(3));
       // Sorted by bandwidth descending
       expect(variants[0].bandwidth, 5000000);
-      expect(variants[0].url,
-          'https://cdn.example.com/streams/1080p/playlist.m3u8');
+      expect(
+        variants[0].url,
+        'https://cdn.example.com/streams/1080p/playlist.m3u8',
+      );
       expect(variants[1].bandwidth, 2000000);
-      expect(variants[1].url,
-          'https://cdn.example.com/streams/720p/playlist.m3u8');
+      expect(
+        variants[1].url,
+        'https://cdn.example.com/streams/720p/playlist.m3u8',
+      );
       expect(variants[2].bandwidth, 800000);
-      expect(variants[2].url,
-          'https://cdn.example.com/streams/360p/playlist.m3u8');
+      expect(
+        variants[2].url,
+        'https://cdn.example.com/streams/360p/playlist.m3u8',
+      );
     });
 
     test('handles absolute variant URLs', () {
-      const content = '#EXTM3U\n'
+      const content =
+          '#EXTM3U\n'
           '#EXT-X-STREAM-INF:BANDWIDTH=3000000\n'
           'https://other.cdn.com/720p/playlist.m3u8\n';
 
@@ -139,7 +152,8 @@ void main() {
     });
 
     test('returns empty list for media playlist', () {
-      const content = '#EXTM3U\n'
+      const content =
+          '#EXTM3U\n'
           '#EXT-X-TARGETDURATION:10\n'
           '#EXTINF:9.009,\n'
           'segment000.ts\n'
@@ -154,7 +168,8 @@ void main() {
     });
 
     test('defaults bandwidth to 0 when missing', () {
-      const content = '#EXTM3U\n'
+      const content =
+          '#EXTM3U\n'
           '#EXT-X-STREAM-INF:RESOLUTION=1280x720\n'
           '720p/playlist.m3u8\n';
 
@@ -184,16 +199,20 @@ void main() {
         final path = request.uri.path;
 
         if (path == '/master.m3u8') {
-          final content = '#EXTM3U\n'
+          final content =
+              '#EXTM3U\n'
               '#EXT-X-STREAM-INF:BANDWIDTH=2000000,RESOLUTION=1280x720\n'
               'media.m3u8\n';
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('application', 'vnd.apple.mpegurl');
+          request.response.headers.contentType = ContentType(
+            'application',
+            'vnd.apple.mpegurl',
+          );
           request.response.write(content);
           await request.response.close();
         } else if (path == '/media.m3u8') {
-          final content = '#EXTM3U\n'
+          final content =
+              '#EXTM3U\n'
               '#EXT-X-TARGETDURATION:2\n'
               '#EXTINF:2.0,\n'
               'seg0.ts\n'
@@ -201,8 +220,10 @@ void main() {
               'seg1.ts\n'
               '#EXT-X-ENDLIST\n';
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('application', 'vnd.apple.mpegurl');
+          request.response.headers.contentType = ContentType(
+            'application',
+            'vnd.apple.mpegurl',
+          );
           request.response.write(content);
           await request.response.close();
         } else if (path == '/seg0.ts') {
@@ -217,14 +238,17 @@ void main() {
           await request.response.close();
         } else if (path == '/simple.m3u8') {
           // A simple media playlist (not master)
-          final content = '#EXTM3U\n'
+          final content =
+              '#EXTM3U\n'
               '#EXT-X-TARGETDURATION:2\n'
               '#EXTINF:2.0,\n'
               'seg0.ts\n'
               '#EXT-X-ENDLIST\n';
           request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType =
-              ContentType('application', 'vnd.apple.mpegurl');
+          request.response.headers.contentType = ContentType(
+            'application',
+            'vnd.apple.mpegurl',
+          );
           request.response.write(content);
           await request.response.close();
         } else {
@@ -241,9 +265,7 @@ void main() {
 
     test('returns a URL with /ts-stream/ route', () async {
       await proxy.start();
-      final url = proxy.registerHlsAsStream(
-        '$upstreamBaseUrl/master.m3u8',
-      );
+      final url = proxy.registerHlsAsStream('$upstreamBaseUrl/master.m3u8');
       expect(url, contains('/ts-stream/'));
       expect(url, startsWith(proxy.baseUrl!));
     });
@@ -260,10 +282,7 @@ void main() {
         final response = await request.close();
 
         expect(response.statusCode, HttpStatus.ok);
-        expect(
-          response.headers.contentType?.mimeType,
-          'video/mp2t',
-        );
+        expect(response.headers.contentType?.mimeType, 'video/mp2t');
 
         final body = await response.fold<List<int>>(
           <int>[],
@@ -288,10 +307,7 @@ void main() {
         final response = await request.close();
 
         expect(response.statusCode, HttpStatus.ok);
-        expect(
-          response.headers.contentType?.mimeType,
-          'video/mp2t',
-        );
+        expect(response.headers.contentType?.mimeType, 'video/mp2t');
 
         final body = await response.fold<List<int>>(
           <int>[],
@@ -337,7 +353,8 @@ void main() {
         }
 
         if (path == '/protected.m3u8') {
-          final content = '#EXTM3U\n'
+          final content =
+              '#EXTM3U\n'
               '#EXT-X-TARGETDURATION:2\n'
               '#EXTINF:2.0,\n'
               'pseg.ts\n'

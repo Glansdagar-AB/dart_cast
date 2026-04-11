@@ -3,6 +3,11 @@
 /// These classes mirror the Chromium `cast_channel.proto` definition without
 /// requiring the `protoc` compiler.  They use the `protobuf` package's
 /// [GeneratedMessage] / [ProtobufEnum] API directly.
+///
+/// The `CastMessage_*` nested-enum type names match the identifiers that
+/// `protoc --dart_out` would emit for the underlying `.proto`, so the file
+/// intentionally opts out of `camel_case_types`.
+// ignore_for_file: camel_case_types
 library;
 
 import 'package:protobuf/protobuf.dart';
@@ -24,7 +29,7 @@ class CastMessage_ProtocolVersion extends ProtobufEnum {
 
   static CastMessage_ProtocolVersion? valueOf(int value) => _byValue[value];
 
-  const CastMessage_ProtocolVersion._(int v, String n) : super(v, n);
+  const CastMessage_ProtocolVersion._(super.v, super.n);
 }
 
 /// `CastMessage.PayloadType` enum.
@@ -47,7 +52,7 @@ class CastMessage_PayloadType extends ProtobufEnum {
 
   static CastMessage_PayloadType? valueOf(int value) => _byValue[value];
 
-  const CastMessage_PayloadType._(int v, String n) : super(v, n);
+  const CastMessage_PayloadType._(super.v, super.n);
 }
 
 // ---------------------------------------------------------------------------

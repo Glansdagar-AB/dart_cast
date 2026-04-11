@@ -522,8 +522,9 @@ class AirPlayPairVerify {
     ).firstMatch(headerStr);
     if (clMatch != null) {
       final contentLength = int.parse(clMatch.group(1)!);
-      if (data.length < bodyStart + contentLength)
+      if (data.length < bodyStart + contentLength) {
         return null; // Need more data
+      }
       final bodyBytes = data.sublist(bodyStart, bodyStart + contentLength);
       if (statusCode != 200) {
         throw AirPlayAuthException('pair-verify failed with HTTP $statusCode');

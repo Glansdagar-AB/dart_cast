@@ -1,27 +1,22 @@
 ## 0.6.0
 
 ### New
-- **Alternate-audio HLS support**: pure-Dart MPEG-TS remuxer combines split video + audio HLS sources into a single muxed stream Shaka Player can demux. Previously these returned `LOAD_FAILED`.
-- `MediaProxy.registerAltAudioMuxed({masterUrl, headers, preferredAudioLanguage})` — synthetic single-stream HLS master backed by per-segment muxing on demand.
-- DLNA path now routes alt-audio sources through the same remuxer.
-- `HlsParser.extractAudioRenditions` + `audioGroup` field on `extractVariants` entries.
-- MPEG-TS DVB-table stripper drops SDT/NIT/EIT PIDs from proxied TS bodies — fixes sources that emit DVB tables before the PAT and trip Shaka's PAT probe. Enabled by default for `video/mp2t`; disable per-route via `registerMedia(stripDvbTables: false)`.
-- `ChromecastSession.enableReceiverDebugNamespaces` (default `false`) — opt-in subscribe to the receiver's CaC + debugoverlay namespaces and promote the message-firehose log from `debug` to `info`.
-- `MediaLoadFailedException` from `loadMedia()` on `LOAD_FAILED` / `IDLE+ERROR` / 15s timeout, carrying the receiver-reported reason. Replaces the generic `TimeoutException`.
+- Alt-audio HLS sources (split video + audio) now play on Chromecast and DLNA — pure-Dart MPEG-TS remuxer combines them into one muxed stream
+- `MediaProxy.registerAltAudioMuxed()` — synthetic single-stream HLS master backed by per-segment muxing
+- `HlsParser.extractAudioRenditions` + `audioGroup` on `extractVariants` entries
+- TS DVB-table stripper for proxied `video/mp2t`, on by default; opt out via `registerMedia(stripDvbTables: false)`
+- `MediaLoadFailedException` from `loadMedia()` on `LOAD_FAILED` / `IDLE+ERROR` / 15s timeout, carrying the receiver-reported reason
+- HLS LOAD retries pass-through → muxer + stripper on failure, with `requestId` / `mediaSessionId` filtering against stale responses
+- `ChromecastSession.enableReceiverDebugNamespaces` (default `false`) — opt-in CaC + debugoverlay subscribe and verbose receiver logging for debugging
 
 ### Fixed
-- LOAD path now tries a pure pass-through first and only retries with the muxer + DVB stripper on `MediaLoadFailedException`.
-- LOAD waiter filters by `requestId` and tracks deprecated `mediaSessionId`s — stale responses from a failed retry no longer flip live state backwards.
-- `ChromecastSession.setSubtitle()` sends the correct trackId — was always re-selecting `trackId=1`, silently re-activating the first subtitle.
-- HLS segment proxy URLs end in `/seg<n>.ts`, subtitle URLs in `/resource.vtt` — satisfies Chromecast / Shaka's URL-extension capability probe for `.jpg`-obfuscated TS sources.
-- `image/*` Content-Type on proxied MPEG-TS subresources is rewritten to `video/mp2t`.
-- `Content-Length` is only forwarded when the body streams through unchanged (was breaking DVB-stripped / playlist-rewritten responses mid-stream).
-- CORS `Access-Control-Allow-Origin` echoes the receiver `Origin` when present — CAF rejects wildcard ACAO when the LOAD includes a `tracks` array.
-- State machine: `loading → {buffering, paused, idle}` and `idle → {buffering, playing, paused}` are now legal.
-- DLNA: failed `loadMedia` returns to `idle` instead of getting stuck in `loading`.
-
-### Changed
-- Per-MEDIA_STATUS, per-segment TS-stripper stats, per-segment alt-audio mux details, and the receiver-message firehose moved from `info` to `debug`. Once-per-load / -session lines stay at `info`. Pass `enableReceiverDebugNamespaces: true` to promote them back for debugging.
+- `setSubtitle()` activates the correct track (was always `trackId=1`)
+- CORS `Access-Control-Allow-Origin` echoes the receiver `Origin` when the LOAD includes a `tracks` array
+- State machine accepts `loading → {buffering, paused, idle}` and `idle → {buffering, playing, paused}`
+- DLNA: failed `loadMedia` returns to `idle` instead of stuck in `loading`
+- `Content-Length` only forwarded when the body streams through unchanged
+- Proxy segment / subtitle URLs end in `.ts` / `.vtt` for the Chromecast URL-extension probe
+- `image/*` Content-Type on proxied MPEG-TS subresources rewritten to `video/mp2t`
 
 ## 0.5.1
 

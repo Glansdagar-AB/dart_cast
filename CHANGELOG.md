@@ -1,3 +1,29 @@
+## 0.6.0
+
+### Added
+- **Alternate-audio HLS support** (`lib/src/core/hls_alt_audio_proxy.dart`, `lib/src/core/ts_alt_audio_remuxer.dart`): pure-Dart MPEG-TS remuxer that combines an HLS source's separate video + audio renditions into a single muxed TS stream the Chromecast Default Media Receiver / Shaka Player can play. Shaka does not implement TS alt-audio, so previously these sources silently returned `LOAD_FAILED`; now they play.
+  - `MediaProxy.registerAltAudioMuxed({masterUrl, headers, preferredAudioLanguage})` returns a synthesised single-stream HLS master URL backed by per-segment muxing on demand.
+  - DLNA path (`HlsStreamHandler`) routes through the same remuxer when the upstream master is alt-audio, so DLNA renderers also get a continuous TS stream.
+  - HLS playlist parser gained `extractAudioRenditions` and a new `audioGroup` field on `extractVariants` entries.
+- **MPEG-TS DVB-table stripper** (`lib/src/core/ts_dvb_stripper.dart`): drops DVB-only PIDs (SDT 0x0011, NIT 0x0010, EIT 0x0012, …) from proxied TS bodies. Some providers emit DVB tables before the PAT and Shaka Player only probes the first few packets for the PAT — without stripping, those sources return `LOAD_FAILED` with no diagnostic. Enabled by default for `video/mp2t` upstreams; can be disabled per-route via `registerMedia(stripDvbTables: false)`.
+- **`ChromecastSession.enableReceiverDebugNamespaces`** constructor parameter (default `false`): opt-in subscribe to the Default Media Receiver's `com.google.cast.cac` and `com.google.cast.debugoverlay` namespaces, and promote the message-firehose log from `debug` to `info`. Useful for diagnosing `LOAD_FAILED` situations.
+- **`MediaLoadFailedException`** propagation from `loadMedia` — receivers' `LOAD_FAILED` / `LOAD_CANCELLED` / `INVALID_*` messages, `IDLE` with `idleReason=ERROR` MEDIA_STATUS, and the 15s timeout now all throw `MediaLoadFailedException` (subclass of `CastException`) with the receiver-reported reason / detailedErrorCode where present, instead of the generic `TimeoutException`.
+
+### Fixed
+- **Chromecast LOAD path — BARE → MUXED retry**: remote HLS LOADs first attempt a pass-through (no remuxer, no DVB stripper); on `MediaLoadFailedException` we automatically retry with the alt-audio muxer and DVB stripper enabled. Avoids spending muxer cycles on sources that don't need it while still rescuing the ones that do.
+- **Chromecast LOAD path — request/session id filtering**: the LOAD waiter now filters by the actual `requestId` of the LOAD it dispatched, and tracks "deprecated" `mediaSessionId`s from failed retry attempts. Stale `LOAD_FAILED` or late `IDLE+ERROR` MEDIA_STATUS messages from a previous attempt can no longer drag the live state machine backwards.
+- **Subtitle track switching**: `ChromecastSession.setSubtitle()` now sends `EDIT_TRACKS_INFO` with the trackId that was actually assigned to that subtitle at LOAD time (was always re-selecting `trackId=1`, so switching subtitles in the UI silently re-activated the first track).
+- **Subtitle URL extension**: subtitle proxy URLs now end in `/resource.vtt`. The Chromecast / Shaka URL-extension capability probe consults the path extension during `MediaCapabilities.decodingInfo()`; URLs without `.vtt` were silently failing the probe.
+- **Segment URL extension**: HLS playlist rewriting now appends `/seg<n>.ts` to segment URLs. Sources whose segment URLs end in `.jpg` (and similar obfuscated extensions) previously failed Chromecast/Shaka's URL-extension probe with `LOAD_FAILED`.
+- **`image/*` → `video/mp2t` Content-Type rewrite**: proxied sub-resource fetches that come back with an `image/*` content type but are actually MPEG-TS now have their Content-Type rewritten to `video/mp2t` so Shaka feeds them into the demuxer instead of refusing them.
+- **Content-Length forwarding**: only forwarded when the response body is streamed through unchanged. Previously, MPEG-TS bodies filtered through the DVB stripper or HLS playlists rewritten with proxy URLs had their upstream Content-Length echoed back, causing Dart's `HttpResponse` to raise mid-stream once the actual body fell short.
+- **CORS headers**: `Access-Control-Allow-Origin` now echoes the receiver's `Origin` header when present instead of `*`. Cast Application Framework rejects wildcard ACAO when the LOAD message includes a `tracks` array (subtitles), causing subtitle fetches to fail. Allow-Methods / Allow-Headers / Expose-Headers expanded to match Cast's documented requirements.
+- **State machine — `loading` and `idle` recovery transitions**: the receiver may legitimately report `BUFFERING`, `PAUSED`, or `IDLE` from `loading`, and may push a fresh playback state directly from `idle` after a failed retry chain. Both transitions were rejected by the strict machine; allowed now.
+- **DLNA `loading` recovery**: failed `loadMedia` now flips the state machine back to `idle` instead of leaving the session stuck in `loading`.
+
+### Changed
+- **Default Chromecast log noise**: per-MEDIA_STATUS, per-segment TS stripper stats, per-segment alt-audio mux details, and the receiver-message firehose all moved from `info` to `debug`. Once-per-load and once-per-session lines (LOAD attempt label, LOAD acknowledged + playable in Nms, alt-audio route registration) stay at `info`. Promote everything back to `info` by passing `enableReceiverDebugNamespaces: true` when debugging.
+
 ## 0.5.1
 
 ### Fixed

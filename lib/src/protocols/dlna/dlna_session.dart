@@ -122,6 +122,12 @@ class DlnaSession extends CastSession {
     _isLoadingMedia = true;
     try {
       await _loadMediaInternal(media);
+    } catch (_) {
+      // Don't get stuck in `loading` if anything below throws.
+      if (stateMachine.canTransitionTo(SessionState.idle)) {
+        stateMachine.transitionTo(SessionState.idle);
+      }
+      rethrow;
     } finally {
       _isLoadingMedia = false;
     }
@@ -147,7 +153,10 @@ class DlnaSession extends CastSession {
     const dlnaFlags = '01700000000000000000000000000000';
 
     if (media.type == CastMediaType.hls) {
-      // Remote HLS → pipe as continuous MPEG-TS stream for DLNA
+      // Remote HLS → pipe as continuous MPEG-TS stream for DLNA. The
+      // handler internally detects alternate-audio HLS and muxes
+      // video+audio per segment via [TsAltAudioRemuxer] so the TV
+      // gets one continuous TS regardless of source layout.
       proxyUrl = _proxy.registerHlsAsStream(
         media.url,
         headers: media.httpHeaders,

@@ -24,7 +24,13 @@ class SessionStateMachine {
       SessionState.disconnected,
     },
     SessionState.connected: {SessionState.loading, SessionState.disconnected},
-    SessionState.loading: {SessionState.playing, SessionState.disconnected},
+    SessionState.loading: {
+      SessionState.playing,
+      SessionState.buffering, // receiver may report BUFFERING before PLAYING
+      SessionState.paused, // LOAD with autoplay=false
+      SessionState.idle, // LOAD failed (IDLE/ERROR) or content ended
+      SessionState.disconnected,
+    },
     SessionState.playing: {
       SessionState.paused,
       SessionState.buffering,
@@ -44,7 +50,18 @@ class SessionStateMachine {
       SessionState.paused, // user can pause during buffering
       SessionState.disconnected,
     },
-    SessionState.idle: {SessionState.loading, SessionState.disconnected},
+    SessionState.idle: {
+      SessionState.loading,
+      // The receiver can push a fresh playback state directly from idle —
+      // e.g. after a LOAD retry where the stale failure status briefly
+      // flipped us to idle before the new attempt's BUFFERING/PLAYING
+      // arrives. Allow the recovery transition rather than silently
+      // dropping the state update.
+      SessionState.buffering,
+      SessionState.playing,
+      SessionState.paused,
+      SessionState.disconnected,
+    },
   };
 
   SessionState _state = SessionState.disconnected;

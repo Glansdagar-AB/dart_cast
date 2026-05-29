@@ -45,6 +45,18 @@ class CastReceiverChannel {
   /// Receiver namespace for app/device control.
   static const receiverNamespace = 'urn:x-cast:com.google.cast.receiver';
 
+  /// Cast Command-and-Control namespace, used by CaC Tool. The Default
+  /// Media Receiver advertises this and broadcasts debug / log events on
+  /// it once a sender subscribes. We use it to surface receiver-side
+  /// LOAD_FAILED detail that doesn't appear in the standard MEDIA_STATUS.
+  static const cacNamespace = 'urn:x-cast:com.google.cast.cac';
+
+  /// Receiver-side debug overlay namespace. Sending `SHOW` here makes the
+  /// TV draw a debug overlay with playback errors, useful when remote
+  /// debugging isn't available.
+  static const debugOverlayNamespace =
+      'urn:x-cast:com.google.cast.debugoverlay';
+
   /// Default Media Receiver app ID.
   static const defaultMediaReceiverAppId = 'CC1AD845';
 

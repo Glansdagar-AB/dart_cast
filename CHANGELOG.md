@@ -1,3 +1,23 @@
+## 0.6.0
+
+### New
+- Alt-audio HLS sources (split video + audio) now play on Chromecast and DLNA — pure-Dart MPEG-TS remuxer combines them into one muxed stream
+- `MediaProxy.registerAltAudioMuxed()` — synthetic single-stream HLS master backed by per-segment muxing
+- `HlsParser.extractAudioRenditions` + `audioGroup` on `extractVariants` entries
+- TS DVB-table stripper for proxied `video/mp2t`, on by default; opt out via `registerMedia(stripDvbTables: false)`
+- `MediaLoadFailedException` from `loadMedia()` on `LOAD_FAILED` / `IDLE+ERROR` / 15s timeout, carrying the receiver-reported reason
+- HLS LOAD retries pass-through → muxer + stripper on failure, with `requestId` / `mediaSessionId` filtering against stale responses
+- `ChromecastSession.enableReceiverDebugNamespaces` (default `false`) — opt-in CaC + debugoverlay subscribe and verbose receiver logging for debugging
+
+### Fixed
+- `setSubtitle()` activates the correct track (was always `trackId=1`)
+- CORS `Access-Control-Allow-Origin` echoes the receiver `Origin` when the LOAD includes a `tracks` array
+- State machine accepts `loading → {buffering, paused, idle}` and `idle → {buffering, playing, paused}`
+- DLNA: failed `loadMedia` returns to `idle` instead of stuck in `loading`
+- `Content-Length` only forwarded when the body streams through unchanged
+- Proxy segment / subtitle URLs end in `.ts` / `.vtt` for the Chromecast URL-extension probe
+- `image/*` Content-Type on proxied MPEG-TS subresources rewritten to `video/mp2t`
+
 ## 0.5.1
 
 ### Fixed

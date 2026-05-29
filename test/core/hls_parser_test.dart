@@ -158,7 +158,14 @@ void main() {
         );
         final lines = result.split('\n');
 
-        expect(lines[3], startsWith('$proxyBaseUrl/stream/$token?url='));
+        // Segment URLs carry a synthetic `/seg<index>.ts` suffix so
+        // strict TS demuxers (notably Chromecast / Shaka) get a `.ts`
+        // path extension during MediaCapabilities probing even when
+        // the upstream URL ends in `.jpg` or another non-media ext.
+        expect(
+          lines[3],
+          startsWith('$proxyBaseUrl/stream/$token/seg1.ts?url='),
+        );
         expect(
           lines[3],
           contains(
@@ -351,8 +358,12 @@ void main() {
 
         // #EXT-X-BYTERANGE should be preserved
         expect(lines[3], '#EXT-X-BYTERANGE:500000@0');
-        // The URI after byterange should be rewritten
-        expect(lines[4], startsWith('$proxyBaseUrl/stream/$token?url='));
+        // The URI after byterange should be rewritten with the
+        // segment-style `/seg<n>.ts` suffix.
+        expect(
+          lines[4],
+          startsWith('$proxyBaseUrl/stream/$token/seg1.ts?url='),
+        );
       });
 
       test('handles #EXT-X-MEDIA without URI attribute', () {
@@ -426,8 +437,9 @@ void main() {
           token,
         );
 
-        // Should not throw and should contain rewritten segment
-        expect(result, contains('$proxyBaseUrl/stream/$token?url='));
+        // Should not throw and should contain a rewritten segment URL
+        // — which now uses the `/seg<n>.ts` path-extension form.
+        expect(result, contains('$proxyBaseUrl/stream/$token/seg1.ts?url='));
       });
     });
   });

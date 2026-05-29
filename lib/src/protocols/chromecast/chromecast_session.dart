@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../../core/cast_device.dart';
+import '../../core/cast_exceptions.dart';
 import '../../core/cast_media.dart';
 import '../../core/cast_session.dart';
 import '../../core/media_proxy.dart';
@@ -18,6 +19,26 @@ import 'cast_media_channel.dart';
 import 'cast_receiver_channel.dart';
 import 'castv2_channel.dart';
 import 'proto/cast_channel.dart';
+
+/// Strategy used for a single LOAD attempt against the Chromecast.
+///
+/// Iterated by [ChromecastSession._loadMediaInternal] as a bisect-style
+/// retry — the leanest variant is tried first so we can see whether the
+/// experimental transforms (alt-audio muxer, DVB-table stripper) are
+/// actually needed for a given source.
+enum _LoadMode {
+  /// `registerMedia` pass-through with DVB stripper disabled and no
+  /// alt-audio muxer. This is the leanest variant.
+  bare('bare (no muxer, no DVB stripper)'),
+
+  /// `registerAltAudioMuxed` (with `registerMedia` fallback if the
+  /// source has no alt-audio) and the DVB stripper enabled on TS
+  /// segments. This is the previous default.
+  muxed('muxed alt-audio + DVB stripper');
+
+  const _LoadMode(this.label);
+  final String label;
+}
 
 /// A casting session with a Chromecast device.
 ///
@@ -62,6 +83,38 @@ class ChromecastSession extends CastSession {
   /// Guard to prevent concurrent [loadMedia] calls from sending multiple LOADs.
   bool _isLoadingMedia = false;
 
+  /// Tracks the trackId assigned to each subtitle during the current
+  /// LOAD, keyed by the subtitle's upstream URL. `setSubtitle` looks up
+  /// the active subtitle here to send the correct `EDIT_TRACKS_INFO`
+  /// trackId — without this we'd always activate trackId=1, so any
+  /// subtitle switch in the UI after LOAD would silently re-select
+  /// the first subtitle on the TV.
+  final Map<String, int> _subtitleTrackIds = <String, int>{};
+
+  /// MediaSession IDs we've explicitly abandoned during a retry chain.
+  ///
+  /// When the bisect loop falls through from one attempt to the next, the
+  /// failed attempt's receiver-side session is now stale — any late
+  /// MEDIA_STATUS broadcasts still carrying its session id (commonly the
+  /// IDLE+ERROR settle-down message arriving a few hundred ms after
+  /// LOAD_FAILED) would otherwise be processed by [_handleMessage] and
+  /// drag the state machine backwards while the new attempt is mid-flight.
+  /// Recording the abandoned session id here lets [_handleMessage] drop
+  /// those late strays without affecting the live session.
+  final Set<int> _deprecatedMediaSessionIds = <int>{};
+
+  /// When `true`, [connect] additionally subscribes to the Default Media
+  /// Receiver's auxiliary debug namespaces (`com.google.cast.cac` +
+  /// `com.google.cast.debugoverlay`) and the receiver-message firehose
+  /// is logged at info level instead of debug.
+  ///
+  /// Off by default — these subscribes add a couple of extra CONNECT
+  /// messages on every cast session and the firehose can be very loud
+  /// during playback (every MEDIA_STATUS, every queue update, …). Flip
+  /// it on when debugging LOAD_FAILED or unexpected receiver behaviour;
+  /// leave it off in normal use.
+  final bool enableReceiverDebugNamespaces;
+
   /// The current receiver session ID, if connected.
   String? get sessionId => _sessionId;
   Timer? _heartbeatTimer;
@@ -85,6 +138,7 @@ class ChromecastSession extends CastSession {
   ChromecastSession({
     required CastDevice device,
     MediaTransformer? mediaTransformer,
+    this.enableReceiverDebugNamespaces = false,
   }) : _channel = _RealChannelAdapter(),
        _proxy = MediaProxy(),
        _mediaTransformer =
@@ -104,6 +158,7 @@ class ChromecastSession extends CastSession {
     required dynamic channel,
     MediaProxy? proxy,
     MediaTransformer? mediaTransformer,
+    this.enableReceiverDebugNamespaces = false,
   }) : _channel = _MockChannelAdapter(channel),
        _proxy = proxy ?? MediaProxy(),
        _mediaTransformer =
@@ -182,10 +237,47 @@ class ChromecastSession extends CastSession {
       payload: CastReceiverChannel.buildConnect(),
     );
 
+    // 8. Opt-in: subscribe to receiver debug + CaC namespaces so any
+    //    receiver-side LOAD_FAILED diagnostic surfaces in our message
+    //    firehose (same data CaC Tool would render). Off by default —
+    //    enable via [enableReceiverDebugNamespaces] when debugging.
+    if (enableReceiverDebugNamespaces) {
+      _subscribeReceiverDebugNamespaces();
+    }
+
     CastLogger.info(
       'Chromecast: connected to ${device.name}, transportId=$_transportId',
     );
     stateMachine.transitionTo(SessionState.connected);
+  }
+
+  /// Subscribes (CONNECT) to the Default Media Receiver's auxiliary
+  /// namespaces `urn:x-cast:com.google.cast.cac` and
+  /// `urn:x-cast:com.google.cast.debugoverlay` so any messages the
+  /// receiver chooses to publish there land in our message firehose.
+  ///
+  /// Cast V2 requires a sender to send a `CONNECT` on each namespace
+  /// before the receiver routes traffic on it — otherwise events are
+  /// silently dropped. The CONNECTs are cheap and harmless even when
+  /// the receiver never emits on these namespaces; their value is the
+  /// odd diagnostic line that does show up.
+  void _subscribeReceiverDebugNamespaces() {
+    if (_transportId == null) return;
+    for (final ns in const [
+      CastReceiverChannel.cacNamespace,
+      CastReceiverChannel.debugOverlayNamespace,
+    ]) {
+      try {
+        _channel.sendMessage(
+          namespace: ns,
+          sourceId: _senderId,
+          destinationId: _transportId!,
+          payload: CastReceiverChannel.buildConnect(),
+        );
+      } catch (_) {
+        // Best-effort — failures here never block playback.
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -216,37 +308,165 @@ class ChromecastSession extends CastSession {
   Future<void> _loadMediaInternal(CastMedia media) async {
     stateMachine.transitionTo(SessionState.loading);
 
-    // Start proxy and transform media for Chromecast
-    await _proxy.start(targetDeviceIp: device.address.address);
-    final transformed = await _mediaTransformer.transform(media, _proxy);
-    var proxyUrl = transformed.proxyUrl;
+    // Reset the deprecated-session tracker for this fresh LOAD. Anything
+    // we accumulate during this load's retry chain is only relevant for
+    // the duration of this load — the previous load's failed-attempt ids
+    // don't matter anymore.
+    _deprecatedMediaSessionIds.clear();
 
-    // Extract token from the proxy URL to exclude it from cleanup
-    final newToken = Uri.parse(proxyUrl).pathSegments.last;
+    // Start proxy
+    await _proxy.start(targetDeviceIp: device.address.address);
+
+    final isRemoteHls = media.type == CastMediaType.hls && !media.isLocalFile;
+
+    // Non-HLS / local media — single attempt, no bisect needed.
+    if (!isRemoteHls) {
+      final transformed = await _mediaTransformer.transform(media, _proxy);
+      await _attemptLoad(
+        media: media,
+        proxyUrl: transformed.proxyUrl,
+        effectiveType: transformed.effectiveType,
+        attemptLabel: 'standard',
+      );
+      return;
+    }
+
+    // Remote HLS — bisect via a two-attempt retry loop:
+    //   attempt 1 (BARE) — registerMedia with the DVB-table stripper
+    //     and alt-audio muxer both disabled. Pure pass-through. If the
+    //     source plays fine, the experimental code is dead weight.
+    //   attempt 2 (MUXED) — alt-audio muxer + DVB stripper enabled.
+    //     This is the previous default; kept as the fallback for
+    //     sources that genuinely need either piece.
+    //
+    // The retry triggers only on MediaLoadFailedException (LOAD_FAILED
+    // or 15s timeout). Anything else propagates immediately.
+    Object? lastError;
+    StackTrace? lastStack;
+    for (final mode in const [_LoadMode.bare, _LoadMode.muxed]) {
+      // After a failed attempt the receiver may have flipped us to
+      // IDLE — get back into LOADING so the next attempt's transitions
+      // are valid (idle → loading is allowed; loading → loading is a
+      // no-op the state machine ignores).
+      if (stateMachine.state != SessionState.loading &&
+          stateMachine.canTransitionTo(SessionState.loading)) {
+        stateMachine.transitionTo(SessionState.loading);
+      }
+      try {
+        await _attemptHlsLoad(media, mode);
+        return;
+      } on MediaLoadFailedException catch (e, st) {
+        lastError = e;
+        lastStack = st;
+        CastLogger.warning(
+          'Chromecast: LOAD attempt "${mode.label}" failed: $e — '
+          'trying next mode',
+        );
+        // Mark the failed attempt's session id as deprecated so any
+        // late MEDIA_STATUS messages still carrying it (notably the
+        // IDLE+ERROR broadcast that follows LOAD_FAILED by a few
+        // hundred ms) don't pull the state machine back to idle while
+        // the next attempt is mid-flight.
+        if (_mediaSessionId != null) {
+          _deprecatedMediaSessionIds.add(_mediaSessionId!);
+          CastLogger.debug(
+            'Chromecast: deprecating mediaSessionId=${_mediaSessionId!} '
+            'after failed attempt "${mode.label}"',
+          );
+        }
+      }
+    }
+    if (stateMachine.canTransitionTo(SessionState.idle)) {
+      stateMachine.transitionTo(SessionState.idle);
+    }
+    Error.throwWithStackTrace(lastError!, lastStack!);
+  }
+
+  Future<void> _attemptHlsLoad(CastMedia media, _LoadMode mode) async {
+    String proxyUrl;
+    switch (mode) {
+      case _LoadMode.bare:
+        proxyUrl = _proxy.registerMedia(
+          media.url,
+          headers: media.httpHeaders,
+          stripDvbTables: false,
+        );
+        CastLogger.info(
+          'Chromecast: LOAD attempt BARE — no muxer, no DVB stripper, '
+          'pure pass-through (url=$proxyUrl)',
+        );
+        break;
+      case _LoadMode.muxed:
+        final muxedUrl = await _proxy.registerAltAudioMuxed(
+          masterUrl: media.url,
+          headers: media.httpHeaders,
+        );
+        if (muxedUrl != null) {
+          proxyUrl = muxedUrl;
+          CastLogger.info(
+            'Chromecast: LOAD attempt MUXED — alt-audio muxer + DVB '
+            'stripper enabled (url=$proxyUrl)',
+          );
+        } else {
+          // Source isn't alt-audio — fall back to standard registerMedia
+          // but keep the DVB stripper on (still part of "muxed mode").
+          proxyUrl = _proxy.registerMedia(
+            media.url,
+            headers: media.httpHeaders,
+          );
+          CastLogger.info(
+            'Chromecast: LOAD attempt MUXED — source has no alt-audio; '
+            'using standard pass-through with DVB stripper '
+            '(url=$proxyUrl)',
+          );
+        }
+        break;
+    }
+
+    await _attemptLoad(
+      media: media,
+      proxyUrl: proxyUrl,
+      effectiveType: CastMediaType.hls,
+      attemptLabel: mode.label,
+    );
+  }
+
+  Future<void> _attemptLoad({
+    required CastMedia media,
+    required String proxyUrl,
+    required CastMediaType effectiveType,
+    required String attemptLabel,
+  }) async {
+    // Extract token to keep across cleanup. The token is consistently
+    // the second path segment regardless of route shape:
+    //   /stream/<token>                 → segments[1] = "<token>"
+    //   /stream/<token>/resource.vtt    → segments[1] = "<token>"
+    //   /ts-stream/<token>              → segments[1] = "<token>"
+    //   /alt-audio/<token>/master.m3u8  → segments[1] = "<token>"
+    //   /file/<token>.ext               → segments[1] = "<token>.ext"
+    final urlSegments = Uri.parse(proxyUrl).pathSegments;
+    final newToken =
+        urlSegments.length >= 2 ? urlSegments[1] : urlSegments.last;
     _proxy.cleanupPreviousMedia(excludeToken: newToken);
 
-    // Determine content type from the (possibly transformed) media type
-    final contentType = _contentTypeForMedia(transformed.effectiveType);
+    final contentType = _contentTypeForMedia(effectiveType);
 
-    // Build subtitle tracks — proxy each subtitle URL so the Chromecast can
-    // fetch them with CORS headers (Access-Control-Allow-Origin) and any
-    // custom headers the caller attached to the media.
     CastLogger.info(
       'Chromecast: loading ${media.subtitles.length} subtitle track(s)',
     );
     final subtitles = <CastMediaTrack>[];
+    _subtitleTrackIds.clear();
     for (var i = 0; i < media.subtitles.length; i++) {
       final sub = media.subtitles[i];
-      // Proxy subtitle URL so Chromecast can fetch it with CORS headers.
-      // Uses registerSubtitle to handle both file:// and http:// URLs,
-      // with automatic SRT-to-VTT conversion.
       final proxySubUrl = _proxy.registerSubtitle(
         sub.url,
         headers: media.httpHeaders,
       );
+      final trackId = i + 1;
+      _subtitleTrackIds[sub.url] = trackId;
       subtitles.add(
         CastMediaTrack(
-          trackId: i + 1,
+          trackId: trackId,
           url: proxySubUrl,
           name: sub.label,
           language: sub.language,
@@ -254,7 +474,6 @@ class ChromecastSession extends CastSession {
       );
     }
 
-    // Send LOAD
     final loadPayload = _mediaChannel.buildLoad(
       contentId: proxyUrl,
       contentType: contentType,
@@ -267,13 +486,35 @@ class ChromecastSession extends CastSession {
       subtitles: subtitles.isNotEmpty ? subtitles : null,
     );
 
+    final loadRequestId =
+        (jsonDecode(loadPayload) as Map<String, dynamic>)['requestId'] as int;
+
     CastLogger.info(
-      'Chromecast: LOAD contentId=$proxyUrl contentType=$contentType',
+      'Chromecast: LOAD contentId=$proxyUrl contentType=$contentType '
+      'requestId=$loadRequestId',
     );
+    CastLogger.debug(
+      'Chromecast: LOAD details — '
+      'attempt=$attemptLabel, '
+      'subtitleTracks=${subtitles.length}, '
+      'hasMetadata=${media.title != null}, '
+      'hasImageUrl=${media.imageUrl != null}, '
+      'startPosition=${media.startPosition?.inMilliseconds ?? 0}ms, '
+      'originalMediaType=${media.type.name}, '
+      'effectiveType=${effectiveType.name}',
+    );
+    CastLogger.debug('Chromecast: LOAD payload = $loadPayload');
+
+    final priorMediaSessionId = _mediaSessionId;
 
     final completer = Completer<void>();
-    _waitForMediaStatus(completer);
+    _waitForMediaStatus(
+      completer,
+      expectedRequestId: loadRequestId,
+      priorMediaSessionId: priorMediaSessionId,
+    );
 
+    final loadSentAt = DateTime.now();
     _channel.sendMessage(
       namespace: CastMediaChannel.mediaNamespace,
       sourceId: _senderId,
@@ -281,18 +522,39 @@ class ChromecastSession extends CastSession {
       payload: loadPayload,
     );
 
-    await completer.future.timeout(
-      const Duration(seconds: 15),
-      onTimeout: () {
-        CastLogger.error('Chromecast: loadMedia timed out after 15s');
-        _mediaStatusSubscription?.cancel();
-        _mediaStatusSubscription = null;
+    try {
+      await completer.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          final elapsed = DateTime.now().difference(loadSentAt);
+          CastLogger.error(
+            'Chromecast: loadMedia timed out after ${elapsed.inMilliseconds}ms '
+            '(no playable MEDIA_STATUS received from receiver, '
+            'attempt=$attemptLabel)',
+          );
+          _mediaStatusSubscription?.cancel();
+          _mediaStatusSubscription = null;
+          throw MediaLoadFailedException(
+            'Chromecast loadMedia timed out after 15 seconds — '
+            'receiver never reported a playable state (attempt=$attemptLabel)',
+          );
+        },
+      );
+      final elapsed = DateTime.now().difference(loadSentAt);
+      CastLogger.info(
+        'Chromecast: LOAD acknowledged + playable in '
+        '${elapsed.inMilliseconds}ms (attempt=$attemptLabel)',
+      );
+    } on MediaLoadFailedException {
+      // Let the bisect loop decide whether to retry — only flip to
+      // `idle` once we run out of attempts.
+      rethrow;
+    } catch (e) {
+      if (stateMachine.canTransitionTo(SessionState.idle)) {
         stateMachine.transitionTo(SessionState.idle);
-        throw TimeoutException(
-          'Chromecast loadMedia timed out after 15 seconds',
-        );
-      },
-    );
+      }
+      rethrow;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -351,15 +613,37 @@ class ChromecastSession extends CastSession {
   Future<void> setSubtitle(CastSubtitle? subtitle) async {
     _requireMediaSession();
     if (subtitle == null) {
+      CastLogger.info('Chromecast: EDIT_TRACKS_INFO disable subtitles');
       _sendMediaCommand(
         _mediaChannel.buildEditTracksInfo(_mediaSessionId!, []),
       );
-    } else {
-      // Activate track ID 1 (conventionally the first subtitle track)
+      return;
+    }
+
+    // Look up the trackId assigned at LOAD time. Without this map we'd
+    // always activate trackId=1, so switching subtitles from the UI
+    // would silently re-select the first track on the TV.
+    final trackId = _subtitleTrackIds[subtitle.url];
+    if (trackId == null) {
+      CastLogger.warning(
+        'Chromecast: setSubtitle called with subtitle whose URL is not '
+        'in the loaded track list — falling back to trackId=1. '
+        'url=${subtitle.url}, '
+        'known=${_subtitleTrackIds.keys.take(4).join(", ")}'
+        '${_subtitleTrackIds.length > 4 ? ", …" : ""}',
+      );
       _sendMediaCommand(
         _mediaChannel.buildEditTracksInfo(_mediaSessionId!, [1]),
       );
+      return;
     }
+    CastLogger.info(
+      'Chromecast: EDIT_TRACKS_INFO activate trackId=$trackId '
+      '(label="${subtitle.label}", lang=${subtitle.language})',
+    );
+    _sendMediaCommand(
+      _mediaChannel.buildEditTracksInfo(_mediaSessionId!, [trackId]),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -503,6 +787,25 @@ class ChromecastSession extends CastSession {
     final payload = _getPayload(msg);
     if (payload == null) return;
 
+    // Receiver-bound message firehose for diagnostics. Equivalent to the
+    // stream CaC Tool renders — every namespaced message the receiver
+    // sends back. PING/PONG heartbeats are dropped to keep the log
+    // readable. Always at debug; promoted to info only when
+    // [enableReceiverDebugNamespaces] is on (the same opt-in that
+    // subscribes the auxiliary debug namespaces in the first place).
+    final type = payload['type'];
+    final isHeartbeat =
+        namespace == CastReceiverChannel.heartbeatNamespace &&
+        (type == 'PING' || type == 'PONG');
+    if (!isHeartbeat) {
+      final line = 'Chromecast: RX ns=$namespace type=$type — $payload';
+      if (enableReceiverDebugNamespaces) {
+        CastLogger.info(line);
+      } else {
+        CastLogger.debug(line);
+      }
+    }
+
     // Handle RECEIVER_STATUS — extract volume and session info
     if (namespace == CastReceiverChannel.receiverNamespace &&
         payload['type'] == 'RECEIVER_STATUS') {
@@ -523,6 +826,21 @@ class ChromecastSession extends CastSession {
     // Handle MEDIA_STATUS
     if (namespace == CastMediaChannel.mediaNamespace &&
         payload['type'] == 'MEDIA_STATUS') {
+      // Drop late status broadcasts from a failed retry-loop attempt.
+      // See [_deprecatedMediaSessionIds] for the rationale — without
+      // this filter the stale IDLE+ERROR that follows LOAD_FAILED can
+      // arrive after the next attempt has already started and pull
+      // the live state machine backwards.
+      final parsed = CastMediaChannel.parseMediaStatus(payload);
+      final sid = parsed?.mediaSessionId;
+      if (sid != null && _deprecatedMediaSessionIds.contains(sid)) {
+        CastLogger.debug(
+          'Chromecast: dropping stale MEDIA_STATUS from deprecated '
+          'mediaSessionId=$sid (playerState=${parsed!.playerState}, '
+          'idleReason=${parsed.idleReason ?? "-"})',
+        );
+        return;
+      }
       _handleMediaStatus(payload);
     }
   }
@@ -576,25 +894,183 @@ class ChromecastSession extends CastSession {
     // PAUSED: keep polling so seek-while-paused still updates position.
   }
 
-  void _waitForMediaStatus(Completer<void> completer) {
-    // Cancel any previous media status subscription to prevent leaks
+  /// Waits for the receiver to report a *playable* state after LOAD.
+  ///
+  /// The receiver may emit several MEDIA_STATUS messages after LOAD — for
+  /// example: LOADING → BUFFERING → PLAYING on success, or LOADING → IDLE
+  /// with `idleReason=ERROR` on failure. The Cast protocol also has dedicated
+  /// `LOAD_FAILED` / `LOAD_CANCELLED` / `INVALID_*` message types that
+  /// indicate the LOAD never reached the player at all.
+  ///
+  /// Completion logic:
+  ///   - On `LOAD_FAILED` / `LOAD_CANCELLED` / `INVALID_*`: complete with
+  ///     [MediaLoadFailedException] carrying the receiver-reported detail.
+  ///   - On MEDIA_STATUS with `playerState=IDLE` + `idleReason=ERROR`:
+  ///     complete with [MediaLoadFailedException].
+  ///   - On MEDIA_STATUS with a non-IDLE `playerState` (LOADING, BUFFERING,
+  ///     PLAYING, PAUSED): complete normally — playback is underway.
+  ///   - On MEDIA_STATUS with `playerState=IDLE` and no error reason: keep
+  ///     waiting (this can occur briefly between LOAD and the first real
+  ///     status), the surrounding `Future.timeout` is the final backstop.
+  ///
+  /// Also logs every relevant payload at info level for diagnostics.
+  ///
+  /// [expectedRequestId], when set, restricts which LOAD response
+  /// messages this listener treats as "ours". Stale `LOAD_FAILED` /
+  /// `LOAD_CANCELLED` from earlier LOADs on the same session (e.g.
+  /// after a quick re-load) would otherwise terminate this waiter
+  /// incorrectly.
+  void _waitForMediaStatus(
+    Completer<void> completer, {
+    int? expectedRequestId,
+    int? priorMediaSessionId,
+  }) {
     _mediaStatusSubscription?.cancel();
 
-    // Listen for the next MEDIA_STATUS that sets _mediaSessionId
     _mediaStatusSubscription = _channel.messageStream.listen((msg) {
       final namespace = _getNamespace(msg);
       final payload = _getPayload(msg);
-      if (namespace == CastMediaChannel.mediaNamespace &&
-          payload != null &&
-          payload['type'] == 'MEDIA_STATUS') {
-        _handleMediaStatus(payload);
+      if (namespace != CastMediaChannel.mediaNamespace || payload == null) {
+        return;
+      }
+
+      final type = payload['type'] as String?;
+      final responseRequestId = payload['requestId'];
+
+      // Hard LOAD failure — receiver couldn't even prepare the media.
+      // These messages always carry the requestId of the LOAD they refer
+      // to, so when we know our own LOAD's requestId we can ignore stale
+      // responses from earlier attempts.
+      if (type == 'LOAD_FAILED' ||
+          type == 'LOAD_CANCELLED' ||
+          type == 'INVALID_PLAYER_STATE' ||
+          type == 'INVALID_REQUEST' ||
+          type == 'ERROR') {
+        if (expectedRequestId != null &&
+            responseRequestId != null &&
+            responseRequestId != expectedRequestId) {
+          CastLogger.debug(
+            'Chromecast: ignoring stale $type '
+            '(requestId=$responseRequestId, expected=$expectedRequestId)',
+          );
+          return;
+        }
+
+        CastLogger.error(
+          'Chromecast: receiver returned $type during LOAD — payload: $payload',
+        );
+        if (!completer.isCompleted) {
+          completer.completeError(
+            MediaLoadFailedException(
+              'Receiver returned $type${_formatErrorDetail(payload)}',
+            ),
+          );
+        }
+        _mediaStatusSubscription?.cancel();
+        _mediaStatusSubscription = null;
+        return;
+      }
+
+      if (type != 'MEDIA_STATUS') return;
+
+      // Log the parsed status for diagnostics. MEDIA_STATUS fires on every
+      // play/pause/seek and during the LOAD handshake, so log at debug —
+      // the surrounding error / playable transitions are still at
+      // info/error.
+      final parsed = CastMediaChannel.parseMediaStatus(payload);
+      if (parsed != null) {
+        CastLogger.debug(
+          'Chromecast: MEDIA_STATUS playerState=${parsed.playerState} '
+          'idleReason=${parsed.idleReason ?? "-"} '
+          'currentTime=${parsed.currentTime.toStringAsFixed(2)}s '
+          'duration=${parsed.duration?.toStringAsFixed(2) ?? "-"}s '
+          'volume=${parsed.volumeLevel.toStringAsFixed(2)} '
+          'muted=${parsed.isMuted}',
+        );
+      } else {
+        CastLogger.debug(
+          'Chromecast: MEDIA_STATUS with no status entries — payload: $payload',
+        );
+      }
+
+      // Filter out stale MEDIA_STATUS messages from a previous attempt.
+      // The receiver assigns a fresh mediaSessionId for each LOAD it
+      // processes, so any MEDIA_STATUS still carrying the prior
+      // attempt's session id is leftover cleanup chatter and must not
+      // terminate the current waiter.
+      if (priorMediaSessionId != null &&
+          parsed != null &&
+          parsed.mediaSessionId == priorMediaSessionId) {
+        CastLogger.debug(
+          'Chromecast: ignoring stale MEDIA_STATUS '
+          '(mediaSessionId=${parsed.mediaSessionId} '
+          'matches priorMediaSessionId — leftover from previous attempt)',
+        );
+        return;
+      }
+
+      _handleMediaStatus(payload);
+
+      if (parsed == null) {
+        // Empty MEDIA_STATUS — keep waiting.
+        return;
+      }
+
+      // Hard receiver-side playback failure.
+      if (parsed.playerState == 'IDLE' && parsed.idleReason == 'ERROR') {
+        CastLogger.error(
+          'Chromecast: receiver entered IDLE with idleReason=ERROR — '
+          'full payload: $payload',
+        );
+        if (!completer.isCompleted) {
+          completer.completeError(
+            MediaLoadFailedException(
+              'Receiver rejected media (IDLE/ERROR)'
+              '${_formatErrorDetail(payload)}',
+            ),
+          );
+        }
+        _mediaStatusSubscription?.cancel();
+        _mediaStatusSubscription = null;
+        return;
+      }
+
+      // Playable state — LOAD succeeded.
+      if (parsed.playerState != 'IDLE') {
         if (!completer.isCompleted) {
           completer.complete();
         }
         _mediaStatusSubscription?.cancel();
         _mediaStatusSubscription = null;
+        return;
       }
+
+      // playerState == IDLE without ERROR — keep waiting for the next status.
+      CastLogger.debug(
+        'Chromecast: MEDIA_STATUS IDLE without error reason '
+        '(idleReason=${parsed.idleReason ?? "-"}) — continuing to wait',
+      );
     });
+  }
+
+  /// Extracts a short human-readable error detail from an error/LOAD_FAILED
+  /// payload. Cast receivers commonly include `reason`, `detailedErrorCode`,
+  /// `errorMessage`, or `errorReason` fields. We pluck whichever is present.
+  static String _formatErrorDetail(Map<String, dynamic> payload) {
+    final parts = <String>[];
+    for (final key in const [
+      'reason',
+      'detailedErrorCode',
+      'errorCode',
+      'errorMessage',
+      'errorReason',
+      'customData',
+    ]) {
+      final v = payload[key];
+      if (v != null) parts.add('$key=$v');
+    }
+    if (parts.isEmpty) return '';
+    return ' [${parts.join(', ')}]';
   }
 
   String? _getNamespace(dynamic msg) {

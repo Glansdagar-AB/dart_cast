@@ -61,6 +61,23 @@ class HlsParser {
   /// [baseUrl] is the URL from which the playlist was fetched.
   /// [proxyBaseUrl] is the proxy server's base URL (e.g. `http://192.168.1.5:8234`).
   /// [token] is the proxy route token for this media session.
+  ///
+  /// ## URL extension hinting
+  ///
+  /// The Chromecast Default Media Receiver / Shaka Player consults the URL
+  /// *path extension* during `MediaCapabilities.decodingInfo()` probing —
+  /// not just the response `Content-Type`. Sources whose segment URLs end
+  /// in something other than `.ts` (e.g. `.jpg`-obfuscated TS) silently
+  /// fail the probe and trigger `LOAD_FAILED` with no diagnostic detail.
+  ///
+  /// To work around that, segment URLs (next-line URIs after `#EXTINF`) are
+  /// rewritten to `/stream/<token>/seg<n>.ts?url=…`. The fake `.ts` segment
+  /// in the path satisfies the receiver's extension probe; the upstream
+  /// URL is preserved in the `?url=` query string. Variant playlist URIs
+  /// (next-line URIs after `#EXT-X-STREAM-INF`) and attribute-style URIs
+  /// (`URI="…"` on `#EXT-X-MEDIA`, etc.) keep the plain
+  /// `/stream/<token>?url=…` form because their extension shouldn't
+  /// affect playback.
   static String rewritePlaylist(
     String content,
     String baseUrl,
@@ -70,6 +87,8 @@ class HlsParser {
     final lines = content.split('\n');
     final result = <String>[];
     var expectUri = false;
+    var expectSegment = false; // true between #EXTINF and its URI
+    var segmentIndex = 0;
 
     for (final line in lines) {
       // Empty lines pass through
@@ -82,6 +101,7 @@ class HlsParser {
       if (_isNextLineUriTag(line)) {
         result.add(line);
         expectUri = true;
+        expectSegment = line.startsWith('#EXTINF:');
         continue;
       }
 
@@ -100,14 +120,23 @@ class HlsParser {
       // Non-tag, non-empty line while expecting URI — this is a segment/variant URI
       if (expectUri && !line.startsWith('#')) {
         final resolved = resolveUrl(line.trim(), baseUrl);
-        result.add(_buildProxyUrl(proxyBaseUrl, token, resolved));
+        if (expectSegment) {
+          segmentIndex++;
+          result.add(
+            _buildSegmentProxyUrl(proxyBaseUrl, token, resolved, segmentIndex),
+          );
+        } else {
+          result.add(_buildProxyUrl(proxyBaseUrl, token, resolved));
+        }
         expectUri = false;
+        expectSegment = false;
         continue;
       }
 
       // Any other line (tags, comments)
       result.add(line);
       expectUri = false;
+      expectSegment = false;
     }
 
     return result.join('\n');
@@ -190,12 +219,15 @@ class HlsParser {
 
   /// Given a master playlist, extract variant playlist URLs sorted by
   /// bandwidth (highest first).
-  static List<({String url, int bandwidth})> extractVariants(
-    String content,
-    String baseUrl,
-  ) {
+  ///
+  /// Each variant also carries the `AUDIO="<group-id>"` attribute when
+  /// present — that's the link to a separate audio rendition declared via
+  /// `EXT-X-MEDIA:TYPE=AUDIO`. A non-null `audioGroup` means the variant
+  /// playlist is video-only and audio lives in a separate playlist.
+  static List<({String url, int bandwidth, String? audioGroup})>
+  extractVariants(String content, String baseUrl) {
     final lines = content.split('\n');
-    final variants = <({String url, int bandwidth})>[];
+    final variants = <({String url, int bandwidth, String? audioGroup})>[];
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
@@ -203,6 +235,10 @@ class HlsParser {
         // Extract BANDWIDTH
         final bwMatch = RegExp(r'BANDWIDTH=(\d+)').firstMatch(line);
         final bandwidth = bwMatch != null ? int.parse(bwMatch.group(1)!) : 0;
+
+        // Extract AUDIO group reference, if present.
+        final audioMatch = RegExp(r'AUDIO="([^"]*)"').firstMatch(line);
+        final audioGroup = audioMatch?.group(1);
 
         // Next non-empty, non-comment line is the URI
         for (var j = i + 1; j < lines.length; j++) {
@@ -212,6 +248,7 @@ class HlsParser {
           variants.add((
             url: resolveUrl(nextLine, baseUrl),
             bandwidth: bandwidth,
+            audioGroup: audioGroup,
           ));
           break;
         }
@@ -223,6 +260,43 @@ class HlsParser {
     return variants;
   }
 
+  /// Parsed alternate audio rendition (`EXT-X-MEDIA:TYPE=AUDIO`).
+  ///
+  /// Multiple renditions can share a `groupId` (e.g. one per language)
+  /// and the variant in `EXT-X-STREAM-INF` selects which group plays via
+  /// its `AUDIO=` attribute.
+  static List<({String groupId, String name, String? uri, bool isDefault})>
+  extractAudioRenditions(String content, String baseUrl) {
+    final renditions =
+        <({String groupId, String name, String? uri, bool isDefault})>[];
+
+    final groupRe = RegExp(r'GROUP-ID="([^"]*)"');
+    final nameRe = RegExp(r'NAME="([^"]*)"');
+    final defaultRe = RegExp(r'DEFAULT=(YES|NO)');
+
+    for (final raw in content.split('\n')) {
+      final line = raw.trim();
+      if (!line.startsWith('#EXT-X-MEDIA:')) continue;
+      if (!line.contains('TYPE=AUDIO')) continue;
+
+      final groupId = groupRe.firstMatch(line)?.group(1);
+      final name = nameRe.firstMatch(line)?.group(1);
+      final uriMatch = _uriAttributeRegex.firstMatch(line);
+      final uri =
+          uriMatch != null ? resolveUrl(uriMatch.group(1)!, baseUrl) : null;
+      final isDefault = defaultRe.firstMatch(line)?.group(1) == 'YES';
+
+      renditions.add((
+        groupId: groupId ?? '',
+        name: name ?? '',
+        uri: uri,
+        isDefault: isDefault,
+      ));
+    }
+
+    return renditions;
+  }
+
   /// Constructs a proxy URL for the given original URL.
   static String _buildProxyUrl(
     String proxyBaseUrl,
@@ -230,5 +304,18 @@ class HlsParser {
     String originalUrl,
   ) {
     return '$proxyBaseUrl/stream/$token?url=${Uri.encodeComponent(originalUrl)}';
+  }
+
+  /// Constructs a segment proxy URL whose *path* ends in `.ts`, satisfying
+  /// the Chromecast / Shaka URL-extension capability probe even when the
+  /// upstream URL ends in `.jpg`, `.bin`, or another non-media extension.
+  static String _buildSegmentProxyUrl(
+    String proxyBaseUrl,
+    String token,
+    String originalUrl,
+    int segmentIndex,
+  ) {
+    return '$proxyBaseUrl/stream/$token/seg$segmentIndex.ts'
+        '?url=${Uri.encodeComponent(originalUrl)}';
   }
 }

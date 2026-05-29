@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_cast/src/core/cast_device.dart';
+import 'package:dart_cast/src/core/cast_exceptions.dart';
 import 'package:dart_cast/src/core/cast_media.dart';
 import 'package:dart_cast/src/core/cast_session.dart';
 import 'package:dart_cast/src/core/media_proxy.dart';
@@ -138,7 +139,7 @@ void main() {
         final connectFuture = session.connect();
 
         // Wait a tick for the connect to start processing
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
 
         // Find the LAUNCH message and inject RECEIVER_STATUS response
         mockChannel.injectMessage(
@@ -163,7 +164,7 @@ void main() {
 
       test('sends LAUNCH after CONNECT', () async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
 
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
@@ -186,7 +187,7 @@ void main() {
 
       test('extracts transportId and sends CONNECT to app', () async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
 
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
@@ -208,7 +209,7 @@ void main() {
 
       test('transitions to connected state', () async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
 
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
@@ -226,7 +227,7 @@ void main() {
     group('loadMedia', () {
       setUp(() async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
           sourceId: 'receiver-0',
@@ -246,7 +247,7 @@ void main() {
         );
 
         final loadFuture = session.loadMedia(media);
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
 
         // Inject MEDIA_STATUS response
         mockChannel.injectMessage(
@@ -276,7 +277,7 @@ void main() {
         );
 
         final loadFuture = session.loadMedia(media);
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
 
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
@@ -295,13 +296,128 @@ void main() {
         );
         expect(loadMsg, isNotNull);
       });
+
+      test('throws MediaLoadFailedException when receiver returns '
+          'IDLE/ERROR after LOAD', () async {
+        final media = CastMedia(
+          url: 'http://example.com/video.m3u8',
+          type: CastMediaType.hls,
+        );
+
+        final loadFuture = session.loadMedia(media);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        // Receiver simulates the silent-failure case: LOAD was acked but
+        // the player went IDLE with idleReason=ERROR (e.g. unsupported
+        // segment content-type).
+        mockChannel.injectMessage(
+          namespace: CastMediaChannel.mediaNamespace,
+          sourceId: 'web-4',
+          destinationId: 'sender-0',
+          payload: _mediaStatusPayload(
+            mediaSessionId: 1,
+            playerState: 'IDLE',
+            idleReason: 'ERROR',
+          ),
+        );
+
+        await expectLater(loadFuture, throwsA(isA<MediaLoadFailedException>()));
+        expect(session.state, SessionState.idle);
+      });
+
+      test(
+        'throws MediaLoadFailedException when receiver returns LOAD_FAILED',
+        () async {
+          final media = CastMedia(
+            url: 'http://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          );
+
+          final loadFuture = session.loadMedia(media);
+
+          // Remote HLS triggers the BARE → MUXED bisect: each attempt
+          // sends its own LOAD and registers its own MEDIA_STATUS
+          // listener. To surface a `contains('LOAD_FAILED')` error we
+          // must reply to *both* attempts — otherwise the first error
+          // is discarded in favor of the second attempt's 15s timeout.
+          for (var i = 0; i < 2; i++) {
+            final loadMsg = await _awaitSentLoad(mockChannel, skip: i);
+            mockChannel.injectMessage(
+              namespace: CastMediaChannel.mediaNamespace,
+              sourceId: 'web-4',
+              destinationId: 'sender-0',
+              payload: {
+                'type': 'LOAD_FAILED',
+                'requestId': loadMsg.payload['requestId'],
+                'reason': 'INVALID_REQUEST',
+                'detailedErrorCode': 905,
+              },
+            );
+          }
+
+          await expectLater(
+            loadFuture,
+            throwsA(
+              isA<MediaLoadFailedException>().having(
+                (e) => e.toString(),
+                'message',
+                contains('LOAD_FAILED'),
+              ),
+            ),
+          );
+          expect(session.state, SessionState.idle);
+        },
+      );
+
+      test(
+        'waits past transient IDLE (no idleReason) for a real playable state',
+        () async {
+          final media = CastMedia(
+            url: 'http://example.com/video.m3u8',
+            type: CastMediaType.hls,
+          );
+
+          final loadFuture = session.loadMedia(media);
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+
+          // First status: IDLE without an idleReason — must NOT complete.
+          // (Some receivers briefly transition through IDLE between LOAD
+          // and BUFFERING.)
+          mockChannel.injectMessage(
+            namespace: CastMediaChannel.mediaNamespace,
+            sourceId: 'web-4',
+            destinationId: 'sender-0',
+            payload: _mediaStatusPayload(
+              mediaSessionId: 1,
+              playerState: 'IDLE',
+            ),
+          );
+
+          // Give the listener a chance to process — load must NOT resolve.
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+
+          // Second status: BUFFERING — the surface is now playable, load
+          // should complete.
+          mockChannel.injectMessage(
+            namespace: CastMediaChannel.mediaNamespace,
+            sourceId: 'web-4',
+            destinationId: 'sender-0',
+            payload: _mediaStatusPayload(
+              mediaSessionId: 1,
+              playerState: 'BUFFERING',
+            ),
+          );
+
+          await loadFuture;
+        },
+      );
     });
 
     group('playback controls', () {
       setUp(() async {
         // Connect
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
           sourceId: 'receiver-0',
@@ -317,7 +433,7 @@ void main() {
             type: CastMediaType.hls,
           ),
         );
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
           sourceId: 'web-4',
@@ -392,7 +508,7 @@ void main() {
     group('MEDIA_STATUS updates', () {
       setUp(() async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
           sourceId: 'receiver-0',
@@ -407,7 +523,7 @@ void main() {
             type: CastMediaType.hls,
           ),
         );
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
           sourceId: 'web-4',
@@ -505,7 +621,7 @@ void main() {
     group('heartbeat', () {
       test('sends PING periodically after connect', () async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
 
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
@@ -527,7 +643,7 @@ void main() {
       test('sends CLOSE to transportId and receiver-0', () async {
         // Connect first
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
           sourceId: 'receiver-0',
@@ -561,7 +677,7 @@ void main() {
 
       test('stops heartbeat timer', () async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
           sourceId: 'receiver-0',
@@ -577,7 +693,7 @@ void main() {
 
       test('transitions to disconnected state', () async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
           sourceId: 'receiver-0',
@@ -595,7 +711,7 @@ void main() {
     group('concurrent loadMedia guard', () {
       Future<void> connectSession() async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
           sourceId: 'receiver-0',
@@ -623,7 +739,7 @@ void main() {
         await secondLoad;
 
         // Now inject MEDIA_STATUS to complete first load
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
           sourceId: 'transport-abc',
@@ -655,7 +771,7 @@ void main() {
 
         // First load
         final firstLoad = session.loadMedia(media);
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
           sourceId: 'transport-abc',
@@ -666,7 +782,7 @@ void main() {
 
         // Second load should work
         final secondLoad = session.loadMedia(media);
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastMediaChannel.mediaNamespace,
           sourceId: 'transport-abc',
@@ -691,7 +807,7 @@ void main() {
     group('socket disconnect detection', () {
       Future<void> connectSession() async {
         final connectFuture = session.connect();
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
         mockChannel.injectMessage(
           namespace: CastReceiverChannel.receiverNamespace,
           sourceId: 'receiver-0',
@@ -758,6 +874,37 @@ Map<String, dynamic> _receiverStatusPayload({
       'volume': {'level': 0.5, 'muted': false},
     },
   };
+}
+
+/// Polls until the session has dispatched its `skip + 1`-th LOAD message
+/// on the media namespace, then returns it. Used by tests that need the
+/// actual requestId chosen by [CastMediaChannel.buildLoad] — hardcoding
+/// it can race with proxy startup, since
+/// [ChromecastSession._loadMediaInternal] awaits `_proxy.start(...)`
+/// before the LOAD goes out and that startup time is not bounded by any
+/// test-side delay. [skip] lets bisect-aware tests wait for the
+/// retry-loop's second LOAD without prematurely matching the first.
+Future<MockSentMessage> _awaitSentLoad(
+  MockCastV2Channel mockChannel, {
+  Duration timeout = const Duration(seconds: 5),
+  int skip = 0,
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    final loads =
+        mockChannel.sentMessages
+            .where(
+              (m) =>
+                  m.namespace == CastMediaChannel.mediaNamespace &&
+                  m.payload['type'] == 'LOAD',
+            )
+            .toList();
+    if (loads.length > skip) return loads[skip];
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  throw StateError(
+    'LOAD message (skip=$skip) never reached the wire within $timeout',
+  );
 }
 
 Map<String, dynamic> _mediaStatusPayload({

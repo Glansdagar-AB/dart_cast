@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:dart_cast/dart_cast.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import 'remote_control_page.dart';
 
@@ -137,6 +139,58 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Added to media list')),
+    );
+  }
+
+  /// Picks a local video file and adds it to the media list.
+  ///
+  /// The package serves local files over HTTP via its built-in proxy, so a
+  /// [CastMedia.file] can be cast to any discovered device just like a remote
+  /// URL — no extra setup is needed here.
+  Future<void> _pickLocalVideo() async {
+    // The example disables the macOS app sandbox, so let file_picker skip its
+    // entitlements check there. This is a no-op on every other platform.
+    await FilePicker.skipEntitlementsChecks();
+    final result = await FilePicker.pickFiles(type: FileType.video);
+    // User cancelled the picker, or no path is available (e.g. on web).
+    if (result == null) return;
+    final path = result.files.single.path;
+    if (path == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not read the selected file path')),
+      );
+      return;
+    }
+
+    final type = _detectMediaType(path);
+
+    // Reuse the subtitle URL field if the user filled it in before picking.
+    final subtitles = <CastSubtitle>[];
+    final subUrl = _customSubUrlController.text.trim();
+    if (subUrl.isNotEmpty) {
+      subtitles.add(CastSubtitle(
+        url: subUrl,
+        label: 'Custom',
+        language: 'und',
+        format: subUrl.endsWith('.srt') ? 'srt' : 'vtt',
+      ));
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _customMedia.add(CastMedia.file(
+        filePath: path,
+        type: type,
+        title: p.basename(path),
+        subtitles: subtitles,
+      ));
+    });
+
+    _customSubUrlController.clear();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Added local file to media list')),
     );
   }
 
@@ -481,6 +535,20 @@ class _DeviceDiscoveryPageState extends State<DeviceDiscoveryPage> {
               onPressed: _addCustomMedia,
               icon: const Icon(Icons.add),
               label: const Text('Add to Media List'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Or pick a video file from this device. The package serves it '
+              'over HTTP via its built-in proxy, so it casts like any URL.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _pickLocalVideo,
+              icon: const Icon(Icons.folder_open),
+              label: const Text('Pick Local Video'),
             ),
             // Show added custom media items.
             if (_customMedia.isNotEmpty) ...[

@@ -21,6 +21,7 @@ Before running, apply the platform-specific configuration described in the [main
 
 - **Device discovery** -- scans for Chromecast, AirPlay, and DLNA devices on the local network
 - **Device picker** -- bottom sheet UI grouping devices by protocol
+- **Custom and local media** -- add a media URL, or pick a local video file from the device. Local files are built as `CastMedia.file(...)` and served to the cast device over HTTP by the package's built-in proxy, so they cast just like a remote URL
 - **Remote control** -- play, pause, stop, and seek controls with reactive state
 - **Seek and volume** -- slider controls driven by `positionStream`, `durationStream`, and `volumeStream`
 - **Subtitles** -- selecting subtitle tracks on media that provides them

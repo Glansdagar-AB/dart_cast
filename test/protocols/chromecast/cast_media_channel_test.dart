@@ -59,6 +59,16 @@ void main() {
         expect(decoded['currentTime'], 120.5);
       });
 
+      test('omits currentTime when startPosition is not specified', () {
+        final json = channel.buildLoad(
+          contentId: 'http://example.com/live.m3u8',
+          contentType: 'application/x-mpegURL',
+          streamType: 'LIVE',
+        );
+        final decoded = jsonDecode(json) as Map<String, dynamic>;
+        expect(decoded.containsKey('currentTime'), isFalse);
+      });
+
       test('includes subtitle tracks', () {
         final subtitles = [
           CastMediaTrack(

@@ -20,6 +20,22 @@ Future<String> _fetchString(String url) async {
   }
 }
 
+/// Fetches [url] and returns the status code plus raw body bytes.
+Future<({int statusCode, List<int> body})> _fetchBytes(String url) async {
+  final client = HttpClient();
+  try {
+    final request = await client.getUrl(Uri.parse(url));
+    final response = await request.close();
+    final chunks = await response.fold<List<int>>(
+      <int>[],
+      (prev, chunk) => prev..addAll(chunk),
+    );
+    return (statusCode: response.statusCode, body: chunks);
+  } finally {
+    client.close();
+  }
+}
+
 /// Creates a temporary directory + file filled with [size] zero-bytes.
 /// Returns both objects; callers must delete the directory when done.
 Future<({Directory dir, File file})> _createTempFile(int size) async {
@@ -61,6 +77,43 @@ Uint8List _createTsPacket() {
   packet[0] = 0x47; // sync byte
   packet[3] = 0x10; // payload only
   return packet;
+}
+
+Uint8List _createVideoPtsPacket(Duration position) {
+  final packet = _createTsPacket();
+  const pid = 0x0100;
+  packet[1] = 0x40 | ((pid >> 8) & 0x1F); // payload_unit_start_indicator
+  packet[2] = pid & 0xFF;
+
+  const payloadStart = 4;
+  packet[payloadStart] = 0x00;
+  packet[payloadStart + 1] = 0x00;
+  packet[payloadStart + 2] = 0x01;
+  packet[payloadStart + 3] = 0xE0; // video stream
+  packet[payloadStart + 4] = 0x00;
+  packet[payloadStart + 5] = 0x00;
+  packet[payloadStart + 6] = 0x80;
+  packet[payloadStart + 7] = 0x80; // PTS only
+  packet[payloadStart + 8] = 0x05;
+
+  final pts = (position.inMilliseconds * 90000) ~/ 1000;
+  final ptsOffset = payloadStart + 9;
+  packet[ptsOffset] = 0x20 | (((pts >> 30) & 0x07) << 1) | 0x01;
+  packet[ptsOffset + 1] = (pts >> 22) & 0xFF;
+  packet[ptsOffset + 2] = (((pts >> 15) & 0x7F) << 1) | 0x01;
+  packet[ptsOffset + 3] = (pts >> 7) & 0xFF;
+  packet[ptsOffset + 4] = ((pts & 0x7F) << 1) | 0x01;
+  return packet;
+}
+
+Uint8List _createTsSecond({required int second, required int packetCount}) {
+  final bytes = Uint8List(packetCount * 188);
+  bytes.setRange(0, 188, _createVideoPtsPacket(Duration(seconds: second)));
+  final packet = _createTsPacket();
+  for (var index = 1; index < packetCount; index++) {
+    bytes.setRange(index * 188, (index + 1) * 188, packet);
+  }
+  return bytes;
 }
 
 /// Creates a temporary .ts file with synthetic keyframe data.
@@ -183,6 +236,110 @@ void main() {
         final url2 = proxy.wrapInHlsPlaylist(mediaUrl);
         expect(url1, isNot(url2));
       });
+    });
+
+    group('registerFiniteTsAsHls', () {
+      test('segments remote TS by PTS duration instead of byte cap', () async {
+        final upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(() => upstream.close(force: true));
+
+        const packetsPerSecond = 12000;
+        upstream.listen((request) async {
+          request.response.headers.contentType = ContentType('video', 'mp2t');
+          for (var second = 0; second <= 5; second++) {
+            request.response.add(
+              _createTsSecond(second: second, packetCount: packetsPerSecond),
+            );
+          }
+          await request.response.close();
+        });
+
+        final upstreamUrl =
+            'http://${upstream.address.host}:${upstream.port}/archive.ts';
+        final playlistUrl = proxy.registerFiniteTsAsHls(
+          upstreamUrl,
+          duration: const Duration(seconds: 8),
+        );
+
+        final playlist = await _fetchString(playlistUrl);
+        final segmentUrl = playlist
+            .split('\n')
+            .firstWhere((line) => line.endsWith('/seg0.ts'));
+        final segmentResponse = await _fetchBytes(segmentUrl);
+
+        expect(segmentResponse.statusCode, HttpStatus.ok);
+        expect(segmentResponse.body.length, greaterThan(8 * 1024 * 1024));
+      });
+
+      test(
+        'uses shifted Xtream timeshift URL for far forward and backward segment requests',
+        () async {
+          final upstream = await HttpServer.bind(
+            InternetAddress.loopbackIPv4,
+            0,
+          );
+          addTearDown(() => upstream.close(force: true));
+          final requestedPathSegments = <List<String>>[];
+
+          upstream.listen((request) async {
+            requestedPathSegments.add(request.uri.pathSegments);
+            request.response.headers.contentType = ContentType('video', 'mp2t');
+            for (var second = 0; second <= 5; second++) {
+              request.response.add(
+                _createTsSecond(second: second, packetCount: 256),
+              );
+            }
+            await request.response.close();
+          });
+
+          final upstreamUrl =
+              'http://${upstream.address.host}:${upstream.port}/timeshift/user/pass/10/2026-06-07:10-00/12345.ts';
+          final playlistUrl = proxy.registerFiniteTsAsHls(
+            upstreamUrl,
+            duration: const Duration(minutes: 10),
+          );
+          final playlist = await _fetchString(playlistUrl);
+
+          String segmentUrl(int index) => playlist
+              .split('\n')
+              .firstWhere((line) => line.endsWith('/seg$index.ts'));
+
+          final firstSegment = await _fetchBytes(segmentUrl(0));
+          expect(firstSegment.statusCode, HttpStatus.ok);
+
+          final farForwardSegment = await _fetchBytes(segmentUrl(105));
+          expect(farForwardSegment.statusCode, HttpStatus.ok);
+
+          final farBackwardSegment = await _fetchBytes(segmentUrl(45));
+          expect(farBackwardSegment.statusCode, HttpStatus.ok);
+
+          expect(requestedPathSegments.length, greaterThanOrEqualTo(3));
+          expect(requestedPathSegments.first, [
+            'timeshift',
+            'user',
+            'pass',
+            '10',
+            '2026-06-07:10-00',
+            '12345.ts',
+          ]);
+          expect(requestedPathSegments[1], [
+            'timeshift',
+            'user',
+            'pass',
+            '4',
+            '2026-06-07:10-07',
+            '12345.ts',
+          ]);
+          expect(requestedPathSegments.last, [
+            'timeshift',
+            'user',
+            'pass',
+            '8',
+            '2026-06-07:10-03',
+            '12345.ts',
+          ]);
+        },
+      );
     });
 
     // -------------------------------------------------------------------------

@@ -185,6 +185,39 @@ void main() {
         expect(launchMsg.destinationId, 'receiver-0');
       });
 
+      test('sends LAUNCH for custom receiver app id', () async {
+        session.dispose();
+        await proxy.stop();
+        mockChannel = MockCastV2Channel();
+        proxy = MediaProxy();
+        await proxy.start();
+        session = ChromecastSession.withMocks(
+          device: device,
+          channel: mockChannel,
+          proxy: proxy,
+          receiverAppId: 'ABCDE123',
+        );
+
+        final connectFuture = session.connect();
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        mockChannel.injectMessage(
+          namespace: CastReceiverChannel.receiverNamespace,
+          sourceId: 'receiver-0',
+          destinationId: 'sender-0',
+          payload: _receiverStatusPayload(),
+        );
+
+        await connectFuture;
+
+        final launchMsg = mockChannel.sentMessages.firstWhere(
+          (m) =>
+              m.namespace == CastReceiverChannel.receiverNamespace &&
+              m.payload['type'] == 'LAUNCH',
+        );
+        expect(launchMsg.payload['appId'], 'ABCDE123');
+      });
+
       test('extracts transportId and sends CONNECT to app', () async {
         final connectFuture = session.connect();
         await Future<void>.delayed(const Duration(milliseconds: 80));
@@ -295,6 +328,60 @@ void main() {
               m.payload['type'] == 'LOAD',
         );
         expect(loadMsg, isNotNull);
+      });
+
+      test('loads HLS without duration as live at live edge', () async {
+        final media = CastMedia(
+          url: 'http://example.com/live.m3u8',
+          type: CastMediaType.hls,
+        );
+
+        final loadFuture = session.loadMedia(media);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        mockChannel.injectMessage(
+          namespace: CastMediaChannel.mediaNamespace,
+          sourceId: 'web-4',
+          destinationId: 'sender-0',
+          payload: _mediaStatusPayload(mediaSessionId: 1),
+        );
+
+        await loadFuture;
+
+        final loadMsg = mockChannel.sentMessages.firstWhere(
+          (m) =>
+              m.namespace == CastMediaChannel.mediaNamespace &&
+              m.payload['type'] == 'LOAD',
+        );
+        expect(loadMsg.payload['media']['streamType'], 'LIVE');
+        expect(loadMsg.payload.containsKey('currentTime'), isFalse);
+      });
+
+      test('loads HLS with duration as buffered media', () async {
+        final media = CastMedia(
+          url: 'http://example.com/video.m3u8',
+          type: CastMediaType.hls,
+          duration: const Duration(hours: 2),
+        );
+
+        final loadFuture = session.loadMedia(media);
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        mockChannel.injectMessage(
+          namespace: CastMediaChannel.mediaNamespace,
+          sourceId: 'web-4',
+          destinationId: 'sender-0',
+          payload: _mediaStatusPayload(mediaSessionId: 1),
+        );
+
+        await loadFuture;
+
+        final loadMsg = mockChannel.sentMessages.firstWhere(
+          (m) =>
+              m.namespace == CastMediaChannel.mediaNamespace &&
+              m.payload['type'] == 'LOAD',
+        );
+        expect(loadMsg.payload['media']['streamType'], 'BUFFERED');
       });
 
       test('throws MediaLoadFailedException when receiver returns '

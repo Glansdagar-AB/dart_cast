@@ -70,6 +70,7 @@ class ChromecastSession extends CastSession {
   String? _sessionId; // Used for STOP app via receiver namespace.
   int? _mediaSessionId;
   StreamSubscription<dynamic>? _mediaStatusSubscription;
+  String? _attachRequiredAppId;
 
   /// Periodic timer that polls GET_STATUS on the media channel to keep
   /// the playback position up-to-date. Chromecast only pushes MEDIA_STATUS
@@ -117,6 +118,7 @@ class ChromecastSession extends CastSession {
 
   /// The current receiver session ID, if connected.
   String? get sessionId => _sessionId;
+  final String receiverAppId;
   Timer? _heartbeatTimer;
   StreamSubscription<dynamic>? _messageSubscription;
 
@@ -138,6 +140,7 @@ class ChromecastSession extends CastSession {
   ChromecastSession({
     required CastDevice device,
     MediaTransformer? mediaTransformer,
+    this.receiverAppId = CastReceiverChannel.defaultMediaReceiverAppId,
     this.enableReceiverDebugNamespaces = false,
   }) : _channel = _RealChannelAdapter(),
        _proxy = MediaProxy(),
@@ -158,6 +161,7 @@ class ChromecastSession extends CastSession {
     required dynamic channel,
     MediaProxy? proxy,
     MediaTransformer? mediaTransformer,
+    this.receiverAppId = CastReceiverChannel.defaultMediaReceiverAppId,
     this.enableReceiverDebugNamespaces = false,
   }) : _channel = _MockChannelAdapter(channel),
        _proxy = proxy ?? MediaProxy(),
@@ -169,10 +173,10 @@ class ChromecastSession extends CastSession {
   // Connect lifecycle
   // ---------------------------------------------------------------------------
 
-  /// Connects to the Chromecast device and launches the Default Media Receiver.
+  /// Connects to the Chromecast device and launches the configured receiver.
   ///
   /// Sequence: TLS connect -> CONNECT to receiver-0 -> start heartbeat ->
-  /// LAUNCH CC1AD845 -> wait for RECEIVER_STATUS -> extract transportId ->
+  /// LAUNCH receiver app -> wait for RECEIVER_STATUS -> extract transportId ->
   /// CONNECT to transportId.
   @override
   Future<void> connect() async {
@@ -211,12 +215,12 @@ class ChromecastSession extends CastSession {
     // 4. Start heartbeat
     _startHeartbeat();
 
-    // 5. LAUNCH Default Media Receiver
+    // 5. LAUNCH configured receiver
     _channel.sendMessage(
       namespace: CastReceiverChannel.receiverNamespace,
       sourceId: _senderId,
       destinationId: _receiverId,
-      payload: _receiverChannel.buildLaunchWithId(),
+      payload: _receiverChannel.buildLaunchWithId(receiverAppId),
     );
 
     // 6. Wait for RECEIVER_STATUS with transportId
@@ -249,6 +253,83 @@ class ChromecastSession extends CastSession {
       'Chromecast: connected to ${device.name}, transportId=$_transportId',
     );
     stateMachine.transitionTo(SessionState.connected);
+  }
+
+  /// Attaches to an already-running receiver app without sending LAUNCH.
+  ///
+  /// Returns `false` when the Chromecast is reachable but this session's
+  /// receiver app is not currently running. This lets mobile senders restore a
+  /// lost/backgrounded socket without accidentally launching the app on a TV.
+  Future<bool> attachToRunningReceiver() async {
+    CastLogger.info(
+      'Chromecast: attaching to running receiver on ${device.name}',
+    );
+    stateMachine.transitionTo(SessionState.connecting);
+    _attachRequiredAppId = receiverAppId;
+
+    try {
+      await _channel.connect(device.address.address, port: device.port);
+
+      final completer = Completer<void>();
+      _messageSubscription = _channel.messageStream.listen(
+        (msg) {
+          _handleMessage(msg, completer);
+        },
+        onError: (Object error) {
+          CastLogger.error('Chromecast: message stream error: $error');
+          _onSocketLost();
+        },
+        onDone: () {
+          CastLogger.warning('Chromecast: message stream closed unexpectedly');
+          _onSocketLost();
+        },
+      );
+
+      _channel.sendMessage(
+        namespace: CastReceiverChannel.connectionNamespace,
+        sourceId: _senderId,
+        destinationId: _receiverId,
+        payload: CastReceiverChannel.buildConnect(),
+      );
+      _startHeartbeat();
+      _channel.sendMessage(
+        namespace: CastReceiverChannel.receiverNamespace,
+        sourceId: _senderId,
+        destinationId: _receiverId,
+        payload: _receiverChannel.buildGetStatusWithId(),
+      );
+
+      await completer.future.timeout(
+        const Duration(seconds: 6),
+        onTimeout: () {
+          throw TimeoutException(
+            'Timed out waiting for running Chromecast receiver',
+          );
+        },
+      );
+
+      _channel.sendMessage(
+        namespace: CastReceiverChannel.connectionNamespace,
+        sourceId: _senderId,
+        destinationId: _transportId!,
+        payload: CastReceiverChannel.buildConnect(),
+      );
+
+      if (enableReceiverDebugNamespaces) {
+        _subscribeReceiverDebugNamespaces();
+      }
+
+      stateMachine.transitionTo(SessionState.connected);
+      _sendMediaCommand(_mediaChannel.buildGetStatus());
+      CastLogger.info('Chromecast: attached to receiver on ${device.name}');
+      return true;
+    } catch (error) {
+      CastLogger.warning('Chromecast: attach failed: $error');
+      await _cleanupAfterFailedAttach();
+      return false;
+    } finally {
+      _attachRequiredAppId = null;
+    }
   }
 
   /// Subscribes (CONNECT) to the Default Media Receiver's auxiliary
@@ -484,6 +565,7 @@ class ChromecastSession extends CastSession {
               ? media.startPosition!.inMilliseconds / 1000.0
               : null,
       subtitles: subtitles.isNotEmpty ? subtitles : null,
+      streamType: _streamTypeForMedia(media),
     );
 
     final loadRequestId =
@@ -735,6 +817,34 @@ class ChromecastSession extends CastSession {
     stateMachine.transitionTo(SessionState.disconnected);
   }
 
+  Future<void> _cleanupAfterFailedAttach() async {
+    _stopHeartbeat();
+    _stopPositionPolling();
+    _mediaStatusSubscription?.cancel();
+    _mediaStatusSubscription = null;
+    _transportId = null;
+    _sessionId = null;
+    _mediaSessionId = null;
+    _isLoadingMedia = false;
+
+    if (stateMachine.state != SessionState.disconnected) {
+      stateMachine.transitionTo(SessionState.disconnected);
+    }
+
+    try {
+      await Future.wait([
+        _messageSubscription?.cancel() ?? Future.value(),
+        _channel.close(),
+        _proxy.stop(),
+      ]).timeout(const Duration(seconds: 3), onTimeout: () => []);
+    } catch (error) {
+      CastLogger.warning(
+        'Chromecast: cleanup error after attach failed: $error',
+      );
+    }
+    _messageSubscription = null;
+  }
+
   void _sendMediaCommand(String payload) {
     _channel.sendMessage(
       namespace: CastMediaChannel.mediaNamespace,
@@ -816,10 +926,25 @@ class ChromecastSession extends CastSession {
 
         // Complete connection if still connecting
         if (!connectCompleter.isCompleted) {
+          final requiredAppId = _attachRequiredAppId;
+          if (requiredAppId != null && status.appId != requiredAppId) {
+            connectCompleter.completeError(
+              StateError(
+                'Receiver app $requiredAppId is not running '
+                '(active app: ${status.appId})',
+              ),
+            );
+            return;
+          }
           _transportId = status.transportId;
           _sessionId = status.sessionId;
           connectCompleter.complete();
         }
+      } else if (_attachRequiredAppId != null &&
+          !connectCompleter.isCompleted) {
+        connectCompleter.completeError(
+          StateError('Receiver app $_attachRequiredAppId is not running'),
+        );
       }
     }
 
@@ -1110,6 +1235,14 @@ class ChromecastSession extends CastSession {
       CastMediaType.mkv => 'video/x-matroska',
       CastMediaType.mpegTs => 'video/mp2t',
     };
+  }
+
+  static String _streamTypeForMedia(CastMedia media) {
+    final canBeLive = switch (media.type) {
+      CastMediaType.hls || CastMediaType.mpegTs => true,
+      CastMediaType.mp4 || CastMediaType.mkv => false,
+    };
+    return canBeLive && media.duration == null ? 'LIVE' : 'BUFFERED';
   }
 }
 

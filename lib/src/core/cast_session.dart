@@ -23,7 +23,14 @@ class SessionStateMachine {
       SessionState.connected,
       SessionState.disconnected,
     },
-    SessionState.connected: {SessionState.loading, SessionState.disconnected},
+    SessionState.connected: {
+      SessionState.loading,
+      SessionState.playing,
+      SessionState.paused,
+      SessionState.buffering,
+      SessionState.idle,
+      SessionState.disconnected,
+    },
     SessionState.loading: {
       SessionState.playing,
       SessionState.buffering, // receiver may report BUFFERING before PLAYING

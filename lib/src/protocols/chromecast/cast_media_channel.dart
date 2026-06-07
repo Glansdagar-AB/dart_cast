@@ -127,8 +127,11 @@ class CastMediaChannel {
       'requestId': nextRequestId(),
       'media': media,
       'autoplay': true,
-      'currentTime': startPosition ?? 0,
     };
+
+    if (startPosition != null) {
+      payload['currentTime'] = startPosition;
+    }
 
     // Active track IDs (activate first subtitle by default)
     if (subtitles != null && subtitles.isNotEmpty) {

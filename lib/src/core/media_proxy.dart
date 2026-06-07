@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -14,7 +15,14 @@ import 'ts_dvb_stripper.dart';
 import 'ts_keyframe_scanner.dart';
 
 /// Route type for proxy routing.
-enum _RouteType { remote, localFile, hlsStream, altAudioMuxed }
+enum _RouteType {
+  remote,
+  localFile,
+  hlsStream,
+  altAudioMuxed,
+  liveTsHls,
+  finiteTsHls,
+}
 
 /// Synthetic content served directly by the proxy (e.g., generated playlists).
 class _SyntheticContent {
@@ -29,6 +37,7 @@ class _ProxyRoute {
   final _RouteType type;
   final String url; // remote URL or local file path
   final Map<String, String> headers;
+  final Map<String, String> cookies;
 
   /// For [_RouteType.altAudioMuxed] routes — the prepared plan
   /// describing which video + audio source segments to mux for each
@@ -45,9 +54,687 @@ class _ProxyRoute {
     required this.type,
     required this.url,
     this.headers = const {},
+    Map<String, String>? cookies,
     this.altAudioPlan,
     this.stripDvbTables = true,
+  }) : cookies = cookies ?? <String, String>{};
+}
+
+class _LiveTsHlsSession {
+  static const _tsPacketSize = 188;
+  static const _segmentDuration = Duration(seconds: 4);
+  static const _segmentMinBytes = 188 * 128;
+  static const _segmentMaxBytes = 8 * 1024 * 1024;
+  static const _playlistSegmentCount = 10;
+  static const _maxStoredSegments = 16;
+  static const _upstreamUserAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) '
+      'Chrome/125.0.0.0 Safari/537.36';
+
+  final HttpClient httpClient;
+  final String url;
+  final Map<String, String> headers;
+  final Map<int, Uint8List> _segments = {};
+  final Map<int, Completer<Uint8List>> _pendingSegments = {};
+  int _nextSequence = 0;
+  bool _started = false;
+  bool _closed = false;
+  bool _tsPacketAligned = false;
+
+  _LiveTsHlsSession({
+    required this.httpClient,
+    required this.url,
+    required this.headers,
   });
+
+  int get playlistStartSequence =>
+      _nextSequence == 0 ? 0 : max(0, _nextSequence - _playlistSegmentCount);
+
+  void start() {
+    if (_started) return;
+    _started = true;
+    unawaited(_pump());
+  }
+
+  String buildPlaylist(String baseUrl) {
+    final start = playlistStartSequence;
+    final end = max(1, _nextSequence);
+    final buffer =
+        StringBuffer()
+          ..writeln('#EXTM3U')
+          ..writeln('#EXT-X-VERSION:3')
+          ..writeln('#EXT-X-TARGETDURATION:${_segmentDuration.inSeconds}')
+          ..writeln('#EXT-X-MEDIA-SEQUENCE:$start');
+
+    for (var sequence = start; sequence < end; sequence++) {
+      buffer
+        ..writeln('#EXTINF:${_segmentDuration.inSeconds}.000,')
+        ..writeln('$baseUrl/seg$sequence.ts');
+    }
+    CastLogger.debug(
+      'LiveTsHlsSession: built playlist seq=$start..${end - 1} '
+      'next=$_nextSequence stored=${_segments.length}',
+    );
+    return buffer.toString();
+  }
+
+  Future<Uint8List> segment(int sequence) {
+    start();
+    final ready = _segments[sequence];
+    if (ready != null) return Future.value(ready);
+
+    if (sequence < _nextSequence - _maxStoredSegments) {
+      return Future.error(StateError('Live TS segment expired: $sequence'));
+    }
+
+    final pending = _pendingSegments.putIfAbsent(
+      sequence,
+      Completer<Uint8List>.new,
+    );
+    return pending.future.timeout(const Duration(seconds: 24));
+  }
+
+  void close() {
+    _closed = true;
+    for (final pending in _pendingSegments.values) {
+      if (!pending.isCompleted) {
+        pending.completeError(StateError('Live TS session closed'));
+      }
+    }
+    _pendingSegments.clear();
+  }
+
+  Future<void> _pump() async {
+    while (!_closed) {
+      try {
+        final upstreamUri = Uri.parse(url);
+        final request = await httpClient.openUrl('GET', upstreamUri);
+        request.headers.set(HttpHeaders.userAgentHeader, _upstreamUserAgent);
+        request.headers.set(HttpHeaders.acceptHeader, '*/*');
+        request.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
+        for (final entry in headers.entries) {
+          request.headers.set(entry.key, entry.value);
+        }
+
+        final response = await request.close();
+        CastLogger.debug(
+          'LiveTsHlsSession: upstream ${response.statusCode} '
+          'type=${response.headers.contentType?.toString() ?? "-"}',
+        );
+        if (response.statusCode != HttpStatus.ok) {
+          await response.drain<void>();
+          _failPending(StateError('Live TS upstream ${response.statusCode}'));
+          return;
+        }
+
+        final buffer = BytesBuilder(copy: false);
+        final watch = Stopwatch()..start();
+        await for (final chunk in response) {
+          if (_closed) break;
+          buffer.add(chunk);
+          if (buffer.length >= _segmentMinBytes &&
+              (watch.elapsed >= _segmentDuration ||
+                  buffer.length >= _segmentMaxBytes)) {
+            _publishBufferedSegment(buffer);
+            watch
+              ..reset()
+              ..start();
+          }
+        }
+
+        if (!_closed && buffer.length > 0) {
+          _publishBufferedSegment(buffer, flush: true);
+        }
+      } catch (error) {
+        if (_closed) return;
+        CastLogger.warning('LiveTsHlsSession: upstream pump failed: $error');
+        _failPending(error);
+        return;
+      }
+    }
+  }
+
+  void _publishBufferedSegment(BytesBuilder buffer, {bool flush = false}) {
+    final bytes = buffer.takeBytes();
+    if (bytes.isEmpty) return;
+
+    var offset = 0;
+    if (!_tsPacketAligned) {
+      offset = _findTsPacketStart(bytes);
+      if (offset < 0) {
+        buffer.add(bytes);
+        return;
+      }
+      _tsPacketAligned = true;
+      if (offset > 0) {
+        CastLogger.debug(
+          'LiveTsHlsSession: dropped $offset byte(s) before TS sync',
+        );
+      }
+    }
+
+    final alignedLength =
+        ((bytes.length - offset) ~/ _tsPacketSize) * _tsPacketSize;
+    if (alignedLength <= 0) {
+      buffer.add(Uint8List.sublistView(bytes, offset));
+      return;
+    }
+
+    final segment = Uint8List.sublistView(
+      bytes,
+      offset,
+      offset + alignedLength,
+    );
+    final remainder =
+        offset + alignedLength < bytes.length
+            ? Uint8List.sublistView(bytes, offset + alignedLength)
+            : null;
+
+    if (flush || segment.length >= _segmentMinBytes) {
+      _publishSegment(segment);
+      if (remainder != null) buffer.add(remainder);
+    } else {
+      buffer.add(segment);
+      if (remainder != null) buffer.add(remainder);
+    }
+  }
+
+  int _findTsPacketStart(Uint8List bytes) {
+    final searchLimit = min(bytes.length, _tsPacketSize);
+    for (var offset = 0; offset < searchLimit; offset++) {
+      if (bytes[offset] != 0x47) continue;
+      final nextPacket = offset + _tsPacketSize;
+      if (nextPacket >= bytes.length || bytes[nextPacket] == 0x47) {
+        return offset;
+      }
+    }
+    return -1;
+  }
+
+  void _publishSegment(Uint8List bytes) {
+    if (bytes.isEmpty) return;
+    final sequence = _nextSequence++;
+    _segments[sequence] = bytes;
+    _pendingSegments.remove(sequence)?.complete(bytes);
+
+    final oldestToKeep = _nextSequence - _maxStoredSegments;
+    _segments.removeWhere((key, _) => key < oldestToKeep);
+
+    CastLogger.debug(
+      'LiveTsHlsSession: published segment seq=$sequence bytes=${bytes.length}',
+    );
+  }
+
+  void _failPending(Object error) {
+    for (final pending in _pendingSegments.values) {
+      if (!pending.isCompleted) pending.completeError(error);
+    }
+    _pendingSegments.clear();
+  }
+}
+
+class _FiniteTsHlsSession {
+  static const _tsPacketSize = 188;
+  static const _segmentDuration = Duration(seconds: 4);
+  static const _randomAccessThresholdSegments = 24;
+  static const _segmentMinBytes = 188 * 128;
+  static const _segmentMaxBytes = 64 * 1024 * 1024;
+  static const _ptsClockHz = 90000;
+  static const _ptsWrap = 1 << 33;
+  static final int _segmentDurationPts =
+      (_segmentDuration.inMilliseconds * _ptsClockHz) ~/ 1000;
+  static const _upstreamUserAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) '
+      'Chrome/125.0.0.0 Safari/537.36';
+
+  final HttpClient httpClient;
+  final String url;
+  final Map<String, String> headers;
+  final Duration duration;
+  final Directory _directory;
+  final Map<int, File> _segments = {};
+  final Map<int, Completer<File>> _pendingSegments = {};
+  int _nextSequence = 0;
+  int _pumpGeneration = 0;
+  bool _started = false;
+  bool _closed = false;
+  bool _tsPacketAligned = false;
+  int? _segmentStartPts;
+  int? _lastPts;
+
+  _FiniteTsHlsSession({
+    required this.httpClient,
+    required this.url,
+    required this.headers,
+    required this.duration,
+  }) : _directory = Directory.systemTemp.createTempSync('dart_cast_finite_ts_');
+
+  int get segmentCount => max(
+    1,
+    (duration.inMilliseconds / _segmentDuration.inMilliseconds).ceil(),
+  );
+
+  void start() {
+    if (_started) return;
+    _startPump(startSequence: 0, startUrl: url);
+  }
+
+  String buildPlaylist(String baseUrl) {
+    final buffer =
+        StringBuffer()
+          ..writeln('#EXTM3U')
+          ..writeln('#EXT-X-VERSION:3')
+          ..writeln('#EXT-X-PLAYLIST-TYPE:VOD')
+          ..writeln('#EXT-X-TARGETDURATION:${_segmentDuration.inSeconds}')
+          ..writeln('#EXT-X-MEDIA-SEQUENCE:0');
+
+    var remainingMs = duration.inMilliseconds;
+    for (var sequence = 0; sequence < segmentCount; sequence++) {
+      final segmentMs = min(
+        _segmentDuration.inMilliseconds,
+        max(1, remainingMs),
+      );
+      buffer
+        ..writeln('#EXTINF:${(segmentMs / 1000.0).toStringAsFixed(3)},')
+        ..writeln('$baseUrl/seg$sequence.ts');
+      remainingMs -= segmentMs;
+    }
+    buffer.writeln('#EXT-X-ENDLIST');
+
+    CastLogger.debug(
+      'FiniteTsHlsSession: built VOD playlist segments=$segmentCount '
+      'duration=${duration.inSeconds}s',
+    );
+    return buffer.toString();
+  }
+
+  Future<File> segment(int sequence) {
+    if (sequence < 0 || sequence >= segmentCount) {
+      return Future.error(
+        StateError('Finite TS segment out of range: $sequence'),
+      );
+    }
+
+    final ready = _segments[sequence];
+    if (ready != null) return Future.value(ready);
+
+    final pending = _pendingSegments.putIfAbsent(sequence, Completer<File>.new);
+
+    if (!_started) {
+      final randomAccess = _randomAccessForSequence(sequence);
+      if (randomAccess != null && sequence >= _randomAccessThresholdSegments) {
+        _startPump(
+          startSequence: randomAccess.startSequence,
+          startUrl: randomAccess.url,
+        );
+      } else {
+        start();
+      }
+    } else {
+      final randomAccess = _randomAccessForSequence(sequence);
+      if (randomAccess != null && _shouldRestartForRandomAccess(sequence)) {
+        _restartPump(
+          startSequence: randomAccess.startSequence,
+          startUrl: randomAccess.url,
+        );
+      }
+    }
+
+    return pending.future.timeout(const Duration(seconds: 45));
+  }
+
+  bool _shouldRestartForRandomAccess(int sequence) {
+    return sequence > _nextSequence + _randomAccessThresholdSegments ||
+        sequence < _nextSequence - _randomAccessThresholdSegments;
+  }
+
+  void _startPump({required int startSequence, required String startUrl}) {
+    _started = true;
+    _nextSequence = startSequence;
+    _tsPacketAligned = false;
+    _segmentStartPts = null;
+    _lastPts = null;
+    final generation = ++_pumpGeneration;
+    CastLogger.debug(
+      'FiniteTsHlsSession: starting pump seq=$startSequence url=${_summarizeUrl(startUrl)}',
+    );
+    unawaited(_pump(generation: generation, startUrl: startUrl));
+  }
+
+  void _restartPump({required int startSequence, required String startUrl}) {
+    for (final entry in _pendingSegments.entries.toList()) {
+      if (entry.key < startSequence && !entry.value.isCompleted) {
+        entry.value.completeError(
+          StateError('Finite TS segment superseded by random access seek'),
+        );
+        _pendingSegments.remove(entry.key);
+      }
+    }
+    _startPump(startSequence: startSequence, startUrl: startUrl);
+  }
+
+  void close() {
+    _closed = true;
+    for (final pending in _pendingSegments.values) {
+      if (!pending.isCompleted) {
+        pending.completeError(StateError('Finite TS session closed'));
+      }
+    }
+    _pendingSegments.clear();
+    try {
+      if (_directory.existsSync()) {
+        _directory.deleteSync(recursive: true);
+      }
+    } catch (error) {
+      CastLogger.warning(
+        'FiniteTsHlsSession: failed to delete temp directory: $error',
+      );
+    }
+  }
+
+  Future<void> _pump({
+    required int generation,
+    required String startUrl,
+  }) async {
+    try {
+      final upstreamUri = Uri.parse(startUrl);
+      final request = await httpClient.openUrl('GET', upstreamUri);
+      request.headers.set(HttpHeaders.userAgentHeader, _upstreamUserAgent);
+      request.headers.set(HttpHeaders.acceptHeader, '*/*');
+      request.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
+      for (final entry in headers.entries) {
+        request.headers.set(entry.key, entry.value);
+      }
+
+      final response = await request.close();
+      if (generation != _pumpGeneration || _closed) {
+        await response.drain<void>();
+        return;
+      }
+      CastLogger.debug(
+        'FiniteTsHlsSession: upstream ${response.statusCode} '
+        'type=${response.headers.contentType?.toString() ?? "-"}',
+      );
+      if (response.statusCode != HttpStatus.ok) {
+        await response.drain<void>();
+        _failPending(StateError('Finite TS upstream ${response.statusCode}'));
+        return;
+      }
+
+      final packetCarry = BytesBuilder(copy: false);
+      final segmentBuffer = BytesBuilder(copy: false);
+      await for (final chunk in response) {
+        if (_closed || generation != _pumpGeneration) break;
+        await _processChunk(chunk, packetCarry, segmentBuffer, generation);
+        if (_nextSequence >= segmentCount) break;
+      }
+
+      if (!_closed &&
+          generation == _pumpGeneration &&
+          packetCarry.length > 0 &&
+          _nextSequence < segmentCount) {
+        segmentBuffer.add(packetCarry.takeBytes());
+      }
+      if (!_closed &&
+          generation == _pumpGeneration &&
+          segmentBuffer.length > 0 &&
+          _nextSequence < segmentCount) {
+        await _publishSegment(segmentBuffer.takeBytes(), flush: true);
+      }
+      if (generation == _pumpGeneration) {
+        _failPending(StateError('Finite TS upstream ended'));
+      }
+    } catch (error) {
+      if (_closed) return;
+      CastLogger.warning('FiniteTsHlsSession: upstream pump failed: $error');
+      if (generation == _pumpGeneration) {
+        _failPending(error);
+      }
+    }
+  }
+
+  Future<void> _processChunk(
+    List<int> chunk,
+    BytesBuilder packetCarry,
+    BytesBuilder segmentBuffer,
+    int generation,
+  ) async {
+    packetCarry.add(chunk);
+    final bytes = packetCarry.takeBytes();
+    if (bytes.isEmpty) return;
+
+    var offset = 0;
+    if (!_tsPacketAligned) {
+      offset = _findTsPacketStart(bytes);
+      if (offset < 0) {
+        packetCarry.add(bytes);
+        return;
+      }
+      _tsPacketAligned = true;
+      if (offset > 0) {
+        CastLogger.debug(
+          'FiniteTsHlsSession: dropped $offset byte(s) before TS sync',
+        );
+      }
+    }
+
+    final alignedLength =
+        ((bytes.length - offset) ~/ _tsPacketSize) * _tsPacketSize;
+    if (alignedLength <= 0) {
+      packetCarry.add(Uint8List.sublistView(bytes, offset));
+      return;
+    }
+
+    final remainder =
+        offset + alignedLength < bytes.length
+            ? Uint8List.sublistView(bytes, offset + alignedLength)
+            : null;
+
+    final end = offset + alignedLength;
+    for (
+      var packetOffset = offset;
+      packetOffset < end;
+      packetOffset += _tsPacketSize
+    ) {
+      final packet = Uint8List.sublistView(
+        bytes,
+        packetOffset,
+        packetOffset + _tsPacketSize,
+      );
+      segmentBuffer.add(packet);
+
+      final pts = _readVideoPts(packet);
+      if (pts != null) {
+        _segmentStartPts ??= pts;
+        _lastPts = pts;
+      }
+
+      if (_shouldPublishSegment(segmentBuffer.length)) {
+        if (generation != _pumpGeneration) return;
+        await _publishSegment(segmentBuffer.takeBytes());
+        if (_nextSequence >= segmentCount) break;
+      }
+    }
+
+    if (remainder != null) packetCarry.add(remainder);
+  }
+
+  int _findTsPacketStart(Uint8List bytes) {
+    final searchLimit = min(bytes.length, _tsPacketSize);
+    for (var offset = 0; offset < searchLimit; offset++) {
+      if (bytes[offset] != 0x47) continue;
+      final nextPacket = offset + _tsPacketSize;
+      if (nextPacket >= bytes.length || bytes[nextPacket] == 0x47) {
+        return offset;
+      }
+    }
+    return -1;
+  }
+
+  bool _shouldPublishSegment(int byteLength) {
+    if (byteLength < _segmentMinBytes) return false;
+
+    final segmentStartPts = _segmentStartPts;
+    final lastPts = _lastPts;
+    if (segmentStartPts != null && lastPts != null) {
+      return _ptsDelta(segmentStartPts, lastPts) >= _segmentDurationPts;
+    }
+
+    return byteLength >= _segmentMaxBytes;
+  }
+
+  int _ptsDelta(int start, int end) {
+    final diff = end - start;
+    return diff >= 0 ? diff : diff + _ptsWrap;
+  }
+
+  ({int startSequence, String url})? _randomAccessForSequence(int sequence) {
+    final offsetSeconds = sequence * _segmentDuration.inSeconds;
+    final alignedOffsetSeconds = (offsetSeconds ~/ 60) * 60;
+    final startSequence = alignedOffsetSeconds ~/ _segmentDuration.inSeconds;
+    final shiftedUrl = _xtreamTimeshiftUrlForOffset(
+      Duration(seconds: alignedOffsetSeconds),
+    );
+    if (shiftedUrl == null) return null;
+    return (startSequence: startSequence, url: shiftedUrl);
+  }
+
+  String? _xtreamTimeshiftUrlForOffset(Duration offset) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme || !uri.hasAuthority) return null;
+
+    final segments = uri.pathSegments.toList();
+    final timeshiftIndex = segments.indexWhere(
+      (segment) => segment.toLowerCase() == 'timeshift',
+    );
+    if (timeshiftIndex < 0 || segments.length <= timeshiftIndex + 5) {
+      return null;
+    }
+
+    final durationIndex = timeshiftIndex + 3;
+    final startIndex = timeshiftIndex + 4;
+    final originalDurationMinutes = int.tryParse(segments[durationIndex]);
+    final originalStart = _parseXtreamTimeshiftStart(segments[startIndex]);
+    if (originalDurationMinutes == null || originalStart == null) return null;
+
+    final offsetMinutes = offset.inMinutes;
+    final remainingFromOriginal = originalDurationMinutes - offsetMinutes;
+    final remainingFromMedia =
+        ((duration - offset).inSeconds / 60.0).ceil() + 1;
+    final shiftedDurationMinutes = max(
+      1,
+      max(remainingFromOriginal, remainingFromMedia),
+    );
+
+    segments[durationIndex] = shiftedDurationMinutes.toString();
+    segments[startIndex] = _formatXtreamTimeshiftStart(
+      originalStart.add(offset),
+    );
+    return uri.replace(pathSegments: segments).toString();
+  }
+
+  DateTime? _parseXtreamTimeshiftStart(String value) {
+    final match = RegExp(
+      r'^(\d{4})-(\d{2})-(\d{2})[:T](\d{2})-(\d{2})(?:-(\d{2}))?$',
+    ).firstMatch(value);
+    if (match == null) return null;
+
+    int part(int index) => int.parse(match.group(index)!);
+    return DateTime(
+      part(1),
+      part(2),
+      part(3),
+      part(4),
+      part(5),
+      match.group(6) == null ? 0 : part(6),
+    );
+  }
+
+  String _formatXtreamTimeshiftStart(DateTime value) {
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${value.year.toString().padLeft(4, '0')}-'
+        '${two(value.month)}-'
+        '${two(value.day)}:'
+        '${two(value.hour)}-'
+        '${two(value.minute)}';
+  }
+
+  String _summarizeUrl(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null) return value;
+    return uri.replace(query: uri.hasQuery ? '...' : null).toString();
+  }
+
+  int? _readVideoPts(Uint8List packet) {
+    if (packet.length < _tsPacketSize || packet[0] != 0x47) return null;
+
+    final adaptCtrl = (packet[3] >> 4) & 0x03;
+    if (adaptCtrl != 1 && adaptCtrl != 3) return null;
+
+    final pusi = (packet[1] >> 6) & 0x01;
+    if (pusi != 1) return null;
+
+    var payloadStart = 4;
+    if (adaptCtrl == 3) {
+      payloadStart += 1 + packet[4];
+    }
+
+    if (payloadStart + 14 >= _tsPacketSize) return null;
+    if (packet[payloadStart] != 0x00 ||
+        packet[payloadStart + 1] != 0x00 ||
+        packet[payloadStart + 2] != 0x01) {
+      return null;
+    }
+
+    final streamId = packet[payloadStart + 3];
+    if (streamId < 0xE0 || streamId > 0xEF) return null;
+
+    final ptsDtsFlags = (packet[payloadStart + 7] >> 6) & 0x03;
+    if (ptsDtsFlags < 2) return null;
+
+    final ptsOffset = payloadStart + 9;
+    if (ptsOffset + 5 > _tsPacketSize) return null;
+
+    return ((packet[ptsOffset] >> 1) & 0x07).toUnsigned(64) << 30 |
+        (packet[ptsOffset + 1]).toUnsigned(64) << 22 |
+        ((packet[ptsOffset + 2] >> 1) & 0x7F).toUnsigned(64) << 15 |
+        (packet[ptsOffset + 3]).toUnsigned(64) << 7 |
+        ((packet[ptsOffset + 4] >> 1) & 0x7F).toUnsigned(64);
+  }
+
+  Future<void> _publishSegment(Uint8List bytes, {bool flush = false}) async {
+    if (bytes.isEmpty || _nextSequence >= segmentCount) return;
+    final sequence = _nextSequence++;
+    final segmentStartPts = _segmentStartPts;
+    final lastPts = _lastPts;
+    final mediaDurationSeconds =
+        segmentStartPts != null && lastPts != null
+            ? _ptsDelta(segmentStartPts, lastPts) / _ptsClockHz
+            : null;
+    final file = File('${_directory.path}/seg$sequence.ts');
+    await file.writeAsBytes(bytes, flush: true);
+    _segments[sequence] = file;
+    _pendingSegments.remove(sequence)?.complete(file);
+
+    _segmentStartPts = null;
+    _lastPts = null;
+
+    CastLogger.debug(
+      'FiniteTsHlsSession: published segment seq=$sequence '
+      'bytes=${bytes.length}'
+      '${mediaDurationSeconds == null ? "" : " media=${mediaDurationSeconds.toStringAsFixed(3)}s"}'
+      '${flush ? " flush" : ""}',
+    );
+  }
+
+  void _failPending(Object error) {
+    for (final pending in _pendingSegments.values) {
+      if (!pending.isCompleted) pending.completeError(error);
+    }
+    _pendingSegments.clear();
+  }
 }
 
 /// Local HTTP proxy server for casting.
@@ -55,12 +742,22 @@ class _ProxyRoute {
 /// Proxies remote URLs with custom header injection and rewrites HLS playlists.
 /// Also serves local files for casting downloaded content.
 class MediaProxy {
+  static const _hlsUpstreamUserAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) '
+      'Chrome/125.0.0.0 Safari/537.36';
+  static const _syntheticLiveSegmentDuration = Duration(seconds: 8);
+  static const _syntheticLiveSegmentMinBytes = 188 * 128;
+  static const _syntheticLiveSegmentMaxBytes = 8 * 1024 * 1024;
+
   HttpServer? _server;
   HttpClient? _httpClient;
   HlsStreamHandler? _hlsStreamHandler;
   String? _baseUrl;
   final Map<String, _ProxyRoute> _routes = {};
   final Map<String, _SyntheticContent> _syntheticContent = {};
+  final Map<String, _LiveTsHlsSession> _liveTsHlsSessions = {};
+  final Map<String, _FiniteTsHlsSession> _finiteTsHlsSessions = {};
   final Random _random = Random.secure();
 
   /// Cached PAT+PMT packets from the TS file header.
@@ -121,6 +818,14 @@ class MediaProxy {
     _httpClient?.close(force: true);
     _httpClient = null;
     _hlsStreamHandler = null;
+    for (final session in _liveTsHlsSessions.values) {
+      session.close();
+    }
+    _liveTsHlsSessions.clear();
+    for (final session in _finiteTsHlsSessions.values) {
+      session.close();
+    }
+    _finiteTsHlsSessions.clear();
     _altAudioPlanner?.close();
     _altAudioPlanner = null;
     _altAudioMuxer = null;
@@ -190,14 +895,35 @@ class MediaProxy {
     return '$_baseUrl/file/$token$ext';
   }
 
-  /// Wraps a media URL in a single-segment HLS playlist.
+  /// Wraps a media URL in a simple HLS playlist.
   ///
-  /// [duration] is the known duration in seconds. When provided, the playlist
-  /// reports the correct total duration so the cast device shows accurate
-  /// progress. When null, falls back to a large placeholder value.
+  /// [duration] is the known duration in seconds. When provided for non-live
+  /// media, the playlist reports the correct total duration so the cast device
+  /// shows accurate progress. When null, non-live media falls back to a large
+  /// placeholder value.
+  ///
+  /// [isLive] emits a sliding live-style playlist without ENDLIST. This is
+  /// useful for wrapping an endless MPEG-TS response: Chromecast/Shaka rejects
+  /// a fake 99,999-second VOD playlist before it ever requests the segment.
   ///
   /// Returns a proxy URL pointing to the generated m3u8 playlist.
-  String wrapInHlsPlaylist(String mediaProxyUrl, {double? duration}) {
+  String wrapInHlsPlaylist(
+    String mediaProxyUrl, {
+    double? duration,
+    bool isLive = false,
+  }) {
+    if (isLive) {
+      final playlistContent = _buildLiveHlsPlaylist(mediaProxyUrl);
+      CastLogger.debug('MediaProxy: HLS playlist content:\n$playlistContent');
+
+      final token = _generateToken();
+      _syntheticContent[token] = _SyntheticContent(
+        content: playlistContent,
+        contentType: ContentType('application', 'x-mpegURL'),
+      );
+      return '$_baseUrl/synthetic/$token/playlist.m3u8';
+    }
+
     final dur = duration ?? 99999.0;
     final playlistContent =
         '#EXTM3U\n'
@@ -216,7 +942,92 @@ class MediaProxy {
       content: playlistContent,
       contentType: ContentType('application', 'x-mpegURL'),
     );
-    return '$_baseUrl/synthetic/$token';
+    return '$_baseUrl/synthetic/$token/playlist.m3u8';
+  }
+
+  /// Registers a remote live MPEG-TS URL as a local HLS stream.
+  ///
+  /// The proxy opens a single upstream TS connection and publishes finite
+  /// local TS segments from it. This avoids both Chromecast's top-level raw
+  /// TS limitations and providers that block or stall parallel live TS
+  /// connections when HLS prefetch requests multiple segments at once.
+  String registerLiveTsAsHls(
+    String tsUrl, {
+    Map<String, String> headers = const {},
+  }) {
+    final httpClient = _httpClient;
+    if (httpClient == null) {
+      throw StateError('MediaProxy must be started before registering media');
+    }
+
+    final token = _generateToken();
+    _routes[token] = _ProxyRoute(
+      type: _RouteType.liveTsHls,
+      url: tsUrl,
+      headers: headers,
+    );
+    _liveTsHlsSessions[token] = _LiveTsHlsSession(
+      httpClient: httpClient,
+      url: tsUrl,
+      headers: headers,
+    );
+    return '$_baseUrl/live-ts-hls/$token/playlist.m3u8';
+  }
+
+  /// Registers a finite remote MPEG-TS URL as a VOD HLS playlist.
+  ///
+  /// Unlike [wrapInHlsPlaylist], this does not expose the entire transport
+  /// stream as one giant HLS segment. The proxy opens one upstream TS request
+  /// and publishes short local `.ts` segments from it, which is much easier for
+  /// Chromecast/Shaka to load while still avoiding repeated provider requests.
+  String registerFiniteTsAsHls(
+    String tsUrl, {
+    required Duration duration,
+    Map<String, String> headers = const {},
+  }) {
+    final httpClient = _httpClient;
+    if (httpClient == null) {
+      throw StateError('MediaProxy must be started before registering media');
+    }
+
+    final token = _generateToken();
+    _routes[token] = _ProxyRoute(
+      type: _RouteType.finiteTsHls,
+      url: tsUrl,
+      headers: headers,
+    );
+    _finiteTsHlsSessions[token] = _FiniteTsHlsSession(
+      httpClient: httpClient,
+      url: tsUrl,
+      headers: headers,
+      duration: duration,
+    );
+    return '$_baseUrl/finite-ts-hls/$token/playlist.m3u8';
+  }
+
+  String _buildLiveHlsPlaylist(String mediaProxyUrl) {
+    final buffer =
+        StringBuffer()
+          ..writeln('#EXTM3U')
+          ..writeln('#EXT-X-VERSION:3')
+          ..writeln('#EXT-X-INDEPENDENT-SEGMENTS')
+          ..writeln('#EXT-X-TARGETDURATION:10')
+          ..writeln('#EXT-X-MEDIA-SEQUENCE:0');
+
+    for (var index = 0; index < 3; index++) {
+      buffer
+        ..writeln('#EXT-X-DISCONTINUITY')
+        ..writeln('#EXTINF:10.000,')
+        ..writeln(_appendQueryParameter(mediaProxyUrl, 'hls_seq', '$index'));
+    }
+    return buffer.toString();
+  }
+
+  String _appendQueryParameter(String url, String name, String value) {
+    final uri = Uri.parse(url);
+    return uri
+        .replace(queryParameters: {...uri.queryParameters, name: value})
+        .toString();
   }
 
   /// Creates a fake HLS playlist that splits a local file into virtual
@@ -666,6 +1477,8 @@ class MediaProxy {
     if (excludeToken != null) {
       final keptRoute = _routes[excludeToken];
       final keptSynthetic = _syntheticContent[excludeToken];
+      final keptLiveTsHlsSession = _liveTsHlsSessions[excludeToken];
+      final keptFiniteTsHlsSession = _finiteTsHlsSessions[excludeToken];
 
       // If the excluded token is synthetic content (e.g. HLS playlist),
       // preserve any file routes it references as segment URLs.
@@ -688,7 +1501,35 @@ class MediaProxy {
       if (keptSynthetic != null) {
         _syntheticContent[excludeToken] = keptSynthetic;
       }
+
+      for (final entry in _liveTsHlsSessions.entries) {
+        if (entry.key != excludeToken) {
+          entry.value.close();
+        }
+      }
+      _liveTsHlsSessions.clear();
+      if (keptLiveTsHlsSession != null) {
+        _liveTsHlsSessions[excludeToken] = keptLiveTsHlsSession;
+      }
+
+      for (final entry in _finiteTsHlsSessions.entries) {
+        if (entry.key != excludeToken) {
+          entry.value.close();
+        }
+      }
+      _finiteTsHlsSessions.clear();
+      if (keptFiniteTsHlsSession != null) {
+        _finiteTsHlsSessions[excludeToken] = keptFiniteTsHlsSession;
+      }
     } else {
+      for (final session in _liveTsHlsSessions.values) {
+        session.close();
+      }
+      _liveTsHlsSessions.clear();
+      for (final session in _finiteTsHlsSessions.values) {
+        session.close();
+      }
+      _finiteTsHlsSessions.clear();
       _routes.clear();
       _syntheticContent.clear();
     }
@@ -740,6 +1581,20 @@ class MediaProxy {
         return;
       }
 
+      // Route: /live-ts-hls/<token>/(playlist.m3u8|seg<N>.ts)
+      // — single-upstream live MPEG-TS exposed as finite local HLS segments.
+      if (path.startsWith('/live-ts-hls/')) {
+        await _handleLiveTsHlsRequest(request);
+        return;
+      }
+
+      // Route: /finite-ts-hls/<token>/(playlist.m3u8|seg<N>.ts)
+      // — finite remote MPEG-TS exposed as VOD HLS segments.
+      if (path.startsWith('/finite-ts-hls/')) {
+        await _handleFiniteTsHlsRequest(request);
+        return;
+      }
+
       // Route: /alt-audio/<token>/(master.m3u8|variant.m3u8|seg<N>.ts)
       // — synthesised single-stream HLS that merges alt-audio source.
       if (path.startsWith('/alt-audio/')) {
@@ -761,7 +1616,9 @@ class MediaProxy {
 
       // Route: /synthetic/<token> — generated content (subtitle playlists, wrappers)
       if (path.startsWith('/synthetic/')) {
-        final token = path.substring('/synthetic/'.length);
+        final rest = path.substring('/synthetic/'.length);
+        final slashIdx = rest.indexOf('/');
+        final token = slashIdx < 0 ? rest : rest.substring(0, slashIdx);
         await _handleSyntheticRequest(request, token);
         return;
       }
@@ -812,6 +1669,21 @@ class MediaProxy {
       headers.write('HTTP/1.0 200 OK\r\n');
       headers.write('Content-Type: ${synthetic.contentType.mimeType}\r\n');
       headers.write('Content-Length: ${encoded.length}\r\n');
+      headers.write('Access-Control-Allow-Origin: ${_corsOrigin(request)}\r\n');
+      headers.write('Vary: Origin\r\n');
+      headers.write(
+        'Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS\r\n',
+      );
+      headers.write(
+        'Access-Control-Allow-Headers: Range, Content-Type, Accept, '
+        'Accept-Encoding, Origin\r\n',
+      );
+      headers.write(
+        'Access-Control-Expose-Headers: Content-Length, Content-Range, '
+        'Accept-Ranges\r\n',
+      );
+      headers.write('Cache-Control: no-cache, no-store, must-revalidate\r\n');
+      headers.write('Accept-Ranges: none\r\n');
       headers.write('\r\n');
       socket.add(utf8.encode(headers.toString()));
       if (request.method != 'HEAD') {
@@ -819,6 +1691,164 @@ class MediaProxy {
       }
     } finally {
       await socket.close();
+    }
+  }
+
+  Future<void> _handleLiveTsHlsRequest(HttpRequest request) async {
+    final segments = request.uri.pathSegments;
+    // Expected layout: ["live-ts-hls", "<token>", "playlist.m3u8"|"seg<N>.ts"]
+    if (segments.length < 3) {
+      request.response.statusCode = HttpStatus.notFound;
+      await request.response.close();
+      return;
+    }
+
+    final token = segments[1];
+    final filename = segments[2];
+    final route = _routes[token];
+    final session = _liveTsHlsSessions[token];
+    if (route == null ||
+        route.type != _RouteType.liveTsHls ||
+        session == null) {
+      request.response.statusCode = HttpStatus.notFound;
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      await request.response.close();
+      return;
+    }
+
+    if (filename == 'playlist.m3u8') {
+      final playlist = session.buildPlaylist('$_baseUrl/live-ts-hls/$token');
+      final encoded = utf8.encode(playlist);
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType(
+        'application',
+        'x-mpegURL',
+      );
+      request.response.headers.set(
+        'Cache-Control',
+        'no-cache, no-store, must-revalidate',
+      );
+      request.response.headers.set('Accept-Ranges', 'none');
+      request.response.headers.set('Content-Length', encoded.length.toString());
+      if (request.method != 'HEAD') {
+        request.response.add(encoded);
+      }
+      await request.response.close();
+      return;
+    }
+
+    final match = RegExp(r'^seg(\d+)\.ts$').firstMatch(filename);
+    if (match == null) {
+      request.response.statusCode = HttpStatus.notFound;
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      await request.response.close();
+      return;
+    }
+
+    final sequence = int.parse(match.group(1)!);
+    try {
+      final bytes = await session.segment(sequence);
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType('video', 'mp2t');
+      request.response.headers.set('Cache-Control', 'no-store');
+      request.response.headers.set('Accept-Ranges', 'none');
+      request.response.headers.set('Content-Length', bytes.length.toString());
+      if (request.method != 'HEAD') {
+        request.response.add(bytes);
+      }
+      await request.response.close();
+      CastLogger.debug(
+        'MediaProxy: served live TS HLS segment seq=$sequence '
+        'bytes=${bytes.length}',
+      );
+    } catch (error) {
+      CastLogger.warning(
+        'MediaProxy: live TS HLS segment seq=$sequence failed: $error',
+      );
+      request.response.statusCode = HttpStatus.badGateway;
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      await request.response.close();
+    }
+  }
+
+  Future<void> _handleFiniteTsHlsRequest(HttpRequest request) async {
+    final segments = request.uri.pathSegments;
+    // Expected layout: ["finite-ts-hls", "<token>", "playlist.m3u8"|"seg<N>.ts"]
+    if (segments.length < 3) {
+      request.response.statusCode = HttpStatus.notFound;
+      await request.response.close();
+      return;
+    }
+
+    final token = segments[1];
+    final filename = segments[2];
+    final route = _routes[token];
+    final session = _finiteTsHlsSessions[token];
+    if (route == null ||
+        route.type != _RouteType.finiteTsHls ||
+        session == null) {
+      request.response.statusCode = HttpStatus.notFound;
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      await request.response.close();
+      return;
+    }
+
+    if (filename == 'playlist.m3u8') {
+      final playlist = session.buildPlaylist('$_baseUrl/finite-ts-hls/$token');
+      final encoded = utf8.encode(playlist);
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType(
+        'application',
+        'x-mpegURL',
+      );
+      request.response.headers.set(
+        'Cache-Control',
+        'no-cache, no-store, must-revalidate',
+      );
+      request.response.headers.set('Accept-Ranges', 'none');
+      request.response.headers.set('Content-Length', encoded.length.toString());
+      if (request.method != 'HEAD') {
+        request.response.add(encoded);
+      }
+      await request.response.close();
+      return;
+    }
+
+    final match = RegExp(r'^seg(\d+)\.ts$').firstMatch(filename);
+    if (match == null) {
+      request.response.statusCode = HttpStatus.notFound;
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      await request.response.close();
+      return;
+    }
+
+    final sequence = int.parse(match.group(1)!);
+    try {
+      final file = await session.segment(sequence);
+      final length = await file.length();
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.contentType = ContentType('video', 'mp2t');
+      request.response.headers.set('Cache-Control', 'no-store');
+      request.response.headers.set('Accept-Ranges', 'none');
+      request.response.headers.set('Content-Length', length.toString());
+      if (request.method != 'HEAD') {
+        await request.response.addStream(file.openRead());
+      }
+      await request.response.close();
+      CastLogger.debug(
+        'MediaProxy: served finite TS HLS segment seq=$sequence bytes=$length',
+      );
+    } catch (error) {
+      CastLogger.warning(
+        'MediaProxy: finite TS HLS segment seq=$sequence failed: $error',
+      );
+      request.response.statusCode = HttpStatus.badGateway;
+      _addCorsHeaders(request.response, request.headers.value('Origin'));
+      await request.response.close();
     }
   }
 
@@ -988,6 +2018,18 @@ class MediaProxy {
     final upstreamUri = Uri.parse(targetUrl);
     final upstreamRequest = await _httpClient!.openUrl('GET', upstreamUri);
 
+    final isSubresource = request.uri.queryParameters['url'] != null;
+    final isHlsRoute = _isLikelyHlsUrl(route.url);
+    if (isHlsRoute) {
+      _applyHlsRequestHeaders(
+        upstreamRequest,
+        request,
+        route: route,
+        isSubresource: isSubresource,
+        refererUrl: route.url,
+      );
+    }
+
     // Inject registered headers
     for (final entry in route.headers.entries) {
       upstreamRequest.headers.set(entry.key, entry.value);
@@ -1000,6 +2042,7 @@ class MediaProxy {
     }
 
     final upstreamResponse = await upstreamRequest.close();
+    _storeResponseCookies(route, upstreamResponse.headers);
 
     // Set response status
     request.response.statusCode = upstreamResponse.statusCode;
@@ -1030,7 +2073,6 @@ class MediaProxy {
     // The override is intentionally narrow: only when the upstream looks
     // like an image AND the proxied URL is a sub-resource fetch.
     var effectiveContentType = upstreamContentType;
-    final isSubresource = request.uri.queryParameters['url'] != null;
     if (isSubresource &&
         upstreamContentType != null &&
         upstreamContentType.primaryType.toLowerCase() == 'image') {
@@ -1176,6 +2218,21 @@ class MediaProxy {
         effectiveContentType?.primaryType.toLowerCase() == 'video' &&
         effectiveContentType?.subType.toLowerCase() == 'mp2t';
     final stripper = (isMp2t && route.stripDvbTables) ? TsDvbStripper() : null;
+    final isSyntheticLiveHlsSegment =
+        isMp2t && request.uri.queryParameters.containsKey('hls_seq');
+    final segmentWatch = Stopwatch();
+    var segmentBytesWritten = 0;
+
+    if (isSyntheticLiveHlsSegment) {
+      request.response.headers.set('Accept-Ranges', 'none');
+      CastLogger.debug(
+        'MediaProxy: serving bounded live TS HLS segment '
+        'seq=${request.uri.queryParameters['hls_seq']} '
+        'maxDuration=${_syntheticLiveSegmentDuration.inSeconds}s '
+        'url=${_summarizeUrl(targetUrl)}',
+      );
+      segmentWatch.start();
+    }
 
     var isFirstChunk = true;
     await for (final chunk in upstreamResponse) {
@@ -1195,9 +2252,24 @@ class MediaProxy {
         final filtered = stripper.process(chunk);
         if (filtered.isNotEmpty) {
           request.response.add(filtered);
+          segmentBytesWritten += filtered.length;
         }
       } else {
         request.response.add(chunk);
+        segmentBytesWritten += chunk.length;
+      }
+
+      if (isSyntheticLiveHlsSegment &&
+          segmentBytesWritten >= _syntheticLiveSegmentMinBytes &&
+          (segmentWatch.elapsed >= _syntheticLiveSegmentDuration ||
+              segmentBytesWritten >= _syntheticLiveSegmentMaxBytes)) {
+        CastLogger.debug(
+          'MediaProxy: closing bounded live TS HLS segment '
+          'seq=${request.uri.queryParameters['hls_seq']} '
+          'bytes=$segmentBytesWritten '
+          'elapsed=${segmentWatch.elapsedMilliseconds}ms',
+        );
+        break;
       }
     }
     if (stripper != null) {
@@ -1267,6 +2339,93 @@ class MediaProxy {
       return 'png';
     }
     return 'unknown (0x${b0.toRadixString(16).padLeft(2, '0')})';
+  }
+
+  void _applyHlsRequestHeaders(
+    HttpClientRequest upstreamRequest,
+    HttpRequest downstreamRequest, {
+    required _ProxyRoute route,
+    required bool isSubresource,
+    required String refererUrl,
+  }) {
+    final acceptLanguage = downstreamRequest.headers.value(
+      HttpHeaders.acceptLanguageHeader,
+    );
+
+    upstreamRequest.headers.set(
+      HttpHeaders.userAgentHeader,
+      _hlsUpstreamUserAgent,
+    );
+    upstreamRequest.headers.set(
+      HttpHeaders.acceptHeader,
+      isSubresource
+          ? '*/*'
+          : 'application/vnd.apple.mpegurl, application/x-mpegURL, */*',
+    );
+    if (acceptLanguage != null && acceptLanguage.isNotEmpty) {
+      upstreamRequest.headers.set(
+        HttpHeaders.acceptLanguageHeader,
+        acceptLanguage,
+      );
+    }
+
+    upstreamRequest.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
+
+    if (isSubresource) {
+      upstreamRequest.headers.set(HttpHeaders.refererHeader, refererUrl);
+      if (route.cookies.isNotEmpty) {
+        upstreamRequest.headers.set(
+          HttpHeaders.cookieHeader,
+          _cookieHeader(route.cookies),
+        );
+      }
+      CastLogger.debug(
+        'MediaProxy: HLS upstream subresource headers '
+        'ua=browser referer=${_summarizeUrl(refererUrl)} '
+        'cookies=${route.cookies.length}',
+      );
+    }
+  }
+
+  void _storeResponseCookies(_ProxyRoute route, HttpHeaders headers) {
+    final setCookieHeaders = headers[HttpHeaders.setCookieHeader];
+    if (setCookieHeaders == null || setCookieHeaders.isEmpty) return;
+
+    var changed = false;
+    for (final rawHeader in setCookieHeaders) {
+      try {
+        final cookie = Cookie.fromSetCookieValue(rawHeader);
+        final expires = cookie.expires;
+        final isExpired =
+            cookie.maxAge == 0 ||
+            (expires != null && !expires.isAfter(DateTime.now().toUtc()));
+        if (isExpired) {
+          changed = route.cookies.remove(cookie.name) != null || changed;
+        } else {
+          route.cookies[cookie.name] = cookie.value;
+          changed = true;
+        }
+      } catch (error) {
+        CastLogger.debug('MediaProxy: ignored malformed Set-Cookie header');
+      }
+    }
+
+    if (changed) {
+      CastLogger.debug(
+        'MediaProxy: stored ${route.cookies.length} upstream cookie(s)',
+      );
+    }
+  }
+
+  String _cookieHeader(Map<String, String> cookies) {
+    return cookies.entries
+        .map((entry) => '${entry.key}=${entry.value}')
+        .join('; ');
+  }
+
+  bool _isLikelyHlsUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('.m3u8') || lower.contains('m3u8');
   }
 
   Future<void> _handleFileRequest(HttpRequest request, String token) async {
@@ -1480,7 +2639,7 @@ class MediaProxy {
   void _addCorsHeaders(HttpResponse response, [String? requestOrigin]) {
     response.headers.set(
       'Access-Control-Allow-Origin',
-      (requestOrigin != null && requestOrigin.isNotEmpty) ? requestOrigin : '*',
+      _corsOriginValue(requestOrigin),
     );
     response.headers.set('Vary', 'Origin');
     response.headers.set(
@@ -1495,5 +2654,15 @@ class MediaProxy {
       'Access-Control-Expose-Headers',
       'Content-Length, Content-Range, Accept-Ranges',
     );
+  }
+
+  String _corsOrigin(HttpRequest request) {
+    return _corsOriginValue(request.headers.value('Origin'));
+  }
+
+  String _corsOriginValue(String? requestOrigin) {
+    return (requestOrigin != null && requestOrigin.isNotEmpty)
+        ? requestOrigin
+        : '*';
   }
 }

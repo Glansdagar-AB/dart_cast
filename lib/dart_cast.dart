@@ -32,6 +32,7 @@ export 'src/protocols/airplay/plist_codec.dart';
 // Protocols — Chromecast
 export 'src/protocols/chromecast/chromecast_discovery_provider.dart';
 export 'src/protocols/chromecast/chromecast_session.dart';
+export 'src/protocols/chromecast/cast_media_channel.dart' show MediaStatusInfo;
 
 // Protocols — DLNA
 export 'src/protocols/dlna/dlna_controller.dart';

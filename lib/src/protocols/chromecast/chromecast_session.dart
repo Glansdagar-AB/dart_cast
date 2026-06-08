@@ -69,6 +69,8 @@ class ChromecastSession extends CastSession {
   String? _transportId;
   String? _sessionId; // Used for STOP app via receiver namespace.
   int? _mediaSessionId;
+  MediaStatusInfo? _currentMediaStatus;
+  Completer<MediaStatusInfo?>? _pendingMediaStatusCompleter;
   StreamSubscription<dynamic>? _mediaStatusSubscription;
   String? _attachRequiredAppId;
 
@@ -118,6 +120,10 @@ class ChromecastSession extends CastSession {
 
   /// The current receiver session ID, if connected.
   String? get sessionId => _sessionId;
+
+  /// The most recent media status reported by the receiver.
+  MediaStatusInfo? get currentMediaStatus => _currentMediaStatus;
+
   final String receiverAppId;
   Timer? _heartbeatTimer;
   StreamSubscription<dynamic>? _messageSubscription;
@@ -320,7 +326,7 @@ class ChromecastSession extends CastSession {
       }
 
       stateMachine.transitionTo(SessionState.connected);
-      _sendMediaCommand(_mediaChannel.buildGetStatus());
+      await _requestMediaStatus();
       CastLogger.info('Chromecast: attached to receiver on ${device.name}');
       return true;
     } catch (error) {
@@ -764,6 +770,9 @@ class ChromecastSession extends CastSession {
     _transportId = null;
     _sessionId = null;
     _mediaSessionId = null;
+    _currentMediaStatus = null;
+    _pendingMediaStatusCompleter?.complete(null);
+    _pendingMediaStatusCompleter = null;
     stateMachine.transitionTo(SessionState.disconnected);
 
     // Clean up socket and proxy with a timeout so we don't hang
@@ -785,6 +794,8 @@ class ChromecastSession extends CastSession {
     _stopHeartbeat();
     _stopPositionPolling();
     _mediaStatusSubscription?.cancel();
+    _pendingMediaStatusCompleter?.complete(null);
+    _pendingMediaStatusCompleter = null;
     unawaited(_proxy.stop());
     super.dispose();
   }
@@ -813,6 +824,9 @@ class ChromecastSession extends CastSession {
     _transportId = null;
     _sessionId = null;
     _mediaSessionId = null;
+    _currentMediaStatus = null;
+    _pendingMediaStatusCompleter?.complete(null);
+    _pendingMediaStatusCompleter = null;
     _isLoadingMedia = false;
     stateMachine.transitionTo(SessionState.disconnected);
   }
@@ -825,6 +839,9 @@ class ChromecastSession extends CastSession {
     _transportId = null;
     _sessionId = null;
     _mediaSessionId = null;
+    _currentMediaStatus = null;
+    _pendingMediaStatusCompleter?.complete(null);
+    _pendingMediaStatusCompleter = null;
     _isLoadingMedia = false;
 
     if (stateMachine.state != SessionState.disconnected) {
@@ -852,6 +869,26 @@ class ChromecastSession extends CastSession {
       destinationId: _transportId!,
       payload: payload,
     );
+  }
+
+  Future<MediaStatusInfo?> _requestMediaStatus({
+    Duration timeout = const Duration(milliseconds: 1500),
+  }) async {
+    if (_transportId == null) return null;
+
+    final completer = Completer<MediaStatusInfo?>();
+    _pendingMediaStatusCompleter?.complete(null);
+    _pendingMediaStatusCompleter = completer;
+
+    _sendMediaCommand(_mediaChannel.buildGetStatus());
+
+    try {
+      return await completer.future.timeout(timeout, onTimeout: () => null);
+    } finally {
+      if (identical(_pendingMediaStatusCompleter, completer)) {
+        _pendingMediaStatusCompleter = null;
+      }
+    }
   }
 
   void _startHeartbeat() {
@@ -966,14 +1003,21 @@ class ChromecastSession extends CastSession {
         );
         return;
       }
-      _handleMediaStatus(payload);
+      _handleMediaStatus(parsed);
     }
   }
 
-  void _handleMediaStatus(Map<String, dynamic> payload) {
-    final status = CastMediaChannel.parseMediaStatus(payload);
-    if (status == null) return;
+  void _handleMediaStatus(MediaStatusInfo? status) {
+    if (status == null) {
+      _currentMediaStatus = null;
+      final completer = _pendingMediaStatusCompleter;
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(null);
+      }
+      return;
+    }
 
+    _currentMediaStatus = status;
     _mediaSessionId = status.mediaSessionId;
 
     // Update position
@@ -987,6 +1031,11 @@ class ChromecastSession extends CastSession {
     // Note: MEDIA_STATUS volume is the stream-level volume (usually 1.0),
     // NOT the device volume. Device volume comes from RECEIVER_STATUS
     // and is handled in _handleMessage(). Don't overwrite it here.
+
+    final completer = _pendingMediaStatusCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(status);
+    }
 
     // Update state machine based on playerState
     _updateState(status.playerState, status.idleReason);
@@ -1134,7 +1183,7 @@ class ChromecastSession extends CastSession {
         return;
       }
 
-      _handleMediaStatus(payload);
+      _handleMediaStatus(parsed);
 
       if (parsed == null) {
         // Empty MEDIA_STATUS — keep waiting.

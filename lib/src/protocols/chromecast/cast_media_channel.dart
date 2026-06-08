@@ -64,6 +64,22 @@ class MediaStatusInfo {
   /// Reason for IDLE state (FINISHED, CANCELLED, INTERRUPTED, ERROR).
   final String? idleReason;
 
+  /// Receiver-reported media content ID, usually the URL that was loaded.
+  final String? contentId;
+
+  /// Receiver-reported content type, e.g. `video/mp4` or
+  /// `application/vnd.apple.mpegurl`.
+  final String? contentType;
+
+  /// Receiver-reported stream type: BUFFERED, LIVE, or NONE.
+  final String? streamType;
+
+  /// Receiver-reported media title from metadata, when available.
+  final String? title;
+
+  /// Receiver-reported media image URL from metadata, when available.
+  final String? imageUrl;
+
   /// Creates a [MediaStatusInfo].
   const MediaStatusInfo({
     required this.mediaSessionId,
@@ -73,6 +89,11 @@ class MediaStatusInfo {
     this.volumeLevel = 1.0,
     this.isMuted = false,
     this.idleReason,
+    this.contentId,
+    this.contentType,
+    this.streamType,
+    this.title,
+    this.imageUrl,
   });
 }
 
@@ -220,6 +241,12 @@ class CastMediaChannel {
     final status = statusList[0] as Map<String, dynamic>;
     final volume = status['volume'] as Map<String, dynamic>?;
     final media = status['media'] as Map<String, dynamic>?;
+    final metadata = media?['metadata'] as Map<String, dynamic>?;
+    final images = metadata?['images'] as List?;
+    final firstImage =
+        images == null || images.isEmpty || images.first is! Map
+            ? null
+            : Map<String, dynamic>.from(images.first as Map);
 
     return MediaStatusInfo(
       mediaSessionId: status['mediaSessionId'] as int,
@@ -229,6 +256,11 @@ class CastMediaChannel {
       volumeLevel: (volume?['level'] as num?)?.toDouble() ?? 1.0,
       isMuted: (volume?['muted'] as bool?) ?? false,
       idleReason: status['idleReason'] as String?,
+      contentId: media?['contentId'] as String?,
+      contentType: media?['contentType'] as String?,
+      streamType: media?['streamType'] as String?,
+      title: metadata?['title'] as String?,
+      imageUrl: firstImage?['url'] as String?,
     );
   }
 }

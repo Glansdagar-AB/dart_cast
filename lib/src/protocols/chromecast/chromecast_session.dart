@@ -752,6 +752,23 @@ class ChromecastSession extends CastSession {
     _mediaStatusSubscription?.cancel();
     _mediaStatusSubscription = null;
 
+    // Stop the receiver app before closing virtual connections. Closing the
+    // sender socket alone only detaches this sender and can leave the Cast app
+    // running on the Chromecast.
+    try {
+      final sessionId = _sessionId;
+      if (sessionId != null) {
+        _channel.sendMessage(
+          namespace: CastReceiverChannel.receiverNamespace,
+          sourceId: _senderId,
+          destinationId: _receiverId,
+          payload: _receiverChannel.buildStopWithId(sessionId),
+        );
+      }
+    } catch (e) {
+      CastLogger.warning('Chromecast: error sending receiver STOP: $e');
+    }
+
     // Send CLOSE messages (fire-and-forget — don't wait for response)
     try {
       if (_transportId != null) {

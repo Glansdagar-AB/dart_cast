@@ -77,6 +77,8 @@ class CastService {
         CastLogger.warning(
           'CastService: error disconnecting previous session: $e',
         );
+      } finally {
+        _activeSession = null;
       }
     }
 
@@ -97,6 +99,21 @@ class CastService {
     _lastDevice = device;
     CastLogger.info('CastService: connected to ${device.name}');
     return session;
+  }
+
+  /// Disconnects the active cast session and clears session ownership.
+  Future<void> disconnect() async {
+    final session = _activeSession;
+    _activeSession = null;
+
+    if (session == null) return;
+
+    try {
+      await session.disconnect();
+    } catch (e) {
+      CastLogger.warning('CastService: error during disconnect: $e');
+      rethrow;
+    }
   }
 
   /// The currently active cast session, or null if not connected.
@@ -125,13 +142,10 @@ class CastService {
   Future<void> dispose() async {
     _discoveryManager.dispose();
 
-    if (_activeSession != null) {
-      try {
-        await _activeSession!.disconnect();
-      } catch (e) {
-        CastLogger.warning('CastService: error during dispose disconnect: $e');
-      }
-      _activeSession = null;
+    try {
+      await disconnect();
+    } catch (e) {
+      CastLogger.warning('CastService: error during dispose disconnect: $e');
     }
   }
 

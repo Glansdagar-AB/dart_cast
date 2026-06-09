@@ -823,6 +823,33 @@ void main() {
     });
 
     group('disconnect', () {
+      test('sends receiver STOP for the running app session', () async {
+        final connectFuture = session.connect();
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        mockChannel.injectMessage(
+          namespace: CastReceiverChannel.receiverNamespace,
+          sourceId: 'receiver-0',
+          destinationId: 'sender-0',
+          payload: _receiverStatusPayload(
+            transportId: 'web-4',
+            sessionId: 'session-to-stop',
+          ),
+        );
+        await connectFuture;
+
+        mockChannel.clearMessages();
+
+        await session.disconnect();
+
+        final receiverStop = mockChannel.sentMessages.firstWhere(
+          (m) =>
+              m.namespace == CastReceiverChannel.receiverNamespace &&
+              m.destinationId == 'receiver-0' &&
+              m.payload['type'] == 'STOP',
+        );
+        expect(receiverStop.payload['sessionId'], 'session-to-stop');
+      });
+
       test('sends CLOSE to transportId and receiver-0', () async {
         // Connect first
         final connectFuture = session.connect();

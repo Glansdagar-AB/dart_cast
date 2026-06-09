@@ -211,6 +211,51 @@ void main() {
       service.dispose();
     });
 
+    test('connect clears stale active session after auto-disconnect', () async {
+      final device1 = _device('d1', CastProtocol.dlna);
+      final device2 = _device('d2', CastProtocol.chromecast);
+
+      MockCastSession? firstSession;
+      final service = CastService(
+        discoveryProviders: [],
+        sessionFactory: (device) {
+          final session = MockCastSession(device);
+          if (device.id == 'd1') firstSession = session;
+          return session;
+        },
+      );
+
+      await service.connect(device1);
+      await firstSession!.disconnect();
+
+      final secondSession = await service.connect(device2);
+
+      expect(service.activeSession, same(secondSession));
+
+      service.dispose();
+    });
+
+    test('disconnect clears active session', () async {
+      final device = _device('d1', CastProtocol.dlna);
+
+      MockCastSession? session;
+      final service = CastService(
+        discoveryProviders: [],
+        sessionFactory: (device) {
+          session = MockCastSession(device);
+          return session!;
+        },
+      );
+
+      await service.connect(device);
+      await service.disconnect();
+
+      expect(session!.disconnected, isTrue);
+      expect(service.activeSession, isNull);
+
+      service.dispose();
+    });
+
     test('activeSession returns current session', () async {
       final device = _device('d1', CastProtocol.dlna);
 

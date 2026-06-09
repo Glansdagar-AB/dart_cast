@@ -80,6 +80,9 @@ class MediaStatusInfo {
   /// Receiver-reported media image URL from metadata, when available.
   final String? imageUrl;
 
+  /// Receiver-reported media custom data, when available.
+  final Map<String, dynamic>? customData;
+
   /// Creates a [MediaStatusInfo].
   const MediaStatusInfo({
     required this.mediaSessionId,
@@ -94,6 +97,7 @@ class MediaStatusInfo {
     this.streamType,
     this.title,
     this.imageUrl,
+    this.customData,
   });
 }
 
@@ -120,6 +124,7 @@ class CastMediaChannel {
     String? imageUrl,
     double? startPosition,
     List<CastMediaTrack>? subtitles,
+    Map<String, dynamic>? customData,
     String streamType = 'BUFFERED',
   }) {
     final media = <String, dynamic>{
@@ -137,6 +142,10 @@ class CastMediaChannel {
       ];
     }
     media['metadata'] = metadata;
+
+    if (customData != null && customData.isNotEmpty) {
+      media['customData'] = customData;
+    }
 
     // Subtitle tracks
     if (subtitles != null && subtitles.isNotEmpty) {
@@ -247,6 +256,9 @@ class CastMediaChannel {
         images == null || images.isEmpty || images.first is! Map
             ? null
             : Map<String, dynamic>.from(images.first as Map);
+    final customDataRaw = media?['customData'];
+    final customData =
+        customDataRaw is Map ? Map<String, dynamic>.from(customDataRaw) : null;
 
     return MediaStatusInfo(
       mediaSessionId: status['mediaSessionId'] as int,
@@ -261,6 +273,7 @@ class CastMediaChannel {
       streamType: media?['streamType'] as String?,
       title: metadata?['title'] as String?,
       imageUrl: firstImage?['url'] as String?,
+      customData: customData,
     );
   }
 }

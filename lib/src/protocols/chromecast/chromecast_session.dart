@@ -58,6 +58,7 @@ class ChromecastSession extends CastSession {
   final _ChannelAdapter _channel;
   final MediaProxy _proxy;
   final MediaTransformer _mediaTransformer;
+  final bool useMediaProxy;
 
   // ---------------------------------------------------------------------------
   // Session state
@@ -148,6 +149,7 @@ class ChromecastSession extends CastSession {
     MediaTransformer? mediaTransformer,
     this.receiverAppId = CastReceiverChannel.defaultMediaReceiverAppId,
     this.enableReceiverDebugNamespaces = false,
+    this.useMediaProxy = true,
   }) : _channel = _RealChannelAdapter(),
        _proxy = MediaProxy(),
        _mediaTransformer =
@@ -169,6 +171,7 @@ class ChromecastSession extends CastSession {
     MediaTransformer? mediaTransformer,
     this.receiverAppId = CastReceiverChannel.defaultMediaReceiverAppId,
     this.enableReceiverDebugNamespaces = false,
+    this.useMediaProxy = true,
   }) : _channel = _MockChannelAdapter(channel),
        _proxy = proxy ?? MediaProxy(),
        _mediaTransformer =
@@ -401,10 +404,12 @@ class ChromecastSession extends CastSession {
     // don't matter anymore.
     _deprecatedMediaSessionIds.clear();
 
-    // Start proxy
-    await _proxy.start(targetDeviceIp: device.address.address);
+    if (useMediaProxy) {
+      await _proxy.start(targetDeviceIp: device.address.address);
+    }
 
-    final isRemoteHls = media.type == CastMediaType.hls && !media.isLocalFile;
+    final isRemoteHls =
+        useMediaProxy && media.type == CastMediaType.hls && !media.isLocalFile;
 
     // Non-HLS / local media — single attempt, no bisect needed.
     if (!isRemoteHls) {
@@ -545,10 +550,10 @@ class ChromecastSession extends CastSession {
     _subtitleTrackIds.clear();
     for (var i = 0; i < media.subtitles.length; i++) {
       final sub = media.subtitles[i];
-      final proxySubUrl = _proxy.registerSubtitle(
-        sub.url,
-        headers: media.httpHeaders,
-      );
+      final proxySubUrl =
+          useMediaProxy
+              ? _proxy.registerSubtitle(sub.url, headers: media.httpHeaders)
+              : sub.url;
       final trackId = i + 1;
       _subtitleTrackIds[sub.url] = trackId;
       subtitles.add(
@@ -566,6 +571,7 @@ class ChromecastSession extends CastSession {
       contentType: contentType,
       title: media.title,
       imageUrl: media.imageUrl,
+      customData: media.customData,
       startPosition:
           media.startPosition != null
               ? media.startPosition!.inMilliseconds / 1000.0
@@ -954,6 +960,19 @@ class ChromecastSession extends CastSession {
     }
 
     // Handle RECEIVER_STATUS — extract volume and session info
+    if (namespace == CastReceiverChannel.receiverNamespace &&
+        payload['type'] == 'LAUNCH_ERROR' &&
+        !connectCompleter.isCompleted) {
+      final reason = payload['reason'] as String? ?? 'UNKNOWN';
+      if (stateMachine.canTransitionTo(SessionState.disconnected)) {
+        stateMachine.transitionTo(SessionState.disconnected);
+      }
+      connectCompleter.completeError(
+        ReceiverLaunchException(appId: receiverAppId, reason: reason),
+      );
+      return;
+    }
+
     if (namespace == CastReceiverChannel.receiverNamespace &&
         payload['type'] == 'RECEIVER_STATUS') {
       final status = CastReceiverChannel.parseReceiverStatus(payload);

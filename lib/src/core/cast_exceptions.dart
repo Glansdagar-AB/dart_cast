@@ -33,6 +33,21 @@ class MediaLoadFailedException extends CastException {
   MediaLoadFailedException(super.message, [super.cause]);
 }
 
+/// Thrown when a Chromecast receiver app cannot be launched.
+class ReceiverLaunchException extends CastException {
+  /// The receiver application ID that failed to launch.
+  final String appId;
+
+  /// Receiver-provided launch failure reason, e.g. NOT_FOUND.
+  final String reason;
+
+  ReceiverLaunchException({
+    required this.appId,
+    required this.reason,
+    Object? cause,
+  }) : super('Chromecast receiver app $appId failed to launch: $reason', cause);
+}
+
 /// Thrown when the media proxy encounters an upstream error.
 class ProxyUpstreamException extends CastException {
   ProxyUpstreamException(super.message, [super.cause]);

@@ -115,6 +115,19 @@ void main() {
         expect(decoded['media']['streamType'], 'LIVE');
       });
 
+      test('includes customData when provided', () {
+        final json = channel.buildLoad(
+          contentId: 'http://example.com/video.mp4',
+          contentType: 'video/mp4',
+          customData: {'appContentId': 123, 'appContentType': 'vod'},
+        );
+        final decoded = jsonDecode(json) as Map<String, dynamic>;
+        expect(decoded['media']['customData'], {
+          'appContentId': 123,
+          'appContentType': 'vod',
+        });
+      });
+
       test('defaults streamType to BUFFERED', () {
         final json = channel.buildLoad(
           contentId: 'http://example.com/video.mp4',
@@ -218,6 +231,7 @@ void main() {
               'media': {
                 'contentId': 'http://example.com/video.m3u8',
                 'duration': 1440.5,
+                'customData': {'appContentId': 123, 'appContentType': 'vod'},
               },
             },
           ],
@@ -231,6 +245,10 @@ void main() {
         expect(status.duration, closeTo(1440.5, 0.1));
         expect(status.volumeLevel, 1.0);
         expect(status.isMuted, false);
+        expect(status.customData, {
+          'appContentId': 123,
+          'appContentType': 'vod',
+        });
       });
 
       test('handles IDLE state with idleReason', () {

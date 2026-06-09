@@ -69,6 +69,9 @@ class CastMedia {
   /// so the cast device reports correct playback progress.
   final Duration? duration;
 
+  /// Optional sender-provided metadata echoed back by supported receivers.
+  final Map<String, dynamic> customData;
+
   /// Subtitle tracks for this media.
   final List<CastSubtitle> subtitles;
 
@@ -81,6 +84,7 @@ class CastMedia {
     this.imageUrl,
     this.startPosition,
     this.duration,
+    this.customData = const {},
     this.subtitles = const [],
   }) : isLocalFile = false;
 
@@ -96,6 +100,7 @@ class CastMedia {
     this.imageUrl,
     this.startPosition,
     this.duration,
+    this.customData = const {},
     this.subtitles = const [],
   }) : url = filePath,
        isLocalFile = true,

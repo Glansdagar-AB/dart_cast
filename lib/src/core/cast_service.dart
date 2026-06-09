@@ -81,7 +81,18 @@ class CastService {
     }
 
     final session = _createSession(device);
-    await session.connect();
+    try {
+      await session.connect();
+    } catch (error) {
+      try {
+        session.dispose();
+      } catch (disposeError) {
+        CastLogger.warning(
+          'CastService: error disposing failed session: $disposeError',
+        );
+      }
+      rethrow;
+    }
     _activeSession = session;
     _lastDevice = device;
     CastLogger.info('CastService: connected to ${device.name}');

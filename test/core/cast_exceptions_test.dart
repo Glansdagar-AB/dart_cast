@@ -34,6 +34,15 @@ void main() {
       expect(e.message, 'load failed');
     });
 
+    test('ReceiverLaunchException includes app id and reason', () {
+      final e = ReceiverLaunchException(appId: 'ABCDE123', reason: 'NOT_FOUND');
+      expect(e, isA<CastException>());
+      expect(e.appId, 'ABCDE123');
+      expect(e.reason, 'NOT_FOUND');
+      expect(e.message, contains('ABCDE123'));
+      expect(e.message, contains('NOT_FOUND'));
+    });
+
     test('ProxyUpstreamException is a CastException', () {
       final e = ProxyUpstreamException('upstream error');
       expect(e, isA<CastException>());
